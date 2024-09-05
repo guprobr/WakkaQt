@@ -54,6 +54,10 @@ To build and run this application, ensure you have the following:
     ./WakkaQt
     ```
 
+## Install LV2 plugin for AutoTune
+
+https://x42-plugins.com/x42/x42-autotune
+
 ## Usage
 
 1. **Load Karaoke Track:** Use the "Load playback from disk" button to load a video or audio file for the karaoke session.

@@ -20,9 +20,11 @@ find_package(Qt6 REQUIRED COMPONENTS
 
 # Find and configure GStreamer
 find_package(PkgConfig REQUIRED)
-find_package(GStreamer REQUIRED)
+pkg_check_modules(GSTREAMER REQUIRED gstreamer-1.0)
 include_directories(${GSTREAMER_INCLUDE_DIRS})
 link_directories(${GSTREAMER_LIBRARY_DIRS})
+
+message(STATUS "GStreamer include directories: ${GSTREAMER_INCLUDE_DIRS}")
 
 # Add the resource file
 qt_add_resources(resources resources.qrc)
@@ -55,4 +57,5 @@ target_link_libraries(${PROJECT_NAME}
 # Include headers
 target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
+    ${GSTREAMER_INCLUDE_DIRS}
 )

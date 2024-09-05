@@ -1,5 +1,0 @@
-# Hashes of file build rules.
-e86c5a7c1a836530fbe113e2eb8227dd CMakeFiles/WakkaQt_autogen
-e86c5a7c1a836530fbe113e2eb8227dd CMakeFiles/WakkaQt_autogen_timestamp_deps
-36635410fa783647fcb4bf318c39d682 WakkaQt_autogen/timestamp
-52b87c5592c3598316919267a3395cc9 qrc_resources.cpp

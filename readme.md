@@ -1,3 +1,5 @@
+This software is currently in Alpha stage for developers to test. Help requested: for Windows and MacOS tests. NOTE: gStreamer is required on all platforms.
+
 # WakkaQt - Karaoke App
 
 WakkaQt is a karaoke application built with C++ and Qt6, designed to record vocals over a video/audio track and mix them into a rendered file. This app features webcam recording, YouTube video downloading, real-time sound visualization, and post-recording video rendering with FFmpeg.

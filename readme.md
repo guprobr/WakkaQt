@@ -2,6 +2,8 @@
 
 WakkaQt is a karaoke application built with C++ and Qt6, designed to record vocals over a video/audio track and mix them into a rendered file. This app features webcam recording, YouTube video downloading, real-time sound visualization, and post-recording video rendering with FFmpeg.
 
+![Screenshot from 2024-09-03 17-44-16](https://github.com/user-attachments/assets/9813fa0d-1d41-4e54-9fa2-0b5fe4c8432a)
+
 ## Features
 
 - **Record karaoke sessions** with synchronized video and audio playback.
@@ -15,6 +17,7 @@ WakkaQt is a karaoke application built with C++ and Qt6, designed to record voca
 ## Requirements
 
 To build and run this application, ensure you have the following:
+
 
 - **C++17** or later
 - **Qt6** (Qt Multimedia module)

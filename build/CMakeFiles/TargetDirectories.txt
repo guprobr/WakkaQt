@@ -1,0 +1,5 @@
+/home/guzpido/WakkaQt/build/CMakeFiles/WakkaQt.dir
+/home/guzpido/WakkaQt/build/CMakeFiles/edit_cache.dir
+/home/guzpido/WakkaQt/build/CMakeFiles/rebuild_cache.dir
+/home/guzpido/WakkaQt/build/CMakeFiles/WakkaQt_autogen_timestamp_deps.dir
+/home/guzpido/WakkaQt/build/CMakeFiles/WakkaQt_autogen.dir

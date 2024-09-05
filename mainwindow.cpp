@@ -174,6 +174,8 @@ void MainWindow::configureMediaComponents()
     soundLevelWidget->setInputDevice(selectedDevice);
 
     format->setFileFormat(QMediaFormat::MPEG4);
+    format->setVideoCodec(QMediaFormat::VideoCodec::H264);
+    format->setAudioCodec(QMediaFormat::AudioCodec::AAC);
     mediaRecorder->setMediaFormat(*format);
     mediaRecorder->setOutputLocation(QUrl::fromLocalFile(webcamRecorded));
     mediaRecorder->setQuality(QMediaRecorder::HighQuality);

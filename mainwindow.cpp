@@ -233,6 +233,21 @@ void MainWindow::chooseVideo()
     }
 }
 
+void MainWindow::startSingSession() {
+    // Reinit timers
+    playbackTimer.invalidate();
+    recordingTimer.invalidate();
+    
+    playbackTimer.start();  // playback timer
+
+    player->setSource(QUrl::fromLocalFile(currentVideoFile)); 
+    player->play();  // Start playback (video)
+
+    QTimer::singleShot(100, this, [this]() {
+        recordingTimer.start();  // rec timer
+    });
+}
+
 // START RECORDING
 void MainWindow::startRecording() {
     if (isRecording) {
@@ -260,8 +275,10 @@ void MainWindow::startRecording() {
 
     camera->start();
 
-    player->setSource(QUrl::fromLocalFile(currentVideoFile)); 
-    player->play();
+    //player->setSource(QUrl::fromLocalFile(currentVideoFile)); 
+    //player->play();
+    startSingSession();
+
     mediaRecorder->record(); 
     isRecording = true;
     logTextEdit->append("Recording NOW!");
@@ -312,6 +329,20 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
         player->stop();
         videoWidget->hide();
         placeholderLabel->show();
+
+
+        qint64 playbackStartTime = playbackTimer.elapsed();
+        qint64 recordingStartTime = recordingTimer.elapsed();
+
+        // Calc offset
+        offset = playbackStartTime - recordingStartTime; //  milisseconds
+
+        qDebug() << "Offset between playback and recording: " << offset << "ms";
+        logTextEdit->append(QString("Offset between playback and recording: %1 secs").arg(QString::number(offset / 1000.0, 'f', 2)));
+
+        // for safety, invalidate timers since recording finished
+        playbackTimer.invalidate();
+        recordingTimer.invalidate();
 
         // Check file length
         QFile file(webcamRecorded);
@@ -377,7 +408,9 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
     placeholderLabel->show();
     singButton->setEnabled(false); 
     chooseInputButton->setEnabled(true);
-    
+
+    QString offsetArg = QString::number(offset / 1000.0, 'f', 2);  // Convert from ms to seconds
+
     int totalDuration = getMediaDuration(videoFilePath);  // Get the total duration
     progressBar = new QProgressBar(this);
     progressBar->setRange(0, 100);
@@ -400,7 +433,7 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
     if (outfileInfo.suffix().toLower() == "mp3" || outfileInfo.suffix().toLower() == "flac" || outfileInfo.suffix().toLower() == "wav" \
     || videofileInfo.suffix().toLower() == "mp3" || videofileInfo.suffix().toLower() == "flac" || videofileInfo.suffix().toLower() == "wav" ) {
         arguments << "-y" // Overwrite output file if it exists
-              << "-ss" << "0.33" // horrible trick for better sync, wish i could improve this 
+              << "-ss" << offsetArg
               << "-i" << webcamFilePath // recorded vocals
               << "-i" << videoFilePath // playback file
               << "-filter_complex"
@@ -414,7 +447,7 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
     }
     else {
         arguments << "-y" // Overwrite output file if it exists
-              << "-ss" << "0.33" // horrible trick for better sync, wish i could improve this 
+              << "-ss" << offsetArg 
               << "-i" << webcamFilePath // recorded vocals
               << "-i" << videoFilePath // playback file
               << "-filter_complex"

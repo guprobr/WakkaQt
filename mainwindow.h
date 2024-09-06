@@ -18,8 +18,10 @@
 #include <QCloseEvent>
 #include <QLineEdit>
 #include <QTextEdit>
-#include <QFile>
 #include <QProgressBar>
+#include <QFile>
+#include <QElapsedTimer>
+
 
 class MainWindow : public QMainWindow
 {
@@ -36,6 +38,9 @@ private slots:
 private:
 
     bool isRecording;
+    QElapsedTimer playbackTimer;
+    QElapsedTimer recordingTimer;
+    qint64 offset;
 
     QVideoWidget *videoWidget;
     QAudioDevice selectedDevice;
@@ -76,6 +81,7 @@ private:
     SndWidget *soundLevelWidget;
 
     void chooseVideo();
+    void startSingSession() ;
     void startRecording();
     void stopRecording();
 

@@ -58,7 +58,7 @@ MainWindow::MainWindow(QWidget *parent)
     renderAgainButton = new QPushButton("RENDER AGAIN", this);
 
     // Create the red recording indicator
-    recordingIndicator = new QLabel(" ⬤ REC ", this);
+    recordingIndicator = new QLabel("⬤REC", this);
     recordingIndicator->setStyleSheet("color: red;");
     recordingIndicator->setFixedSize(45, 45); // Adjust the size
     QHBoxLayout *indicatorLayout = new QHBoxLayout();

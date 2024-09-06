@@ -234,18 +234,28 @@ void MainWindow::chooseVideo()
 }
 
 void MainWindow::startSingSession() {
-    // Reinit timers
-    playbackTimer.invalidate();
-    recordingTimer.invalidate();
-    
-    playbackTimer.start();  // playback timer
+  // Reinit timers
+  playbackTimer.invalidate();
+  recordingTimer.invalidate();
 
-    player->setSource(QUrl::fromLocalFile(currentVideoFile)); 
-    player->play();  // Start playback (video)
+  playbackTimer.start(); // playback timer
 
-    QTimer::singleShot(100, this, [this]() {
-        recordingTimer.start();  // rec timer
-    });
+  player->setSource(QUrl::fromLocalFile(currentVideoFile));
+
+  // Disconnect any existing connections to avoid multiple connections
+  disconnect(player.data(), &QMediaPlayer::mediaStatusChanged, this, nullptr);
+  // Connect to mediaStatusChanged before playing
+  connect(player.data(), &QMediaPlayer::mediaStatusChanged, player.data(), [this](QMediaPlayer::MediaStatus status) {
+    qDebug() << status;
+    if (status == QMediaPlayer::BufferedMedia) {
+      recordingTimer.start(); // Start recording timer when playback starts
+      qint64 playbackStartTime = playbackTimer.elapsed();
+      logTextEdit->append(QString("Playback started at: %1 ms").arg(playbackStartTime));
+    }
+  });
+
+  player->play(); // Start playback! 
+
 }
 
 // START RECORDING

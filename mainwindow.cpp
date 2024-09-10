@@ -277,13 +277,14 @@ void MainWindow::startRecording() {
     mediaCaptureSession->setRecorder(mediaRecorder.data());
     mediaCaptureSession->setAudioInput(audioInput.data());
     mediaCaptureSession->setCamera(camera.data());
+    camera->start();
 
     // Show webcamera preview 
     previewWebcam.reset(new PreviewWebcam(this));
     mediaCaptureSession->setVideoOutput(previewWebcam->videoWidget);
     previewWebcam->show();
 
-    camera->start();
+    
 
     //player->setSource(QUrl::fromLocalFile(currentVideoFile)); 
     //player->play();
@@ -443,8 +444,9 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
     if (outfileInfo.suffix().toLower() == "mp3" || outfileInfo.suffix().toLower() == "flac" || outfileInfo.suffix().toLower() == "wav" \
     || videofileInfo.suffix().toLower() == "mp3" || videofileInfo.suffix().toLower() == "flac" || videofileInfo.suffix().toLower() == "wav" ) {
         arguments << "-y" // Overwrite output file if it exists
-              << "-ss" << offsetArg
-              << "-i" << webcamFilePath // recorded vocals
+            << "-fflags" << "+genpts"
+            << "-ss" << offsetArg
+              << "-i" << webcamFilePath // recorded vocals  
               << "-i" << videoFilePath // playback file
               << "-filter_complex"
               << QString("[0:a]afftdn=nf=-20:nr=10:nt=w,speechnorm,acompressor=threshold=0.5:ratio=4,highpass=f=200, \
@@ -453,11 +455,13 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
               [1:a][vocals]amix=inputs=2:normalize=0;").arg(vocalVolume)
               << "-dither_method" << "shibata" // dithering
               << "-ac" << "2" // force stereo
+              << "-async" << "1"
               << outputFilePath;
     }
     else {
         arguments << "-y" // Overwrite output file if it exists
-              << "-ss" << offsetArg 
+            << "-fflags" << "+genpts"
+            << "-ss" << offsetArg
               << "-i" << webcamFilePath // recorded vocals
               << "-i" << videoFilePath // playback file
               << "-filter_complex"
@@ -471,6 +475,7 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
               << "-dither_method" << "shibata" // dithering
               << "-ac" << "2" // force stereo
               << "-s" << "1280x720"
+              << "-async" << "1"
               << outputFilePath;
     }
     

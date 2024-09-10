@@ -238,22 +238,19 @@ void MainWindow::startSingSession() {
   playbackTimer.invalidate();
   recordingTimer.invalidate();
 
-  playbackTimer.start(); // playback timer
-
   player->setSource(QUrl::fromLocalFile(currentVideoFile));
 
   // Disconnect any existing connections to avoid multiple connections
   disconnect(player.data(), &QMediaPlayer::mediaStatusChanged, this, nullptr);
   // Connect to mediaStatusChanged before playing
-  connect(player.data(), &QMediaPlayer::mediaStatusChanged, player.data(), [this](QMediaPlayer::MediaStatus status) {
+  connect(player.data(), &QMediaPlayer::playbackStateChanged, player.data(), [this](QMediaPlayer::PlaybackState status) {
     qDebug() << status;
-    if (status == QMediaPlayer::BufferedMedia) {
-      recordingTimer.start(); // Start recording timer when playback starts
-      qint64 playbackStartTime = playbackTimer.elapsed();
-      logTextEdit->append(QString("Playback started at: %1 ms").arg(playbackStartTime));
+    if (status == QMediaPlayer::PlayingState) {
+      mediaRecorder->record();
     }
   });
 
+  playbackTimer.start(); // Start timer as playback starts
   player->play(); // Start playback! 
 
 }
@@ -274,23 +271,21 @@ void MainWindow::startRecording() {
     fetchButton->setEnabled(false);
     chooseInputButton->setEnabled(false);
 
+    camera->start();
+
     mediaCaptureSession->setRecorder(mediaRecorder.data());
     mediaCaptureSession->setAudioInput(audioInput.data());
     mediaCaptureSession->setCamera(camera.data());
-    camera->start();
 
     // Show webcamera preview 
     previewWebcam.reset(new PreviewWebcam(this));
     mediaCaptureSession->setVideoOutput(previewWebcam->videoWidget);
     previewWebcam->show();
 
-    
-
-    //player->setSource(QUrl::fromLocalFile(currentVideoFile)); 
-    //player->play();
     startSingSession();
 
-    mediaRecorder->record(); 
+    
+
     isRecording = true;
     logTextEdit->append("Recording NOW!");
     recordingIndicator->show();
@@ -334,6 +329,9 @@ void MainWindow::handleRecorderError(QMediaRecorder::Error error) {
 }
 
 void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
+    if (mediaRecorder->recorderState() == QMediaRecorder::RecordingState ) {
+        recordingTimer.start();
+    }
     if (state == QMediaRecorder::StoppedState) {
         qDebug() << "Recording stopped.";
         
@@ -445,14 +443,16 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
     || videofileInfo.suffix().toLower() == "mp3" || videofileInfo.suffix().toLower() == "flac" || videofileInfo.suffix().toLower() == "wav" ) {
         arguments << "-y" // Overwrite output file if it exists
             << "-fflags" << "+genpts"
-            << "-ss" << offsetArg
               << "-i" << webcamFilePath // recorded vocals  
               << "-i" << videoFilePath // playback file
               << "-filter_complex"
               << QString("[0:a]afftdn=nf=-20:nr=10:nt=w,speechnorm,acompressor=threshold=0.5:ratio=4,highpass=f=200, \
-              lv2=http\\\\://gareus.org/oss/lv2/fat1:c=mode=Auto|channelf=Any|bias=1.0|filter=0.1|offset=0.1|bendrange=2|corr=1.0, \
-              aecho=1.0:1.0:84:0.21,treble=g=12,volume=%1[vocals]; \
-              [1:a][vocals]amix=inputs=2:normalize=0;").arg(vocalVolume)
+                        lv2=http\\\\://gareus.org/oss/lv2/fat1:c=mode=Auto|channelf=Any|bias=1.0|filter=0.1|offset=0.1|bendrange=2|corr=1.0, \
+                        aecho=1.0:1.0:84:0.21,treble=g=12,volume=%1[vocals]; \
+                        [1:a]adelay=%2|%2[playback]; \
+                        [playback][vocals]amix=inputs=2:normalize=0;")
+                        .arg(vocalVolume)
+                        .arg(offset)
               << "-dither_method" << "shibata" // dithering
               << "-ac" << "2" // force stereo
               << "-async" << "1"
@@ -461,17 +461,19 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
     else {
         arguments << "-y" // Overwrite output file if it exists
             << "-fflags" << "+genpts"
-            << "-ss" << offsetArg
               << "-i" << webcamFilePath // recorded vocals
               << "-i" << videoFilePath // playback file
               << "-filter_complex"
               << QString("[0:a]afftdn=nf=-20:nr=10:nt=w,speechnorm,acompressor=threshold=0.5:ratio=4,highpass=f=200, \
-              lv2=http\\\\://gareus.org/oss/lv2/fat1:c=mode=Auto|channelf=Any|bias=1.0|filter=0.1|offset=0.1|bendrange=2|corr=1.0, \
-              aecho=1.0:1.0:84:0.21,treble=g=12,volume=%1[vocals]; \
-              [1:a][vocals]amix=inputs=2:normalize=0;   \
-              [0:v]scale=s=1280x720[webcam];    \
-              [1:v]scale=s=1280x720[video];     \
-              [video][webcam]vstack;").arg(vocalVolume)
+                        lv2=http\\\\://gareus.org/oss/lv2/fat1:c=mode=Auto|channelf=Any|bias=1.0|filter=0.1|offset=0.1|bendrange=2|corr=1.0, \
+                        aecho=1.0:1.0:84:0.21,treble=g=12,volume=%1[vocals]; \
+                        [1:a]adelay=%2|%2[playback]; \
+                        [playback][vocals]amix=inputs=2:normalize=0;   \
+                        [0:v]scale=s=1280x720[webcam];    \
+                        [1:v]scale=s=1280x720[video];     \
+                        [video][webcam]vstack;")
+                        .arg(vocalVolume)  
+                        .arg(offset)
               << "-dither_method" << "shibata" // dithering
               << "-ac" << "2" // force stereo
               << "-s" << "1280x720"

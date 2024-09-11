@@ -25,6 +25,7 @@
 #include <QGraphicsScene>
 #include <QGraphicsView>
 #include <QGraphicsVideoItem>
+#include <QGraphicsProxyWidget>
 
 #include <QVideoWidget>
 #include <QAudioFormat>
@@ -52,10 +53,10 @@ MainWindow::MainWindow(QWidget *parent)
     durationTextItem->setDefaultTextColor(Qt::white); // Set text color
     durationTextItem->setFont(QFont("Arial", 16)); // Set font size and style
     durationTextItem->setPos(50, 10); // Position in the scene
-    QGraphicsScene *scene = new QGraphicsScene(this);
+    scene = new QGraphicsScene(this);
     scene->addItem(previewItem);
     scene->addItem(durationTextItem);
-    QGraphicsView *previewView = new QGraphicsView(scene, this);
+    previewView = new QGraphicsView(scene, this);
     previewView->setMinimumSize(640, 84);
     //previewView->hide();  
 
@@ -247,6 +248,7 @@ void MainWindow::chooseVideo()
         player->setSource(QUrl::fromLocalFile(currentVideoFile)); 
         player->play(); // playback preview
         playbackTimer->start(1000); // Update every second
+        addProgressBarToScene(scene, getMediaDuration(currentVideoFile));
         placeholderLabel->hide();
         videoWidget->show();
 
@@ -278,6 +280,7 @@ try {
         playbackEventTime = QDateTime::currentMSecsSinceEpoch();
         player->play();
         playbackTimer->start(1000); // Update every second
+        addProgressBarToScene(scene, getMediaDuration(currentVideoFile));
 
         mediaCaptureSession->setCamera(camera.data());
         mediaCaptureSession->setAudioInput(audioInput.data());
@@ -330,6 +333,7 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
         
         player->stop();
         playbackTimer->stop();
+
         videoWidget->hide();
         placeholderLabel->show();
 
@@ -562,6 +566,8 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
         
         player->play();
         playbackTimer->start(1000); // Update every second
+        addProgressBarToScene(scene, getMediaDuration(outputFilePath));
+        
         placeholderLabel->hide();
         videoWidget->show();
 
@@ -683,6 +689,7 @@ void MainWindow::fetchVideo() {
             player->setSource(QUrl::fromLocalFile(videoFilePath)); 
             player->play(); // play playback for preview
             playbackTimer->start(1000); // Update every second
+            addProgressBarToScene(scene, getMediaDuration(currentVideoFile));
             placeholderLabel->hide();
             videoWidget->show();
 
@@ -757,6 +764,26 @@ void MainWindow::updatePlaybackDuration() {
         durationTextItem->setPlainText(durationText); 
     }
 }
+
+void MainWindow::addProgressBarToScene(QGraphicsScene *scene, qint64 duration) {
+     
+     if (progressSong) {
+        scene->removeItem(progressSong);
+        delete progressSong;
+        progressSong = nullptr;
+    }
+    // Barra de progresso
+    progressSong = new QGraphicsRectItem(-1, -1, 320, 20);
+    progressSong->setBrush(QBrush(Qt::green));
+    scene->addItem(progressSong);
+    progressSong->setPos(0, 50); // below cronômetro
+
+    connect(player.data(), &QMediaPlayer::positionChanged, this, [=](qint64 currentPosition) {
+        qreal progress = qreal(currentPosition) / ( duration * 1000 );
+        progressSong->setRect(-1, -1, 320 * progress, 20); // Atualiza a largura da barra
+    });
+}
+
 
 void MainWindow::closeEvent(QCloseEvent *event)
 {

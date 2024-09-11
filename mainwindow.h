@@ -7,6 +7,7 @@
 #include <QMessageBox>
 #include <QMediaPlayer>
 #include <QVideoWidget>
+#include <QGraphicsView>
 #include <QGraphicsVideoItem>
 #include <QMediaFormat>
 #include <QMediaRecorder>
@@ -46,9 +47,13 @@ private:
     qint64 offset;
 
     QVideoWidget *videoWidget;
-    QVideoWidget *previewWidget;
+ 
+    QGraphicsScene *scene;
+    QGraphicsView *previewView;
     QGraphicsVideoItem *previewItem;
+    QGraphicsRectItem *progressSong = nullptr;
     QGraphicsTextItem *durationTextItem;
+
     QTimer *playbackTimer;
 
     QAudioDevice selectedDevice;
@@ -99,6 +104,7 @@ private:
 
     QString millisecondsToSecondsString(qint64 milliseconds);
     void updatePlaybackDuration();
+    void addProgressBarToScene(QGraphicsScene *scene, qint64 duration);
     void updateProgress(const QString& output, QProgressBar* progressBar, int totalDuration);
     int getMediaDuration(const QString &filePath);
     void mixAndRender(const QString &videoFile, const QString &webcamFile, const QString &outputFile, double vocalVolume);

@@ -40,6 +40,7 @@ private slots:
     
 private:
 
+    QColor windowTextColor;
     bool isRecording;
 
     qint64 playbackEventTime = 0;

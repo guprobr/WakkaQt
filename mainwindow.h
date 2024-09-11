@@ -7,6 +7,7 @@
 #include <QMessageBox>
 #include <QMediaPlayer>
 #include <QVideoWidget>
+#include <QGraphicsVideoItem>
 #include <QMediaFormat>
 #include <QMediaRecorder>
 #include <QMediaCaptureSession>
@@ -20,7 +21,7 @@
 #include <QTextEdit>
 #include <QProgressBar>
 #include <QFile>
-#include <QElapsedTimer>
+#include <QFileInfo>
 
 
 class MainWindow : public QMainWindow
@@ -33,22 +34,28 @@ public:
 
 private slots:
     void onRecorderStateChanged(QMediaRecorder::RecorderState state);
+    void onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status);
     void handleRecorderError(QMediaRecorder::Error error);
     
 private:
 
     bool isRecording;
-    QElapsedTimer playbackTimer;
-    QElapsedTimer recordingTimer;
+
+    qint64 playbackEventTime = 0;
+    qint64 recordingEventTime = 0;
     qint64 offset;
 
     QVideoWidget *videoWidget;
+    QVideoWidget *previewWidget;
+    QGraphicsVideoItem *previewItem;
+
     QAudioDevice selectedDevice;
     QBuffer *audioBuffer;
 
     QProgressBar *progressBar;
     int totalDuration;
 
+    QScopedPointer<QTimer> recordingCheckTimer; 
     QScopedPointer<QMediaPlayer> player;
     QScopedPointer<QAudioOutput> audioOutput;
     QScopedPointer<QAudioInput> audioInput;
@@ -56,7 +63,7 @@ private:
     QScopedPointer<QMediaRecorder> mediaRecorder;
     QScopedPointer<QMediaCaptureSession> mediaCaptureSession;
     QScopedPointer<QCamera> camera;
-    QVideoWidget *previewWidget;
+    
 
     QPushButton *singButton;
     QPushButton *chooseVideoButton;
@@ -81,18 +88,20 @@ private:
     SndWidget *soundLevelWidget;
 
     void chooseVideo();
-    void startSingSession() ;
+    void checkRecordingStart();
     void startRecording();
     void stopRecording();
+    void handleRecordingError();
 
     void fetchVideo();
 
+    QString millisecondsToSecondsString(qint64 milliseconds);
     void updateProgress(const QString& output, QProgressBar* progressBar, int totalDuration);
     int getMediaDuration(const QString &filePath);
     void mixAndRender(const QString &videoFile, const QString &webcamFile, const QString &outputFile, double vocalVolume);
     void renderAgain();
 
-    void resetAudioComponents(bool willRecord, bool isStarting);
+    void resetAudioComponents(bool isStarting);
     void configureMediaComponents();
     void chooseInputDevice();
     void updateDeviceLabel(const QAudioDevice &device);

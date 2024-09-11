@@ -8,7 +8,6 @@
 #include <QProcess>
 #include <QTime>
 #include <QTimer>
-#include <QElapsedTimer>
 
 #include <QVBoxLayout>
 #include <QWidget>
@@ -22,6 +21,11 @@
 #include <QMediaPlayer>
 #include <QMediaRecorder>
 #include <QMediaCaptureSession>
+
+#include <QGraphicsScene>
+#include <QGraphicsView>
+#include <QGraphicsVideoItem>
+
 #include <QVideoWidget>
 #include <QAudioFormat>
 #include <QAudioOutput>
@@ -40,9 +44,18 @@ MainWindow::MainWindow(QWidget *parent)
     videoWidget->setMinimumSize(640, 480);
     videoWidget->hide();
 
-    previewWidget = new QVideoWidget(this);
-    previewWidget->setMinimumSize(200, 180); 
-    previewWidget->hide();
+    // Create QGraphicsVideoItem and QGraphicsView for the preview
+    previewItem = new QGraphicsVideoItem;  // Video preview item
+    previewItem->setSize(QSizeF(200, 180));  // Set size of preview
+    previewItem->hide();
+
+    // Create a QGraphicsScene and QGraphicsView to hold the QGraphicsVideoItem
+    QGraphicsScene *scene = new QGraphicsScene(this);
+    scene->addItem(previewItem);  // Add the video item to the scene
+
+    QGraphicsView *previewView = new QGraphicsView(scene, this);  // View to display the scene
+    previewView->setMinimumSize(200, 180);  // Set size of the view
+    //previewView->hide();  
 
     // Create a QLabel to display the placeholder image
     placeholderLabel = new QLabel(this);
@@ -65,7 +78,7 @@ MainWindow::MainWindow(QWidget *parent)
     // Create the red recording indicator
     recordingIndicator = new QLabel("⬤REC", this);
     recordingIndicator->setStyleSheet("color: red;");
-    recordingIndicator->setFixedSize(45, 45); // Adjust the size
+    recordingIndicator->setFixedSize(64, 64); // Adjust the size
     QHBoxLayout *indicatorLayout = new QHBoxLayout();
     indicatorLayout->addStretch(); // Add stretchable space to the left
     indicatorLayout->addWidget(recordingIndicator, 0, Qt::AlignCenter); // Center the indicator
@@ -73,7 +86,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Instantiate the SndWidget (green waveform volume meter)
     soundLevelWidget = new SndWidget(this);
-    soundLevelWidget->setMinimumSize(200, 100); // Set a minimum size
+    soundLevelWidget->setMinimumSize(200, 64); // Set a minimum size
 
     deviceLabel = new QLabel("Selected Device: None", this);
     selectedDevice = QMediaDevices::defaultAudioInput();
@@ -99,25 +112,25 @@ MainWindow::MainWindow(QWidget *parent)
     QVBoxLayout *layout = new QVBoxLayout(containerWidget);
     layout->addWidget(placeholderLabel);
     layout->addWidget(videoWidget);
-    layout->addWidget(previewWidget);
+    layout->addWidget(previewView);
     layout->addWidget(singButton);
     layout->addWidget(chooseVideoButton);
     layout->addWidget(chooseInputButton);
     layout->addWidget(renderAgainButton);
     layout->addWidget(exitButton);
-    layout->addLayout(indicatorLayout); 
+    layout->addLayout(indicatorLayout);
     layout->addWidget(deviceLabel);
     layout->addWidget(soundLevelWidget);
     layout->addLayout(fetchLayout);
     layout->addWidget(logTextEdit);
     setCentralWidget(containerWidget);
 
-    soundLevelWidget->setVisible(true); // show the SndWidget
-    recordingIndicator->hide(); // hide the red indicator since we are not recording yet
+    soundLevelWidget->setVisible(true); // Show the SndWidget
+    recordingIndicator->hide(); // Hide the red indicator since we are not recording yet
     singButton->setEnabled(false); // Disable the SING button, since we have no video selected for playback yet
-    renderAgainButton->setVisible(false); // this only shows after succesfull render
-    exitButton->setVisible(false); // decided to remove this button since its the same as closing window
-    deviceLabel->setVisible(false); // removed since Qt does not honour user input choice if change input src in OS
+    renderAgainButton->setVisible(false); // This only shows after successful render
+    exitButton->setVisible(false); // Decided to remove this button since it's the same as closing window
+    deviceLabel->setVisible(false); // Removed since Qt does not honor user input choice if change input src in OS
 
     // Connect button signals to slots
     connect(exitButton, &QPushButton::clicked, this, &QMainWindow::close);
@@ -127,11 +140,10 @@ MainWindow::MainWindow(QWidget *parent)
     connect(chooseInputButton, &QPushButton::clicked, this, &MainWindow::chooseInputDevice);
     connect(renderAgainButton, &QPushButton::clicked, this, &MainWindow::renderAgain);
 
-    resetAudioComponents(false, true); 
-
+    resetAudioComponents(true);
 }
 
-void MainWindow::resetAudioComponents(bool willRecord, bool isStarting) {
+void MainWindow::resetAudioComponents(bool isStarting) {
     qDebug() << "Resetting audio components";
 
     if (!isStarting)
@@ -145,11 +157,6 @@ void MainWindow::resetAudioComponents(bool willRecord, bool isStarting) {
     player.reset();
     audioOutput.reset();
     camera.reset();
-
-    if (willRecord) {
-        qDebug() << "Choosing input device";
-        chooseInputDevice(); // force choosing input device, if about to record
-    }
 
     configureMediaComponents(); // Reinitialize components
 }
@@ -182,13 +189,13 @@ void MainWindow::configureMediaComponents()
     format->setFileFormat(QMediaFormat::MPEG4);
     format->setVideoCodec(QMediaFormat::VideoCodec::H264);
     format->setAudioCodec(QMediaFormat::AudioCodec::AAC);
+
+    connect(mediaRecorder.data(), &QMediaRecorder::recorderStateChanged, this, &MainWindow::onRecorderStateChanged);
+    connect(mediaRecorder.data(), &QMediaRecorder::errorOccurred, this, &MainWindow::handleRecorderError);
+
     mediaRecorder->setMediaFormat(*format);
     mediaRecorder->setOutputLocation(QUrl::fromLocalFile(webcamRecorded));
     mediaRecorder->setQuality(QMediaRecorder::VeryHighQuality);
-
-    // Connect signals
-    connect(mediaRecorder.data(), &QMediaRecorder::recorderStateChanged, this, &MainWindow::onRecorderStateChanged);
-    connect(mediaRecorder.data(), &QMediaRecorder::errorOccurred, this, &MainWindow::handleRecorderError);
 
 }
 
@@ -227,7 +234,7 @@ void MainWindow::chooseVideo()
     currentVideoFile = QFileDialog::getOpenFileName(this, "Open Playback File", QString(), "Video or Audio (*.mp4 *.avi *.mov *.mp3 *.wav *.flac)");
     if (!currentVideoFile.isEmpty()) {
 
-        resetAudioComponents(false, false);
+        resetAudioComponents(false);
 
         singButton->setEnabled(true);
         renderAgainButton->setVisible(false);
@@ -241,66 +248,76 @@ void MainWindow::chooseVideo()
     }
 }
 
-// START RECORDING
+
+// START RECORDING //
 void MainWindow::startRecording() {
-    if (isRecording) {
-        qWarning() << "Stop recording.";
-        logTextEdit->append("Stop recording...");
-        stopRecording();
-        return;
+try {
+        if (isRecording) {
+            qWarning() << "Stop recording.";
+            logTextEdit->append("Stop recording...");
+            stopRecording();
+            return;
+        }
+
+        singButton->setEnabled(false);
+        chooseVideoButton->setEnabled(false);
+        fetchButton->setEnabled(false);
+        chooseInputButton->setEnabled(false);
+
+        chooseInputDevice();
+        resetAudioComponents(false);
+
+        player->setSource(QUrl::fromLocalFile(currentVideoFile));
+        connect(player.data(), &QMediaPlayer::mediaStatusChanged, this, &MainWindow::onPlayerMediaStatusChanged);
+        playbackEventTime = QDateTime::currentMSecsSinceEpoch();
+        player->play();
+
+        camera->start();
+        mediaCaptureSession->setCamera(camera.data());
+        mediaCaptureSession->setVideoOutput(previewItem);
+        previewItem->show();
+
+        mediaCaptureSession->setAudioInput(audioInput.data());
+        mediaCaptureSession->setRecorder(mediaRecorder.data());
+
+        if (!recordingCheckTimer) {
+            recordingCheckTimer.reset(new QTimer(this));
+            connect(recordingCheckTimer.data(), &QTimer::timeout, this, &MainWindow::checkRecordingStart);
+            recordingCheckTimer->start(55);
+
+            qDebug() << "Recording timer started.";
+        }
+               
+    } catch (const std::exception &e) {
+        logTextEdit->append("Error during startRecording: " + QString::fromStdString(e.what()));
+        handleRecordingError();
     }
-
-    resetAudioComponents(false, false);
-    
-    singButton->setEnabled(false);
-    chooseVideoButton->setEnabled(false);
-    fetchButton->setEnabled(false);
-    chooseInputButton->setEnabled(false);
-
-    camera->start();
-    mediaCaptureSession->setRecorder(mediaRecorder.data());
-    mediaCaptureSession->setAudioInput(audioInput.data());
-    mediaCaptureSession->setCamera(camera.data());
-    mediaCaptureSession->setVideoOutput(previewWidget);
-    previewWidget->show();
-
-    chooseInputDevice();
-
-    mediaRecorder->record();
-
 }
 
-// STOP RECORDING
-void MainWindow::stopRecording() {
-    if (!isRecording) {
-        qWarning() << "Not recording.";
-        logTextEdit->append("Tried to stop Recording, but we are not recording. ERROR.");
-        return;
+void MainWindow::checkRecordingStart() {
+    if (mediaRecorder->duration() > 0) {
+        recordingEventTime = QDateTime::currentMSecsSinceEpoch();
+        qDebug() << "Recording started. Duration:" << mediaRecorder->duration();
+
+        // Parar o temporizador após detectar o início da gravação
+        recordingCheckTimer->stop();
+        recordingCheckTimer.reset(); // Opcional: Limpa a instância do temporizador
     }
-
-    camera->stop();
-    mediaRecorder->stop();
-    previewWidget->hide();
-    recordingIndicator->hide();
-    isRecording = false;
-   
-    singButton->setText("♪ SING ♪");    
-
 }
 
-void MainWindow::handleRecorderError(QMediaRecorder::Error error) {
-    qWarning() << "Recorder error:" << error << mediaRecorder->errorString();
-    QMessageBox::warning(this, "Recording Error", "Recording has failed: " + mediaRecorder->errorString());
-    stopRecording();
+void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status)
+{
+    if (status == QMediaPlayer::BufferedMedia) {
+        if (mediaRecorder) {
+            qDebug() << "Player is buffered. Starting recording...";
+            mediaRecorder->record();
+        }
+    }
 }
 
 void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
-    if (mediaRecorder->recorderState() == QMediaRecorder::RecordingState ) {
+    if (mediaRecorder->recorderState() == QMediaRecorder::RecordingState) {
         isRecording = true;
-
-        player->setSource(QUrl::fromLocalFile(currentVideoFile));
-        player->play();
-
         recordingIndicator->show();
         singButton->setText("Finish!");
         singButton->setEnabled(true);
@@ -312,7 +329,6 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
         videoWidget->hide();
         placeholderLabel->show();
 
-        // Check file length
         QFile file(webcamRecorded);
         if (file.size() > 0) {
             qDebug() << "Recording saved successfully";
@@ -326,15 +342,75 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
             fetchButton->setEnabled(true);
             chooseInputButton->setEnabled(true);
             singButton->setEnabled(false);
-            resetAudioComponents(false, false);
+            resetAudioComponents(false);
         }
     }
 }
 
+void MainWindow::stopRecording() {
+    try {
+        if (!isRecording) {
+            qWarning() << "Not recording.";
+            logTextEdit->append("Tried to stop Recording, but we are not recording. ERROR.");
+            return;
+        }
+
+        camera->stop();
+        mediaRecorder->stop();
+        previewItem->hide();
+        recordingIndicator->hide();
+        isRecording = false;
+        singButton->setText("♪ SING ♪");
+
+        offset = ( recordingEventTime - playbackEventTime ) * 2;
+
+        qDebug() << "Offset between playback start and recording start: " << offset << " ms";
+        logTextEdit->append(QString("Offset between playback start and recording start: %1 ms").arg(offset));
+
+    } catch (const std::exception &e) {
+        logTextEdit->append("Error during stopRecording: " + QString::fromStdString(e.what()));
+        handleRecordingError();
+    }
+}
+
+void MainWindow::handleRecorderError(QMediaRecorder::Error error) {
+    qWarning() << "Recorder error:" << error << mediaRecorder->errorString();
+    
+    logTextEdit->append("Recording Error: " + mediaRecorder->errorString());
+
+    QMessageBox::warning(this, "Recording Error", "An error occurred while recording: " + mediaRecorder->errorString());
+
+    try {
+        if (mediaRecorder && mediaRecorder->recorderState() == QMediaRecorder::RecordingState) {
+            qDebug() << "Stopping media recorder due to error...";
+            mediaRecorder->stop();
+        }
+    } catch (const std::exception &e) {
+        logTextEdit->append("Error during stopRecording (while handling error): " + QString::fromStdString(e.what()));
+    }
+
+    handleRecordingError(); 
+}
+
+void MainWindow::handleRecordingError() {
+    logTextEdit->append("Attempting to recover from recording error...");
+
+    resetAudioComponents(false);
+
+    singButton->setEnabled(true);
+    chooseVideoButton->setEnabled(true);
+    fetchButton->setEnabled(true);
+    chooseInputButton->setEnabled(true);
+
+    placeholderLabel->show();
+    videoWidget->hide();
+}
+
+// render //
 void MainWindow::renderAgain()
 {
     player->stop();
-    resetAudioComponents(false, false);
+    resetAudioComponents(false);
 
     renderAgainButton->setVisible(false);
     chooseVideoButton->setEnabled(false);
@@ -354,6 +430,7 @@ void MainWindow::renderAgain()
         {
             double vocalVolume = dialog.getVolume();
             mixAndRender(webcamRecorded, currentVideoFile, outputFilePath, vocalVolume);
+
         } else {
             QMessageBox::warning(this, "Rendering Aborted!", "adjustment cancelled..");
             chooseVideoButton->setEnabled(true);
@@ -368,6 +445,8 @@ void MainWindow::renderAgain()
         chooseInputButton->setEnabled(true);
         singButton->setEnabled(false);
     }
+
+    logTextEdit->append(QString("Offset between playback start and recording start: %1 ms").arg(offset));
 }
 
 void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &videoFilePath, const QString &outputFilePath, double vocalVolume) {
@@ -400,37 +479,37 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
     || videofileInfo.suffix().toLower() == "mp3" || videofileInfo.suffix().toLower() == "flac" || videofileInfo.suffix().toLower() == "wav" ) {
         arguments << "-y" // Overwrite output file if it exists
             << "-fflags" << "+genpts"
-              << "-i" << webcamFilePath // recorded vocals  
-              << "-i" << videoFilePath // playback file
-              << "-filter_complex"
-              << QString("[0:a]afftdn=nf=-20:nr=10:nt=w,speechnorm,acompressor=threshold=0.5:ratio=4,highpass=f=200, \
+            << "-i" << webcamFilePath // recorded vocals 
+            << "-i" << videoFilePath // playback file
+            << "-filter_complex"
+            << QString("[0:a]afftdn=nf=-20:nr=10:nt=w,speechnorm,acompressor=threshold=0.5:ratio=4,highpass=f=200, \
                         lv2=http\\\\://gareus.org/oss/lv2/fat1:c=mode=Auto|channelf=Any|bias=1.0|filter=0.1|offset=0.1|bendrange=2|corr=1.0, \
-                        aecho=1.0:1.0:84:0.21,treble=g=12,volume=%1[vocals]; \
+                        aecho=1.0:1.0:84:0.21,treble=g=12,volume=%1,atrim=%2[vocals]; \
                         [1:a][vocals]amix=inputs=2:normalize=0;")
                         .arg(vocalVolume)
+                        .arg(millisecondsToSecondsString(offset))
               << "-dither_method" << "shibata" // dithering
               << "-ac" << "2" // force stereo
-              << "-async" << "1"
               << outputFilePath;
     }
     else {
         arguments << "-y" // Overwrite output file if it exists
             << "-fflags" << "+genpts"
-              << "-i" << webcamFilePath // recorded vocals
-              << "-i" << videoFilePath // playback file
-              << "-filter_complex"
-              << QString("[0:a]afftdn=nf=-20:nr=10:nt=w,speechnorm,acompressor=threshold=0.5:ratio=4,highpass=f=200, \
+            << "-i" << webcamFilePath // recorded vocals
+            << "-i" << videoFilePath // playback file
+            << "-filter_complex"
+            << QString("[0:a]afftdn=nf=-20:nr=10:nt=w,speechnorm,acompressor=threshold=0.5:ratio=4,highpass=f=200, \
                         lv2=http\\\\://gareus.org/oss/lv2/fat1:c=mode=Auto|channelf=Any|bias=1.0|filter=0.1|offset=0.1|bendrange=2|corr=1.0, \
-                        aecho=1.0:1.0:84:0.21,treble=g=12,volume=%1[vocals]; \
+                        aecho=1.0:1.0:84:0.21,treble=g=12,volume=%1,atrim=%2[vocals]; \
                         [1:a][vocals]amix=inputs=2:normalize=0;   \
-                        [0:v]scale=s=1280x720[webcam];    \
-                        [1:v]scale=s=1280x720[video];     \
+                        [0:v]scale=s=640x480[webcam];    \
+                        [1:v]scale=s=640x480[video];     \
                         [video][webcam]vstack;")
-                        .arg(vocalVolume)  
+                        .arg(vocalVolume)
+                        .arg(millisecondsToSecondsString(offset))
               << "-dither_method" << "shibata" // dithering
               << "-ac" << "2" // force stereo
               << "-s" << "1280x720"
-              << "-async" << "1"
               << outputFilePath;
     }
     
@@ -498,6 +577,11 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
         return;
     }
 
+}
+
+QString MainWindow::millisecondsToSecondsString(qint64 milliseconds) {
+    double seconds = milliseconds / 1000.0;
+    return QString::number(seconds, 'f', 3); 
 }
 
 void MainWindow::updateProgress(const QString& output, QProgressBar* progressBar, int totalDuration) {
@@ -647,6 +731,10 @@ void MainWindow::disconnectAllSignals() {
     // Disconnect signals from mediaRecorder
     disconnect(mediaRecorder.get(), &QMediaRecorder::recorderStateChanged, this, &MainWindow::onRecorderStateChanged);
     disconnect(mediaRecorder.get(), &QMediaRecorder::errorOccurred, this, &MainWindow::handleRecorderError);
+
+    if (player) {
+        disconnect(player.get(), &QMediaPlayer::mediaStatusChanged, this, &MainWindow::onPlayerMediaStatusChanged);
+    }
 
 }
 

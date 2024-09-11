@@ -105,7 +105,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Instantiate the SndWidget (green waveform volume meter)
     soundLevelWidget = new SndWidget(this);
-    soundLevelWidget->setMinimumSize(200, 72); // Set a minimum size
+    soundLevelWidget->setMinimumSize(200, 48); // Set a minimum size
 
     deviceLabel = new QLabel("Selected Device: None", this);
     selectedDevice = QMediaDevices::defaultAudioInput();
@@ -682,6 +682,39 @@ int MainWindow::getMediaDuration(const QString &filePath) {
     return durationInSeconds;
 }
 
+void MainWindow::updatePlaybackDuration() {
+    if (player) {
+        qint64 currentPosition = player->position();
+        qint64 totalDuration = player->duration(); 
+
+        QString currentTime = QDateTime::fromMSecsSinceEpoch(currentPosition).toUTC().toString("hh:mm:ss");
+        QString totalTime = QDateTime::fromMSecsSinceEpoch(totalDuration).toUTC().toString("hh:mm:ss");
+
+        QString durationText = QString("%1 / %2").arg(currentTime).arg(totalTime);
+        durationTextItem->setPlainText(durationText); 
+    }
+}
+
+void MainWindow::addProgressBarToScene(QGraphicsScene *scene, qint64 duration) {
+     
+     if (progressSong) {
+        scene->removeItem(progressSong);
+        delete progressSong;
+        progressSong = nullptr;
+    }
+    // Barra de progresso
+    progressSong = new QGraphicsRectItem(0, 20, 240, 10);
+    progressSong->setBrush(QBrush(windowTextColor));
+    scene->addItem(progressSong);
+    progressSong->setPos(0, 20); // below cronômetro
+
+    connect(player.data(), &QMediaPlayer::positionChanged, this, [=](qint64 currentPosition) {
+        qreal progress = qreal(currentPosition) / ( duration * 1000 );
+        progressSong->setRect(0, 20, 240 * progress, 10);
+    });
+}
+
+
 void MainWindow::fetchVideo() {
     QString url = urlInput->text();
     if (url.isEmpty()) {
@@ -761,6 +794,8 @@ MainWindow::~MainWindow() {
     format.reset();
     delete videoWidget;
     delete soundLevelWidget;
+    delete progressSong;
+    recordingCheckTimer.reset();
 }
 
 // Function to disconnect all signals
@@ -777,39 +812,6 @@ void MainWindow::disconnectAllSignals() {
     }
 
 }
-
-void MainWindow::updatePlaybackDuration() {
-    if (player) {
-        qint64 currentPosition = player->position();
-        qint64 totalDuration = player->duration(); 
-
-        QString currentTime = QDateTime::fromMSecsSinceEpoch(currentPosition).toUTC().toString("hh:mm:ss");
-        QString totalTime = QDateTime::fromMSecsSinceEpoch(totalDuration).toUTC().toString("hh:mm:ss");
-
-        QString durationText = QString("%1 / %2").arg(currentTime).arg(totalTime);
-        durationTextItem->setPlainText(durationText); 
-    }
-}
-
-void MainWindow::addProgressBarToScene(QGraphicsScene *scene, qint64 duration) {
-     
-     if (progressSong) {
-        scene->removeItem(progressSong);
-        delete progressSong;
-        progressSong = nullptr;
-    }
-    // Barra de progresso
-    progressSong = new QGraphicsRectItem(0, 20, 240, 20);
-    progressSong->setBrush(QBrush(windowTextColor));
-    scene->addItem(progressSong);
-    progressSong->setPos(0, 20); // below cronômetro
-
-    connect(player.data(), &QMediaPlayer::positionChanged, this, [=](qint64 currentPosition) {
-        qreal progress = qreal(currentPosition) / ( duration * 1000 );
-        progressSong->setRect(0, 20, 240 * progress, 20); // Atualiza a largura da barra
-    });
-}
-
 
 void MainWindow::closeEvent(QCloseEvent *event)
 {

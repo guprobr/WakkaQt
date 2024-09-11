@@ -41,22 +41,22 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Create video widget
     videoWidget = new QVideoWidget(this);
-    videoWidget->setMinimumSize(800, 600);
+    videoWidget->setMinimumSize(800, 480);
     videoWidget->hide();
 
     // create webcam preview item, its graphics scene and view
     previewItem = new QGraphicsVideoItem; 
-    previewItem->setSize(QSizeF(640, 120)); 
+    previewItem->setSize(QSizeF(640, 84)); 
     previewItem->hide();
     durationTextItem = new QGraphicsTextItem;
     durationTextItem->setDefaultTextColor(Qt::white); // Set text color
-    durationTextItem->setFont(QFont("Arial", 12)); // Set font size and style
-    durationTextItem->setPos(10, 10); // Position in the scene
+    durationTextItem->setFont(QFont("Arial", 16)); // Set font size and style
+    durationTextItem->setPos(50, 10); // Position in the scene
     QGraphicsScene *scene = new QGraphicsScene(this);
     scene->addItem(previewItem);
     scene->addItem(durationTextItem);
     QGraphicsView *previewView = new QGraphicsView(scene, this);
-    previewView->setMinimumSize(640, 120);
+    previewView->setMinimumSize(640, 84);
     //previewView->hide();  
 
     playbackTimer = new QTimer(this);
@@ -279,20 +279,17 @@ try {
         player->play();
         playbackTimer->start(1000); // Update every second
 
-        camera->start();
         mediaCaptureSession->setCamera(camera.data());
-        mediaCaptureSession->setVideoOutput(previewItem);
-        previewItem->show();
-
         mediaCaptureSession->setAudioInput(audioInput.data());
+        mediaCaptureSession->setVideoOutput(previewItem);
         mediaCaptureSession->setRecorder(mediaRecorder.data());
+        camera->start();
+        previewItem->show();
 
         if (!recordingCheckTimer) {
             recordingCheckTimer.reset(new QTimer(this));
             connect(recordingCheckTimer.data(), &QTimer::timeout, this, &MainWindow::checkRecordingStart);
-            recordingCheckTimer->start(55);
-
-            qDebug() << "Recording timer started.";
+            recordingCheckTimer->start(200);
         }
                
     } catch (const std::exception &e) {
@@ -303,12 +300,11 @@ try {
 
 void MainWindow::checkRecordingStart() {
     if (mediaRecorder->duration() > 0) {
-        recordingEventTime = QDateTime::currentMSecsSinceEpoch();
-        qDebug() << "Recording started. Duration:" << mediaRecorder->duration();
+        recordingEventTime = QDateTime::currentMSecsSinceEpoch() + mediaRecorder->duration();
+        qDebug() << "Detected recording started. Duration gap:" << mediaRecorder->duration();
 
-        // Parar o temporizador após detectar o início da gravação
         recordingCheckTimer->stop();
-        recordingCheckTimer.reset(); // Opcional: Limpa a instância do temporizador
+        recordingCheckTimer.reset();
     }
 }
 
@@ -316,7 +312,7 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status)
 {
     if (status == QMediaPlayer::BufferedMedia) {
         if (mediaRecorder) {
-            qDebug() << "Player is buffered. Starting recording...";
+            qDebug() << "Player is buffered. Start recording...";
             mediaRecorder->record();
         }
     }
@@ -370,7 +366,7 @@ void MainWindow::stopRecording() {
         isRecording = false;
         singButton->setText("♪ SING ♪");
 
-        offset = ( recordingEventTime - playbackEventTime ) * 2;
+        offset = ( recordingEventTime - playbackEventTime );
 
         qDebug() << "Offset between playback start and recording start: " << offset << " ms";
         logTextEdit->append(QString("Offset between playback start and recording start: %1 ms").arg(offset));

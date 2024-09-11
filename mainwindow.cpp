@@ -95,7 +95,7 @@ MainWindow::MainWindow(QWidget *parent)
     renderAgainButton = new QPushButton("RENDER AGAIN", this);
 
     // Create the red recording indicator
-    recordingIndicator = new QLabel("⬤REC", this);
+    recordingIndicator = new QLabel("⦿ REC", this);
     recordingIndicator->setStyleSheet("color: red;");
     recordingIndicator->setFixedSize(64, 13); // Adjust the size
     QHBoxLayout *indicatorLayout = new QHBoxLayout();
@@ -131,6 +131,7 @@ MainWindow::MainWindow(QWidget *parent)
     QVBoxLayout *layout = new QVBoxLayout(containerWidget);
     layout->addLayout(indicatorLayout);
     layout->addWidget(previewView);
+    layout->addWidget(soundLevelWidget);
     layout->addWidget(placeholderLabel);
     layout->addWidget(videoWidget);
     layout->addWidget(singButton);
@@ -139,7 +140,6 @@ MainWindow::MainWindow(QWidget *parent)
     layout->addWidget(renderAgainButton);
     layout->addWidget(exitButton);
     layout->addWidget(deviceLabel);
-    layout->addWidget(soundLevelWidget);
     layout->addLayout(fetchLayout);
     layout->addWidget(logTextEdit);
     setCentralWidget(containerWidget);
@@ -306,7 +306,7 @@ try {
         if (!recordingCheckTimer) {
             recordingCheckTimer.reset(new QTimer(this));
             connect(recordingCheckTimer.data(), &QTimer::timeout, this, &MainWindow::checkRecordingStart);
-            recordingCheckTimer->start(100);
+            recordingCheckTimer->start(111);
         }
                
     } catch (const std::exception &e) {
@@ -507,7 +507,7 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
             << "-filter_complex"
             << QString("[0:a]afftdn=nf=-20:nr=10:nt=w,speechnorm,acompressor=threshold=0.5:ratio=4,highpass=f=200, \
                         lv2=http\\\\://gareus.org/oss/lv2/fat1:c=mode=Auto|channelf=Any|bias=1.0|filter=0.1|offset=0.1|bendrange=2|corr=1.0, \
-                        aecho=1.0:1.0:84:0.21,treble=g=12,volume=%1,atrim=%2[vocals]; \
+                        aecho=0.7:0.7:84:0.21,treble=g=12,volume=%1,atrim=%2[vocals]; \
                         [1:a][vocals]amix=inputs=2:normalize=0;")
                         .arg(vocalVolume)
                         .arg(millisecondsToSecondsString(offset))
@@ -523,7 +523,7 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
             << "-filter_complex"
             << QString("[0:a]afftdn=nf=-20:nr=10:nt=w,speechnorm,acompressor=threshold=0.5:ratio=4,highpass=f=200, \
                         lv2=http\\\\://gareus.org/oss/lv2/fat1:c=mode=Auto|channelf=Any|bias=1.0|filter=0.1|offset=0.1|bendrange=2|corr=1.0, \
-                        aecho=1.0:1.0:84:0.21,treble=g=12,volume=%1,atrim=%2[vocals]; \
+                        aecho=0.7:0.7:84:0.21,treble=g=12,volume=%1,atrim=%2[vocals]; \
                         [1:a][vocals]amix=inputs=2:normalize=0;   \
                         [0:v]scale=s=300x200[webcam];    \
                         [1:v]scale=s=300x200[video];     \
@@ -532,7 +532,7 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
                         .arg(millisecondsToSecondsString(offset))
               << "-dither_method" << "none" // dithering
               << "-ac" << "2" // force stereo
-              << "-s" << "1920x1080"
+              << "-s" << "640x480"
               << outputFilePath;
     }
     
@@ -767,8 +767,10 @@ MainWindow::~MainWindow() {
 void MainWindow::disconnectAllSignals() {
 
     // Disconnect signals from mediaRecorder
-    disconnect(mediaRecorder.get(), &QMediaRecorder::recorderStateChanged, this, &MainWindow::onRecorderStateChanged);
-    disconnect(mediaRecorder.get(), &QMediaRecorder::errorOccurred, this, &MainWindow::handleRecorderError);
+    if (mediaRecorder) {
+        disconnect(mediaRecorder.get(), &QMediaRecorder::recorderStateChanged, this, &MainWindow::onRecorderStateChanged);
+        disconnect(mediaRecorder.get(), &QMediaRecorder::errorOccurred, this, &MainWindow::handleRecorderError);
+    }
 
     if (player) {
         disconnect(player.get(), &QMediaPlayer::mediaStatusChanged, this, &MainWindow::onPlayerMediaStatusChanged);

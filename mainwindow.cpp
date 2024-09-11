@@ -306,7 +306,7 @@ try {
         if (!recordingCheckTimer) {
             recordingCheckTimer.reset(new QTimer(this));
             connect(recordingCheckTimer.data(), &QTimer::timeout, this, &MainWindow::checkRecordingStart);
-            recordingCheckTimer->start(111);
+            recordingCheckTimer->start(11);
         }
                
     } catch (const std::exception &e) {

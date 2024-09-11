@@ -2,7 +2,6 @@
 #define MAINWINDOW_H
 
 #include "sndwidget.h"
-#include "previewwebcam.h"
 #include <QScopedPointer>
 #include <QMainWindow>
 #include <QMessageBox>
@@ -12,6 +11,7 @@
 #include <QMediaRecorder>
 #include <QMediaCaptureSession>
 #include <QCamera>
+#include <QVideoWidget>
 #include <QAudioInput>
 #include <QAudioSink>
 #include <QBuffer>
@@ -56,7 +56,7 @@ private:
     QScopedPointer<QMediaRecorder> mediaRecorder;
     QScopedPointer<QMediaCaptureSession> mediaCaptureSession;
     QScopedPointer<QCamera> camera;
-    QScopedPointer<PreviewWebcam> previewWebcam; 
+    QVideoWidget *previewWidget;
 
     QPushButton *singButton;
     QPushButton *chooseVideoButton;

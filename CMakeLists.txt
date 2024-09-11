@@ -36,11 +36,9 @@ add_executable(${PROJECT_NAME}
     mainwindow.cpp
     sndwidget.cpp
     previewdialog.cpp
-    previewwebcam.cpp
     mainwindow.h
     sndwidget.h
     previewdialog.h
-    previewwebcam.h
     ${resources}
 )
 

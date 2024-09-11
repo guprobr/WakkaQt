@@ -48,6 +48,8 @@ private:
     QVideoWidget *videoWidget;
     QVideoWidget *previewWidget;
     QGraphicsVideoItem *previewItem;
+    QGraphicsTextItem *durationTextItem;
+    QTimer *playbackTimer;
 
     QAudioDevice selectedDevice;
     QBuffer *audioBuffer;
@@ -96,6 +98,7 @@ private:
     void fetchVideo();
 
     QString millisecondsToSecondsString(qint64 milliseconds);
+    void updatePlaybackDuration();
     void updateProgress(const QString& output, QProgressBar* progressBar, int totalDuration);
     int getMediaDuration(const QString &filePath);
     void mixAndRender(const QString &videoFile, const QString &webcamFile, const QString &outputFile, double vocalVolume);

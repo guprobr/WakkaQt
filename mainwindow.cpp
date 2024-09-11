@@ -41,21 +41,26 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Create video widget
     videoWidget = new QVideoWidget(this);
-    videoWidget->setMinimumSize(640, 480);
+    videoWidget->setMinimumSize(800, 600);
     videoWidget->hide();
 
-    // Create QGraphicsVideoItem and QGraphicsView for the preview
-    previewItem = new QGraphicsVideoItem;  // Video preview item
-    previewItem->setSize(QSizeF(200, 180));  // Set size of preview
+    // create webcam preview item, its graphics scene and view
+    previewItem = new QGraphicsVideoItem; 
+    previewItem->setSize(QSizeF(640, 120)); 
     previewItem->hide();
-
-    // Create a QGraphicsScene and QGraphicsView to hold the QGraphicsVideoItem
+    durationTextItem = new QGraphicsTextItem;
+    durationTextItem->setDefaultTextColor(Qt::white); // Set text color
+    durationTextItem->setFont(QFont("Arial", 12)); // Set font size and style
+    durationTextItem->setPos(10, 10); // Position in the scene
     QGraphicsScene *scene = new QGraphicsScene(this);
-    scene->addItem(previewItem);  // Add the video item to the scene
-
-    QGraphicsView *previewView = new QGraphicsView(scene, this);  // View to display the scene
-    previewView->setMinimumSize(200, 180);  // Set size of the view
+    scene->addItem(previewItem);
+    scene->addItem(durationTextItem);
+    QGraphicsView *previewView = new QGraphicsView(scene, this);
+    previewView->setMinimumSize(640, 120);
     //previewView->hide();  
+
+    playbackTimer = new QTimer(this);
+    connect(playbackTimer, &QTimer::timeout, this, &MainWindow::updatePlaybackDuration);
 
     // Create a QLabel to display the placeholder image
     placeholderLabel = new QLabel(this);
@@ -78,7 +83,7 @@ MainWindow::MainWindow(QWidget *parent)
     // Create the red recording indicator
     recordingIndicator = new QLabel("⬤REC", this);
     recordingIndicator->setStyleSheet("color: red;");
-    recordingIndicator->setFixedSize(64, 64); // Adjust the size
+    recordingIndicator->setFixedSize(64, 13); // Adjust the size
     QHBoxLayout *indicatorLayout = new QHBoxLayout();
     indicatorLayout->addStretch(); // Add stretchable space to the left
     indicatorLayout->addWidget(recordingIndicator, 0, Qt::AlignCenter); // Center the indicator
@@ -86,7 +91,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Instantiate the SndWidget (green waveform volume meter)
     soundLevelWidget = new SndWidget(this);
-    soundLevelWidget->setMinimumSize(200, 64); // Set a minimum size
+    soundLevelWidget->setMinimumSize(200, 72); // Set a minimum size
 
     deviceLabel = new QLabel("Selected Device: None", this);
     selectedDevice = QMediaDevices::defaultAudioInput();
@@ -110,15 +115,15 @@ MainWindow::MainWindow(QWidget *parent)
     // Create a container widget for the layout
     QWidget *containerWidget = new QWidget(this);
     QVBoxLayout *layout = new QVBoxLayout(containerWidget);
+    layout->addLayout(indicatorLayout);
+    layout->addWidget(previewView);
     layout->addWidget(placeholderLabel);
     layout->addWidget(videoWidget);
-    layout->addWidget(previewView);
     layout->addWidget(singButton);
     layout->addWidget(chooseVideoButton);
     layout->addWidget(chooseInputButton);
     layout->addWidget(renderAgainButton);
     layout->addWidget(exitButton);
-    layout->addLayout(indicatorLayout);
     layout->addWidget(deviceLabel);
     layout->addWidget(soundLevelWidget);
     layout->addLayout(fetchLayout);
@@ -241,6 +246,7 @@ void MainWindow::chooseVideo()
 
         player->setSource(QUrl::fromLocalFile(currentVideoFile)); 
         player->play(); // playback preview
+        playbackTimer->start(1000); // Update every second
         placeholderLabel->hide();
         videoWidget->show();
 
@@ -271,6 +277,7 @@ try {
         connect(player.data(), &QMediaPlayer::mediaStatusChanged, this, &MainWindow::onPlayerMediaStatusChanged);
         playbackEventTime = QDateTime::currentMSecsSinceEpoch();
         player->play();
+        playbackTimer->start(1000); // Update every second
 
         camera->start();
         mediaCaptureSession->setCamera(camera.data());
@@ -326,6 +333,7 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
         qDebug() << "Recording stopped.";
         
         player->stop();
+        playbackTimer->stop();
         videoWidget->hide();
         placeholderLabel->show();
 
@@ -410,6 +418,7 @@ void MainWindow::handleRecordingError() {
 void MainWindow::renderAgain()
 {
     player->stop();
+    playbackTimer->stop();
     resetAudioComponents(false);
 
     renderAgainButton->setVisible(false);
@@ -556,6 +565,7 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
         player->setSource(QUrl::fromLocalFile(outputFilePath));
         
         player->play();
+        playbackTimer->start(1000); // Update every second
         placeholderLabel->hide();
         videoWidget->show();
 
@@ -676,6 +686,7 @@ void MainWindow::fetchVideo() {
             currentVideoFile = videoFilePath;  // Store the video playback file path
             player->setSource(QUrl::fromLocalFile(videoFilePath)); 
             player->play(); // play playback for preview
+            playbackTimer->start(1000); // Update every second
             placeholderLabel->hide();
             videoWidget->show();
 
@@ -736,6 +747,19 @@ void MainWindow::disconnectAllSignals() {
         disconnect(player.get(), &QMediaPlayer::mediaStatusChanged, this, &MainWindow::onPlayerMediaStatusChanged);
     }
 
+}
+
+void MainWindow::updatePlaybackDuration() {
+    if (player) {
+        qint64 currentPosition = player->position();
+        qint64 totalDuration = player->duration(); 
+
+        QString currentTime = QDateTime::fromMSecsSinceEpoch(currentPosition).toUTC().toString("hh:mm:ss");
+        QString totalTime = QDateTime::fromMSecsSinceEpoch(totalDuration).toUTC().toString("hh:mm:ss");
+
+        QString durationText = QString("%1 / %2").arg(currentTime).arg(totalTime);
+        durationTextItem->setPlainText(durationText); 
+    }
 }
 
 void MainWindow::closeEvent(QCloseEvent *event)

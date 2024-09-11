@@ -61,6 +61,9 @@ To build and run this application, ensure you have the following:
 
 https://x42-plugins.com/x42/x42-autotune
 
+![Screenshot from 2024-09-11 16-33-47](https://github.com/user-attachments/assets/bc5e4ec6-27a1-4347-935f-e69672f2754c)
+
+
 ## Usage
 
 1. **Load Karaoke Track:** Use the "Load playback from disk" button to load a video or audio file for the karaoke session.

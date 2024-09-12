@@ -43,7 +43,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     // acquire app palette
     QPalette palette = this->palette();
-    windowTextColor = palette.color(QPalette::PlaceholderText);
+    windowTextColor = palette.color(QPalette::HighlightedText);
 
     // Create video widget
     videoWidget = new QVideoWidget(this);
@@ -64,15 +64,15 @@ MainWindow::MainWindow(QWidget *parent)
     // create webcam preview item, its graphics scene and view
     
     previewItem = new QGraphicsVideoItem; 
-    previewItem->setSize(QSizeF(640, 80)); 
+    previewItem->setSize(QSizeF(640, 72)); 
     previewItem->hide();
     durationTextItem = new QGraphicsTextItem;
-    durationTextItem->setDefaultTextColor(windowTextColor);
-    durationTextItem->setFont(QFont("Courier", 14)); // Set font size and style
-    durationTextItem->setPos(0, 0); // Position in the scene
+    durationTextItem->setDefaultTextColor(palette.color(QPalette::HighlightedText));
+    durationTextItem->setFont(QFont("Courier", 18)); // Set font size and style
+    durationTextItem->setPos(-200, 0); // Position in the scene
     QGraphicsPixmapItem *wakkaLogo = new QGraphicsPixmapItem();
     wakkaLogo->setPixmap(placeholderPixmap.scaledToHeight(80));
-    wakkaLogo->setPos(480, 0);
+    wakkaLogo->setPos(600, 0);
 
     scene = new QGraphicsScene(this);
     scene->addItem(previewItem);
@@ -81,7 +81,8 @@ MainWindow::MainWindow(QWidget *parent)
     
     previewView = new QGraphicsView(scene, this);
     previewView->setMinimumSize(640, 84);
-    //previewView->hide();  
+    previewView->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    previewView->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
 
     playbackTimer = new QTimer(this);
     connect(playbackTimer, &QTimer::timeout, this, &MainWindow::updatePlaybackDuration);
@@ -481,6 +482,7 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
 
     int totalDuration = getMediaDuration(videoFilePath);  // Get the total duration
     progressBar = new QProgressBar(this);
+    progressBar->setMinimumSize(640, 20);
     progressBar->setRange(0, 100);
 
     // Create QProcess instance
@@ -703,14 +705,14 @@ void MainWindow::addProgressBarToScene(QGraphicsScene *scene, qint64 duration) {
         progressSong = nullptr;
     }
     // Barra de progresso
-    progressSong = new QGraphicsRectItem(0, 20, 240, 10);
+    progressSong = new QGraphicsRectItem(-64, 20, 200, 25);
     progressSong->setBrush(QBrush(windowTextColor));
     scene->addItem(progressSong);
-    progressSong->setPos(0, 20); // below cronômetro
+    progressSong->setPos(-64, 20); // below cronômetro
 
     connect(player.data(), &QMediaPlayer::positionChanged, this, [=](qint64 currentPosition) {
         qreal progress = qreal(currentPosition) / ( duration * 1000 );
-        progressSong->setRect(0, 20, 240 * progress, 10);
+        progressSong->setRect(-64, 20, 240 * progress, 25);
     });
 }
 

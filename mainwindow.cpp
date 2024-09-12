@@ -64,15 +64,15 @@ MainWindow::MainWindow(QWidget *parent)
     // create webcam preview item, its graphics scene and view
     
     previewItem = new QGraphicsVideoItem; 
-    previewItem->setSize(QSizeF(640, 72)); 
+    previewItem->setSize(QSizeF(640, 82)); 
     previewItem->hide();
     durationTextItem = new QGraphicsTextItem;
     durationTextItem->setDefaultTextColor(palette.color(QPalette::HighlightedText));
-    durationTextItem->setFont(QFont("Courier", 18)); // Set font size and style
-    durationTextItem->setPos(-200, 0); // Position in the scene
+    durationTextItem->setFont(QFont("Courier", 21)); // Set font size and style
+    durationTextItem->setPos(-164, 0); // Position in the scene
     QGraphicsPixmapItem *wakkaLogo = new QGraphicsPixmapItem();
     wakkaLogo->setPixmap(placeholderPixmap.scaledToHeight(80));
-    wakkaLogo->setPos(600, 0);
+    wakkaLogo->setPos(564, 0);
 
     scene = new QGraphicsScene(this);
     scene->addItem(previewItem);

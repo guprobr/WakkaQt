@@ -64,15 +64,17 @@ MainWindow::MainWindow(QWidget *parent)
     // create webcam preview item, its graphics scene and view
     
     previewItem = new QGraphicsVideoItem; 
-    previewItem->setSize(QSizeF(640, 82)); 
+    previewItem->setSize(QSizeF(480, 184));
+    previewItem->setPos(0,0);
     previewItem->hide();
     durationTextItem = new QGraphicsTextItem;
     durationTextItem->setDefaultTextColor(palette.color(QPalette::HighlightedText));
-    durationTextItem->setFont(QFont("Courier", 21)); // Set font size and style
-    durationTextItem->setPos(-164, 0); // Position in the scene
+    durationTextItem->setFont(QFont("Courier", 14));
+    durationTextItem->setPos(-525, 0); 
+    durationTextItem->setPlainText("Welcome to WakkaQt v0.1 alpha");
     QGraphicsPixmapItem *wakkaLogo = new QGraphicsPixmapItem();
-    wakkaLogo->setPixmap(placeholderPixmap.scaledToHeight(80));
-    wakkaLogo->setPos(564, 0);
+    wakkaLogo->setPixmap(placeholderPixmap.scaledToHeight(140));
+    wakkaLogo->setPos(525, 0);
 
     scene = new QGraphicsScene(this);
     scene->addItem(previewItem);
@@ -80,7 +82,8 @@ MainWindow::MainWindow(QWidget *parent)
     scene->addItem(wakkaLogo); 
     
     previewView = new QGraphicsView(scene, this);
-    previewView->setMinimumSize(640, 84);
+    previewView->setMinimumSize(640, 240);
+    previewView->setMaximumSize(1900, 240);
     previewView->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     previewView->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
 
@@ -299,15 +302,12 @@ try {
                 
         mediaCaptureSession->setCamera(camera.data());
         mediaCaptureSession->setAudioInput(audioInput.data());
-        mediaCaptureSession->setVideoOutput(previewItem);
         mediaCaptureSession->setRecorder(mediaRecorder.data());
-        camera->start();
-        previewItem->show();
 
         if (!recordingCheckTimer) {
             recordingCheckTimer.reset(new QTimer(this));
             connect(recordingCheckTimer.data(), &QTimer::timeout, this, &MainWindow::checkRecordingStart);
-            recordingCheckTimer->start(11);
+            recordingCheckTimer->start(55);
         }
                
     } catch (const std::exception &e) {
@@ -323,6 +323,13 @@ void MainWindow::checkRecordingStart() {
 
         recordingCheckTimer->stop();
         recordingCheckTimer.reset();
+
+    // fixme: try to detect lockdown
+        if ( mediaRecorder->duration() > 300 ) {
+            qWarning() << "Something is wrong. Aborting recording session. SORRY";
+            logTextEdit->append("detected mediaRecorder instability. PLEASE TRY AGAIN SORRY");
+            handleRecordingError();
+        }
     }
 }
 
@@ -331,6 +338,7 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status)
     if (status == QMediaPlayer::BufferedMedia) {
         if (mediaRecorder) {
             qDebug() << "Player is buffered. Start recording...";
+            camera->start();
             mediaRecorder->record();
         }
     }
@@ -342,6 +350,9 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
         recordingIndicator->show();
         singButton->setText("Finish!");
         singButton->setEnabled(true);
+
+        mediaCaptureSession->setVideoOutput(previewItem);
+        previewItem->show();
     }
     if (state == QMediaRecorder::StoppedState) {
         qDebug() << "Recording stopped.";
@@ -404,7 +415,7 @@ void MainWindow::handleRecorderError(QMediaRecorder::Error error) {
     QMessageBox::warning(this, "Recording Error", "An error occurred while recording: " + mediaRecorder->errorString());
 
     try {
-        if (mediaRecorder && mediaRecorder->recorderState() == QMediaRecorder::RecordingState) {
+        if (mediaRecorder ) {
             qDebug() << "Stopping media recorder due to error...";
             mediaRecorder->stop();
         }
@@ -418,9 +429,19 @@ void MainWindow::handleRecorderError(QMediaRecorder::Error error) {
 void MainWindow::handleRecordingError() {
     logTextEdit->append("Attempting to recover from recording error...");
 
+    if (mediaRecorder ) {
+            qDebug() << "Stopping media recorder due to error...";
+            mediaRecorder->stop();
+            camera->stop();
+            previewItem->hide();
+            recordingIndicator->hide();
+            isRecording = false;
+        }
+
     resetAudioComponents(false);
 
-    singButton->setEnabled(true);
+    singButton->setEnabled(false);
+    singButton->setText("SING");
     chooseVideoButton->setEnabled(true);
     fetchButton->setEnabled(true);
     chooseInputButton->setEnabled(true);
@@ -692,7 +713,7 @@ void MainWindow::updatePlaybackDuration() {
         QString currentTime = QDateTime::fromMSecsSinceEpoch(currentPosition).toUTC().toString("hh:mm:ss");
         QString totalTime = QDateTime::fromMSecsSinceEpoch(totalDuration).toUTC().toString("hh:mm:ss");
 
-        QString durationText = QString("%1 / %2").arg(currentTime).arg(totalTime);
+        QString durationText = QString("%1 / %2 \n\n\n\n\n\n\n\n %3").arg(currentTime).arg(totalTime).arg(currentVideoFile);
         durationTextItem->setPlainText(durationText); 
     }
 }
@@ -705,14 +726,14 @@ void MainWindow::addProgressBarToScene(QGraphicsScene *scene, qint64 duration) {
         progressSong = nullptr;
     }
     // Barra de progresso
-    progressSong = new QGraphicsRectItem(-64, 20, 200, 25);
+    progressSong = new QGraphicsRectItem(-250, 48, 240, 25);
     progressSong->setBrush(QBrush(windowTextColor));
     scene->addItem(progressSong);
-    progressSong->setPos(-64, 20); // below cronômetro
+    progressSong->setPos(-250, 48); // below cronômetro
 
     connect(player.data(), &QMediaPlayer::positionChanged, this, [=](qint64 currentPosition) {
         qreal progress = qreal(currentPosition) / ( duration * 1000 );
-        progressSong->setRect(-64, 20, 240 * progress, 25);
+        progressSong->setRect(-250, 48, 240 * progress, 25);
     });
 }
 

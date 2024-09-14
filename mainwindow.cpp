@@ -61,43 +61,45 @@ MainWindow::MainWindow(QWidget *parent)
     placeholderLabel->setAlignment(Qt::AlignCenter);
     placeholderLabel->setGeometry(videoWidget->geometry());
 
-   // create webcam preview item, its graphics scene and view
-
-    // Create the scene and view
+    //////////////// Create the scene and view
     scene = new QGraphicsScene(this);
     previewView = new QGraphicsView(scene, this);
-    previewView->setMinimumSize(640, 200);
-    previewView->setMaximumSize(1900, 240);
+    previewView->setMinimumSize(640, 250);
+    previewView->setMaximumSize(1980, 250);
     previewView->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     previewView->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-
     // Get the size of the view (the window size when it is first created)
     qreal viewWidth = previewView->width();
     qreal viewHeight = previewView->height();
-    // Create the webcam video previewItem and set it in the 100px + center
+    // Create the webcam video previewItem and set it in the center
     previewItem = new QGraphicsVideoItem; 
-    previewItem->setSize(QSizeF(400, 200)); // size for the webcam video preview
-    qreal previewX = 100 + (viewWidth - previewItem->boundingRect().width()) / 2;
+    previewItem->setSize(QSizeF(640, 200)); // size for the webcam video preview
+    // Create a QGraphicsPixmapItem for placeholder while webcam preview is not onscreen
+    wakkaLogoItem = new QGraphicsPixmapItem(placeholderPixmap.scaled(640, 200, Qt::AspectRatioMode::IgnoreAspectRatio, Qt::SmoothTransformation));
+    // Calculate position to center the previewItem
+    qreal previewX = (viewWidth - previewItem->boundingRect().width()) / 2;
     qreal previewY = (viewHeight - previewItem->boundingRect().height()) / 2; 
     previewItem->setPos(previewX, previewY);
-    previewItem->hide();
+    wakkaLogoItem->setPos(previewX, previewY);
     scene->addItem(previewItem);
-    // Create durationTextItem and position it on the top-left corner (0,0)
+    scene->addItem(wakkaLogoItem);
+    previewItem->hide();
+    wakkaLogoItem->show();
+    // Create durationTextItem and position it at the bottom-center
     durationTextItem = new QGraphicsTextItem;
-    durationTextItem->setDefaultTextColor(palette.color(QPalette::HighlightedText));
+    durationTextItem->setDefaultTextColor(palette.color(QPalette::Text));
     durationTextItem->setFont(QFont("Courier", 14));
-    // Set text width to 45% of the view width
-    qreal textWidth = viewWidth * 0.45;
+    // Set text width to 85% of the view width
+    qreal textWidth = viewWidth * 0.85;
     durationTextItem->setTextWidth(textWidth);
+    // Calculate position to center the durationTextItem at the bottom
+    qreal textX = (viewWidth - textWidth) / 2;
+    qreal textY = viewHeight - durationTextItem->boundingRect().height();
+    durationTextItem->setPos(textX, textY);
     durationTextItem->setPlainText("Welcome to WakkaQt v0.1 alpha");
-    durationTextItem->setPos(0, 25);
     scene->addItem(durationTextItem);
-    // Set the scene rect to dynamically adjust with the view
+    // Set the scene rect based on the initial view size
     scene->setSceneRect(0, 0, viewWidth, viewHeight);
-
-    playbackTimer = new QTimer(this);
-    connect(playbackTimer, &QTimer::timeout, this, &MainWindow::updatePlaybackDuration);
-
 
     // Create buttons
     QPushButton *exitButton = new QPushButton("Exit", this);
@@ -136,7 +138,11 @@ MainWindow::MainWindow(QWidget *parent)
     // Create a widget to display output logs from yt-dlp and FFmpeg
     logTextEdit = new QTextEdit(this);
     logTextEdit->setReadOnly(true); // prevent user to edit contents of the widget
-    logTextEdit->append("Welcome to WakkaQt!");
+    logTextEdit->append("Welcome to WakkaQt v0.1 alpha!");
+    connect(logTextEdit, &QTextEdit::textChanged, this, [=]() {
+        logTextEdit->moveCursor(QTextCursor::End);  // Move cursor to the end
+        logTextEdit->ensureCursorVisible();
+    });
 
     // Create a container widget for the layout
     QWidget *containerWidget = new QWidget(this);
@@ -170,6 +176,9 @@ MainWindow::MainWindow(QWidget *parent)
     connect(fetchButton, &QPushButton::clicked, this, &MainWindow::fetchVideo);
     connect(chooseInputButton, &QPushButton::clicked, this, &MainWindow::chooseInputDevice);
     connect(renderAgainButton, &QPushButton::clicked, this, &MainWindow::renderAgain);
+
+    playbackTimer = new QTimer(this);
+    connect(playbackTimer, &QTimer::timeout, this, &MainWindow::updatePlaybackDuration);
 
     resetAudioComponents(true);
 }
@@ -360,6 +369,7 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
         singButton->setEnabled(true);
 
         mediaCaptureSession->setVideoOutput(previewItem);
+        wakkaLogoItem->hide();
         previewItem->show();
     }
     if (state == QMediaRecorder::StoppedState) {
@@ -400,6 +410,7 @@ void MainWindow::stopRecording() {
         camera->stop();
         mediaRecorder->stop();
         previewItem->hide();
+        wakkaLogoItem->show();
         recordingIndicator->hide();
         isRecording = false;
         singButton->setText("♪ SING ♪");
@@ -442,6 +453,7 @@ void MainWindow::handleRecordingError() {
             mediaRecorder->stop();
             camera->stop();
             previewItem->hide();
+            wakkaLogoItem->show();
             recordingIndicator->hide();
             isRecording = false;
         }
@@ -511,7 +523,7 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
 
     int totalDuration = getMediaDuration(videoFilePath);  // Get the total duration
     progressBar = new QProgressBar(this);
-    progressBar->setMinimumSize(640, 20);
+    progressBar->setMinimumSize(640, 10);
     progressBar->setRange(0, 100);
 
     // Create QProcess instance
@@ -680,6 +692,7 @@ void MainWindow::updateProgress(const QString& output, QProgressBar* progressBar
         int totalDurationMilliseconds = totalDuration * 1000;
         if (totalDurationMilliseconds <= 0) {
             qWarning() << "Total duration is not valid";
+            QMessageBox::warning(this, "Sorry! Strange Error", "Total duration is not valid.");
             return;
         }
 
@@ -705,6 +718,8 @@ int MainWindow::getMediaDuration(const QString &filePath) {
     double duration = durationStr.toDouble(&ok);
     if (!ok || duration <= 0) {
         qWarning() << "Failed to get duration or duration is invalid:" << durationStr;
+        QMessageBox::warning(this, "Sorry! Strange Error", "Failed to get duration or duration is invalid. Aborting.");
+        MainWindow::close();
         return 0;
     }
 
@@ -734,14 +749,14 @@ void MainWindow::addProgressBarToScene(QGraphicsScene *scene, qint64 duration) {
         progressSong = nullptr;
     }
     // Barra de progresso
-    progressSong = new QGraphicsRectItem(0, 0, 240, 16);
+    progressSong = new QGraphicsRectItem(0, 0, 640, 12);
     progressSong->setBrush(QBrush(windowTextColor));
     scene->addItem(progressSong);
     progressSong->setPos(0, 0); // below cronômetro
 
     connect(player.data(), &QMediaPlayer::positionChanged, this, [=](qint64 currentPosition) {
         qreal progress = qreal(currentPosition) / ( duration * 1000 );
-        progressSong->setRect(0, 0, 240 * progress, 16);
+        progressSong->setRect(0, 0, 640 * progress, 12);
     });
 }
 

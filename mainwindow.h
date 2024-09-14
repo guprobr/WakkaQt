@@ -54,6 +54,7 @@ private:
     QGraphicsVideoItem *previewItem;
     QGraphicsRectItem *progressSong = nullptr;
     QGraphicsTextItem *durationTextItem;
+    QGraphicsPixmapItem *wakkaLogoItem;
 
     QTimer *playbackTimer;
 

@@ -47,7 +47,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Create video widget
     videoWidget = new QVideoWidget(this);
-    videoWidget->setMinimumSize(800, 480);
+    videoWidget->setMinimumSize(640, 320);
     videoWidget->hide();
 
     // Create a QLabel to display the placeholder image
@@ -64,8 +64,8 @@ MainWindow::MainWindow(QWidget *parent)
     //////////////// Create the scene and view
     scene = new QGraphicsScene(this);
     previewView = new QGraphicsView(scene, this);
-    previewView->setMinimumSize(640, 250);
-    previewView->setMaximumSize(1980, 250);
+    previewView->setMinimumSize(640, 260);
+    previewView->setMaximumSize(1900, 260);
     previewView->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     previewView->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     // Get the size of the view (the window size when it is first created)
@@ -88,12 +88,12 @@ MainWindow::MainWindow(QWidget *parent)
     // Create durationTextItem and position it at the bottom-center
     durationTextItem = new QGraphicsTextItem;
     durationTextItem->setDefaultTextColor(palette.color(QPalette::Text));
-    durationTextItem->setFont(QFont("Courier", 12));
-    // Set text width to 45% of the view width
-    qreal textWidth = viewWidth * 0.45;
+    durationTextItem->setFont(QFont("Helvetica", 14));
+    // Set text width to 50% of the view width
+    qreal textWidth = viewWidth * 0.50;
     durationTextItem->setTextWidth(textWidth);
     // Calculate position to center the durationTextItem at the bottom
-    qreal textX = (viewWidth - textWidth) / 2;
+    qreal textX = viewWidth / 2;
     qreal textY = viewHeight - durationTextItem->boundingRect().height();
     durationTextItem->setPos(textX, textY);
     durationTextItem->setPlainText("Welcome to WakkaQt v0.1 alpha");
@@ -533,10 +533,11 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
     // Create QLabel for progress indication
     QLabel *progressLabel = new QLabel("Processing...", this);
     progressLabel->setAlignment(Qt::AlignCenter);
+    progressLabel->setFont(QFont("Helvetica", 7));
     // Get the main layout and add the progress label
     QVBoxLayout *layout = qobject_cast<QVBoxLayout*>(centralWidget()->layout());
-    layout->insertWidget(0, progressLabel, 0, Qt::AlignCenter);  // Add the label at the top center of the layout
-    layout->insertWidget(0, progressBar, 10, Qt::AlignCenter);  // Add the label at the top center of the layout
+    layout->insertWidget(0, progressLabel, 0, Qt::AlignCenter);
+    layout->insertWidget(0, progressBar, 25, Qt::AlignCenter);
 
     QFileInfo outfileInfo(outputFilePath);
     QFileInfo videofileInfo(videoFilePath);

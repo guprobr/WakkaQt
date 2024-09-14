@@ -43,7 +43,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     // acquire app palette
     QPalette palette = this->palette();
-    windowTextColor = palette.color(QPalette::HighlightedText);
+    windowTextColor = palette.color(QPalette::WindowText);
 
     // Create video widget
     videoWidget = new QVideoWidget(this);
@@ -88,9 +88,9 @@ MainWindow::MainWindow(QWidget *parent)
     // Create durationTextItem and position it at the bottom-center
     durationTextItem = new QGraphicsTextItem;
     durationTextItem->setDefaultTextColor(palette.color(QPalette::Text));
-    durationTextItem->setFont(QFont("Courier", 14));
-    // Set text width to 85% of the view width
-    qreal textWidth = viewWidth * 0.85;
+    durationTextItem->setFont(QFont("Courier", 12));
+    // Set text width to 45% of the view width
+    qreal textWidth = viewWidth * 0.45;
     durationTextItem->setTextWidth(textWidth);
     // Calculate position to center the durationTextItem at the bottom
     qreal textX = (viewWidth - textWidth) / 2;

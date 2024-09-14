@@ -4,7 +4,7 @@ This software is currently in Alpha stage for developers to test. Help requested
 
 WakkaQt is a karaoke application built with C++ and Qt6, designed to record vocals over a video/audio track and mix them into a rendered file. This app features webcam recording, YouTube video downloading, real-time sound visualization, and post-recording video rendering with FFmpeg.
 
-![Screenshot from 2024-09-11 14-20-44](https://github.com/user-attachments/assets/9c6d593b-aa2e-451b-8038-22e79a57725a)
+![Screenshot from 2024-09-14 12-58-24](https://github.com/user-attachments/assets/5b624962-70c4-42f5-b9f8-8c7fbcdd22fb)
 
 
 ## Features
@@ -60,9 +60,6 @@ To build and run this application, ensure you have the following:
 ## Install LV2 plugin for AutoTune
 
 https://x42-plugins.com/x42/x42-autotune
-
-![Screenshot from 2024-09-11 16-33-47](https://github.com/user-attachments/assets/bc5e4ec6-27a1-4347-935f-e69672f2754c)
-
 
 ## Usage
 

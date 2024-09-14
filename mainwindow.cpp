@@ -61,31 +61,39 @@ MainWindow::MainWindow(QWidget *parent)
     placeholderLabel->setAlignment(Qt::AlignCenter);
     placeholderLabel->setGeometry(videoWidget->geometry());
 
-    // create webcam preview item, its graphics scene and view
-    
-    previewItem = new QGraphicsVideoItem; 
-    previewItem->setSize(QSizeF(480, 184));
-    previewItem->setPos(0,0);
-    previewItem->hide();
-    durationTextItem = new QGraphicsTextItem;
-    durationTextItem->setDefaultTextColor(palette.color(QPalette::HighlightedText));
-    durationTextItem->setFont(QFont("Courier", 14));
-    durationTextItem->setPos(-525, 0); 
-    durationTextItem->setPlainText("Welcome to WakkaQt v0.1 alpha");
-    QGraphicsPixmapItem *wakkaLogo = new QGraphicsPixmapItem();
-    wakkaLogo->setPixmap(placeholderPixmap.scaledToHeight(140));
-    wakkaLogo->setPos(525, 0);
+   // create webcam preview item, its graphics scene and view
 
+    // Create the scene and view
     scene = new QGraphicsScene(this);
-    scene->addItem(previewItem);
-    scene->addItem(durationTextItem);
-    scene->addItem(wakkaLogo); 
-    
     previewView = new QGraphicsView(scene, this);
-    previewView->setMinimumSize(640, 240);
+    previewView->setMinimumSize(640, 200);
     previewView->setMaximumSize(1900, 240);
     previewView->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     previewView->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+
+    // Get the size of the view (the window size when it is first created)
+    qreal viewWidth = previewView->width();
+    qreal viewHeight = previewView->height();
+    // Create the webcam video previewItem and set it in the 100px + center
+    previewItem = new QGraphicsVideoItem; 
+    previewItem->setSize(QSizeF(400, 200)); // size for the webcam video preview
+    qreal previewX = 100 + (viewWidth - previewItem->boundingRect().width()) / 2;
+    qreal previewY = (viewHeight - previewItem->boundingRect().height()) / 2; 
+    previewItem->setPos(previewX, previewY);
+    previewItem->hide();
+    scene->addItem(previewItem);
+    // Create durationTextItem and position it on the top-left corner (0,0)
+    durationTextItem = new QGraphicsTextItem;
+    durationTextItem->setDefaultTextColor(palette.color(QPalette::HighlightedText));
+    durationTextItem->setFont(QFont("Courier", 14));
+    // Set text width to 45% of the view width
+    qreal textWidth = viewWidth * 0.45;
+    durationTextItem->setTextWidth(textWidth);
+    durationTextItem->setPlainText("Welcome to WakkaQt v0.1 alpha");
+    durationTextItem->setPos(0, 25);
+    scene->addItem(durationTextItem);
+    // Set the scene rect to dynamically adjust with the view
+    scene->setSceneRect(0, 0, viewWidth, viewHeight);
 
     playbackTimer = new QTimer(this);
     connect(playbackTimer, &QTimer::timeout, this, &MainWindow::updatePlaybackDuration);
@@ -713,7 +721,7 @@ void MainWindow::updatePlaybackDuration() {
         QString currentTime = QDateTime::fromMSecsSinceEpoch(currentPosition).toUTC().toString("hh:mm:ss");
         QString totalTime = QDateTime::fromMSecsSinceEpoch(totalDuration).toUTC().toString("hh:mm:ss");
 
-        QString durationText = QString("%1 / %2 \n\n\n\n\n\n\n\n %3").arg(currentTime).arg(totalTime).arg(currentVideoFile);
+        QString durationText = QString("%1 / %2").arg(currentTime).arg(totalTime);
         durationTextItem->setPlainText(durationText); 
     }
 }
@@ -726,14 +734,14 @@ void MainWindow::addProgressBarToScene(QGraphicsScene *scene, qint64 duration) {
         progressSong = nullptr;
     }
     // Barra de progresso
-    progressSong = new QGraphicsRectItem(-250, 48, 240, 25);
+    progressSong = new QGraphicsRectItem(0, 0, 240, 16);
     progressSong->setBrush(QBrush(windowTextColor));
     scene->addItem(progressSong);
-    progressSong->setPos(-250, 48); // below cronômetro
+    progressSong->setPos(0, 0); // below cronômetro
 
     connect(player.data(), &QMediaPlayer::positionChanged, this, [=](qint64 currentPosition) {
         qreal progress = qreal(currentPosition) / ( duration * 1000 );
-        progressSong->setRect(-250, 48, 240 * progress, 25);
+        progressSong->setRect(0, 0, 240 * progress, 16);
     });
 }
 

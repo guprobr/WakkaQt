@@ -110,7 +110,7 @@ MainWindow::MainWindow(QWidget *parent)
     // Create the red recording indicator
     recordingIndicator = new QLabel("⦿ REC", this);
     recordingIndicator->setStyleSheet("color: red;");
-    recordingIndicator->setFixedSize(64, 8); // Adjust the size
+    recordingIndicator->setFixedSize(64, 12); // Adjust the size
     QHBoxLayout *indicatorLayout = new QHBoxLayout();
     indicatorLayout->addStretch(); // Add stretchable space to the left
     indicatorLayout->addWidget(recordingIndicator, 0, Qt::AlignCenter); // Center the indicator
@@ -118,7 +118,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Instantiate the SndWidget (green waveform volume meter)
     soundLevelWidget = new SndWidget(this);
-    soundLevelWidget->setMinimumSize(200, 25); // Set a minimum size
+    soundLevelWidget->setMinimumSize(200, 20); // Set a minimum size
 
     deviceLabel = new QLabel("Selected Device: None", this);
     selectedDevice = QMediaDevices::defaultAudioInput();
@@ -343,7 +343,7 @@ void MainWindow::checkRecordingStart() {
     // fixme: try to detect lockdown
         if ( mediaRecorder->duration() > 300 ) {
             qWarning() << "Something is wrong. Aborting recording session. SORRY";
-            QMessageBox::warning(this, "mediaRecorder unstable", "SORRY, please try again.");
+            QMessageBox::warning(this, "QtMediaRecorder unstable", "SORRY, let's try again.");
             logTextEdit->append("detected unstable mediaRecorder. PLEASE TRY AGAIN SORRY");
             handleRecordingError();
         }
@@ -522,8 +522,6 @@ void MainWindow::renderAgain()
         chooseInputButton->setEnabled(true);
         singButton->setEnabled(false);
     }
-
-    logTextEdit->append(QString("Offset between playback start and recording start: %1 ms").arg(offset));
 }
 
 void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &videoFilePath, const QString &outputFilePath, double vocalVolume, QString userRez) {
@@ -535,7 +533,7 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
 
     int totalDuration = getMediaDuration(videoFilePath);  // Get the total duration
     progressBar = new QProgressBar(this);
-    progressBar->setMinimumSize(640, 10);
+    progressBar->setMinimumSize(640, 12);
     progressBar->setRange(0, 100);
 
     // Create QProcess instance

@@ -118,7 +118,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Instantiate the SndWidget (green waveform volume meter)
     soundLevelWidget = new SndWidget(this);
-    soundLevelWidget->setMinimumSize(200, 16); // Set a minimum size
+    soundLevelWidget->setMinimumSize(200, 25); // Set a minimum size
 
     deviceLabel = new QLabel("Selected Device: None", this);
     selectedDevice = QMediaDevices::defaultAudioInput();
@@ -311,43 +311,20 @@ try {
         resetAudioComponents(false);
 
         playbackEventTime = QDateTime::currentMSecsSinceEpoch();
+                        
+        mediaCaptureSession->setCamera(camera.data());
+        mediaCaptureSession->setAudioInput(audioInput.data());
+        mediaCaptureSession->setRecorder(mediaRecorder.data());
+
         connect(player.data(), &QMediaPlayer::mediaStatusChanged, this, &MainWindow::onPlayerMediaStatusChanged);
         player->setSource(QUrl::fromLocalFile(currentVideoFile));
         playbackTimer->start(1000); // Update every second
         addProgressBarToScene(scene, getMediaDuration(currentVideoFile));
         player->play();
-                
-        mediaCaptureSession->setCamera(camera.data());
-        mediaCaptureSession->setAudioInput(audioInput.data());
-        mediaCaptureSession->setRecorder(mediaRecorder.data());
-
-        if (!recordingCheckTimer) {
-            recordingCheckTimer.reset(new QTimer(this));
-            connect(recordingCheckTimer.data(), &QTimer::timeout, this, &MainWindow::checkRecordingStart);
-            recordingCheckTimer->start(1);
-        }
                
     } catch (const std::exception &e) {
         logTextEdit->append("Error during startRecording: " + QString::fromStdString(e.what()));
         handleRecordingError();
-    }
-}
-
-void MainWindow::checkRecordingStart() {
-    if (mediaRecorder->duration() > 0) {
-        recordingEventTime = QDateTime::currentMSecsSinceEpoch();
-        qDebug() << "Detected recording started. Duration gap:" << mediaRecorder->duration();
-
-        recordingCheckTimer->stop();
-        recordingCheckTimer.reset();
-
-    // fixme: try to detect lockdown
-        if ( mediaRecorder->duration() > 360 ) {
-            qWarning() << "Something is wrong with mediaRecorder. Aborting recording session. SORRY";
-            logTextEdit->append("detected unstable mediaRecorder. PLEASE TRY AGAIN SORRY");
-            handleRecordingError();
-            QMessageBox::warning(this, "Rec unstable", "Detected QtMediaRecorder unstable: SORRY, let's try again. Recording aborted to prevent further failure.");
-        }
     }
 }
 
@@ -362,6 +339,27 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status)
     }
 }
 
+void MainWindow::checkRecordingStart() {
+    if (mediaRecorder->duration() > 0) {
+        recordingCheckTimer->stop();
+        recordingCheckTimer.reset();
+
+        recordingEventTime = QDateTime::currentMSecsSinceEpoch();
+        qDebug() << "Detected recording started. Duration gap:" << mediaRecorder->duration();
+        offset = ( recordingEventTime - playbackEventTime );
+        qDebug() << "Offset between playback start and recording start: " << offset << " ms";
+        logTextEdit->append(QString("Offset between playback start and recording start: %1 ms").arg(offset));
+
+    // fixme: try to detect lockdown
+        if ( mediaRecorder->duration() > 360 ) {
+            qWarning() << "Something is wrong with mediaRecorder. Aborting recording session. SORRY";
+            logTextEdit->append("detected unstable mediaRecorder. PLEASE TRY AGAIN SORRY");
+            handleRecordingError();
+            QMessageBox::warning(this, "Rec unstable", "Detected QtMediaRecorder unstable: SORRY, let's try again. Recording aborted to prevent further failure.");
+        }
+    }
+}
+
 void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
     if (mediaRecorder->recorderState() == QMediaRecorder::RecordingState) {
         isRecording = true;
@@ -372,6 +370,12 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
         mediaCaptureSession->setVideoOutput(previewItem);
         wakkaLogoItem->hide();
         previewItem->show();
+
+        if (!recordingCheckTimer) {
+            recordingCheckTimer.reset(new QTimer(this));
+            connect(recordingCheckTimer.data(), &QTimer::timeout, this, &MainWindow::checkRecordingStart);
+            recordingCheckTimer->start(111);
+        }
     }
     if (state == QMediaRecorder::StoppedState) {
         qDebug() << "Recording stopped.";
@@ -417,11 +421,6 @@ void MainWindow::stopRecording() {
         isRecording = false;
         singButton->setText("♪ SING ♪");
 
-        offset = ( recordingEventTime - playbackEventTime );
-
-        qDebug() << "Offset between playback start and recording start: " << offset << " ms";
-        logTextEdit->append(QString("Offset between playback start and recording start: %1 ms").arg(offset));
-
     } catch (const std::exception &e) {
         logTextEdit->append("Error during stopRecording: " + QString::fromStdString(e.what()));
         handleRecordingError();
@@ -448,15 +447,12 @@ void MainWindow::handleRecorderError(QMediaRecorder::Error error) {
 void MainWindow::handleRecordingError() {
     logTextEdit->append("Attempting to recover from recording error...");
 
-    if (mediaRecorder ) {
-            qDebug() << "Stopping media recorder due to error...";
-            mediaRecorder->stop();
-            camera->stop();
-            previewItem->hide();
-            wakkaLogoItem->show();
-            recordingIndicator->hide();
-            isRecording = false;
-        }
+    qDebug() << "Cleaning up..";
+    camera->stop();
+    previewItem->hide();
+    wakkaLogoItem->show();
+    recordingIndicator->hide();
+    isRecording = false;
 
     resetAudioComponents(false);
 

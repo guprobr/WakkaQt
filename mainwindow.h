@@ -91,7 +91,8 @@ private:
     QTextEdit *logTextEdit; // logs
     
     QFile *webcamOutputFile;
-    QString currentVideoFile; 
+    QString currentVideoFile;
+    QString currentVideoName;
     QString webcamRecorded; 
     QString outputFilePath; 
 

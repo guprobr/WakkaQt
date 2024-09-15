@@ -47,7 +47,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Create video widget
     videoWidget = new QVideoWidget(this);
-    videoWidget->setMinimumSize(1024, 480);
+    videoWidget->setMinimumSize(1024, 576);
     videoWidget->hide();
 
     // Create a QLabel to display the placeholder image
@@ -56,7 +56,7 @@ MainWindow::MainWindow(QWidget *parent)
     if (placeholderPixmap.isNull()) {
         qWarning() << "Failed to load placeholder image!";
     } else {
-        placeholderLabel->setPixmap(placeholderPixmap.scaled(videoWidget->size(), Qt::KeepAspectRatio));
+        placeholderLabel->setPixmap(placeholderPixmap.scaled(videoWidget->size(), Qt::IgnoreAspectRatio));
     }
     placeholderLabel->setAlignment(Qt::AlignCenter);
     placeholderLabel->setGeometry(videoWidget->geometry());
@@ -64,7 +64,7 @@ MainWindow::MainWindow(QWidget *parent)
     //////////////// Create the scene and view
     scene = new QGraphicsScene(this);
     previewView = new QGraphicsView(scene, this);
-    previewView->setMinimumSize(640, 200);
+    previewView->setMinimumSize(640, 160);
     previewView->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     previewView->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     // Get the size of the view (the window size when it is first created)
@@ -72,9 +72,9 @@ MainWindow::MainWindow(QWidget *parent)
     qreal viewHeight = previewView->height();
     // Create the webcam video previewItem and set it in the center
     previewItem = new QGraphicsVideoItem; 
-    previewItem->setSize(QSizeF(640, 140)); // size for the webcam video preview
+    previewItem->setSize(QSizeF(640, 100)); // size for the webcam video preview
     // Create a QGraphicsPixmapItem for placeholder while webcam preview is not onscreen
-    wakkaLogoItem = new QGraphicsPixmapItem(placeholderPixmap.scaled(640, 140, Qt::AspectRatioMode::IgnoreAspectRatio, Qt::SmoothTransformation));
+    wakkaLogoItem = new QGraphicsPixmapItem(placeholderPixmap.scaled(640, 100, Qt::AspectRatioMode::IgnoreAspectRatio, Qt::SmoothTransformation));
     // Calculate position to center the previewItem
     qreal previewX = (viewWidth - previewItem->boundingRect().width()) / 2;
     qreal previewY = (viewHeight - previewItem->boundingRect().height()) / 2; 
@@ -87,12 +87,12 @@ MainWindow::MainWindow(QWidget *parent)
     // Create durationTextItem and position it at the bottom-center
     durationTextItem = new QGraphicsTextItem;
     durationTextItem->setDefaultTextColor(palette.color(QPalette::Text));
-    durationTextItem->setFont(QFont("Helvetica", 12));
-    // Set text width to 50% of the view width
-    qreal textWidth = viewWidth * 0.50;
+    durationTextItem->setFont(QFont("Helvetica", 10));
+    // Set text width to 85% of the view width
+    qreal textWidth = viewWidth * 0.85;
     durationTextItem->setTextWidth(textWidth);
     // Calculate position to center the durationTextItem at the bottom
-    qreal textX = viewWidth / 2;
+    qreal textX = ( viewWidth - textWidth ) / 2;
     qreal textY = viewHeight - durationTextItem->boundingRect().height();
     durationTextItem->setPos(textX, textY);
     durationTextItem->setPlainText("Welcome to WakkaQt v0.1 alpha");
@@ -118,7 +118,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Instantiate the SndWidget (green waveform volume meter)
     soundLevelWidget = new SndWidget(this);
-    soundLevelWidget->setMinimumSize(200, 20); // Set a minimum size
+    soundLevelWidget->setMinimumSize(200, 16); // Set a minimum size
 
     deviceLabel = new QLabel("Selected Device: None", this);
     selectedDevice = QMediaDevices::defaultAudioInput();
@@ -273,6 +273,7 @@ void MainWindow::chooseVideo()
     currentVideoFile = QFileDialog::getOpenFileName(this, "Open Playback File", QString(), "Video or Audio (*.mp4 *.avi *.mov *.mp3 *.wav *.flac)");
     if (!currentVideoFile.isEmpty()) {
 
+        currentVideoName = QFileInfo(currentVideoFile).baseName();
         resetAudioComponents(false);
 
         singButton->setEnabled(true);
@@ -342,10 +343,10 @@ void MainWindow::checkRecordingStart() {
 
     // fixme: try to detect lockdown
         if ( mediaRecorder->duration() > 300 ) {
-            qWarning() << "Something is wrong. Aborting recording session. SORRY";
-            QMessageBox::warning(this, "QtMediaRecorder unstable", "SORRY, let's try again.");
+            qWarning() << "Something is wrong with mediaRecorder. Aborting recording session. SORRY";
             logTextEdit->append("detected unstable mediaRecorder. PLEASE TRY AGAIN SORRY");
             handleRecordingError();
+            QMessageBox::warning(this, "Rec unstable", "Detected QtMediaRecorder unstable: SORRY, let's try again. Recording aborted to prevent further failure.");
         }
     }
 }
@@ -387,7 +388,6 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
             renderAgain();
         } else {
             qDebug() << "*FAILURE* File size is zero.";
-            QMessageBox::warning(this, "SORRY: mediaRecorder ERROR", "File size is zero.");
             logTextEdit->append("Recording ERROR. File size is zero.");
 
             chooseVideoButton->setEnabled(true);
@@ -395,6 +395,7 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
             chooseInputButton->setEnabled(true);
             singButton->setEnabled(false);
             resetAudioComponents(false);
+            QMessageBox::warning(this, "SORRY: mediaRecorder ERROR", "File size is zero.");
         }
     }
 }
@@ -404,6 +405,7 @@ void MainWindow::stopRecording() {
         if (!isRecording) {
             qWarning() << "Not recording.";
             logTextEdit->append("Tried to stop Recording, but we are not recording. ERROR.");
+            QMessageBox::warning(this, "ERROR.", "Tried to stop Recording, but we are not recording. ERROR.");
             return;
         }
 
@@ -428,10 +430,7 @@ void MainWindow::stopRecording() {
 
 void MainWindow::handleRecorderError(QMediaRecorder::Error error) {
     qWarning() << "Recorder error:" << error << mediaRecorder->errorString();
-    
     logTextEdit->append("Recording Error: " + mediaRecorder->errorString());
-
-    QMessageBox::warning(this, "Recording Error", "An error occurred while recording: " + mediaRecorder->errorString());
 
     try {
         if (mediaRecorder ) {
@@ -442,7 +441,8 @@ void MainWindow::handleRecorderError(QMediaRecorder::Error error) {
         logTextEdit->append("Error during stopRecording (while handling error): " + QString::fromStdString(e.what()));
     }
 
-    handleRecordingError(); 
+    handleRecordingError();
+    QMessageBox::warning(this, "Recording Error", "An error occurred while recording: " + mediaRecorder->errorString());
 }
 
 void MainWindow::handleRecordingError() {
@@ -509,18 +509,18 @@ void MainWindow::renderAgain()
             mixAndRender(webcamRecorded, currentVideoFile, outputFilePath, vocalVolume, setRez);
 
         } else {
-            QMessageBox::warning(this, "Rendering Aborted!", "adjustment cancelled..");
             chooseVideoButton->setEnabled(true);
             fetchButton->setEnabled(true);
             chooseInputButton->setEnabled(true);
-            singButton->setEnabled(false);             
+            singButton->setEnabled(false);
+            QMessageBox::warning(this, "Rendering Aborted!", "adjustment cancelled..");             
         }
     } else {
-        QMessageBox::warning(this, "Rendering aborted!", "Rendering was cancelled..");
         chooseVideoButton->setEnabled(true);
         fetchButton->setEnabled(true);
         chooseInputButton->setEnabled(true);
         singButton->setEnabled(false);
+        QMessageBox::warning(this, "Rendering aborted!", "Rendering was cancelled..");
     }
 }
 
@@ -736,7 +736,7 @@ int MainWindow::getMediaDuration(const QString &filePath) {
     double duration = durationStr.toDouble(&ok);
     if (!ok || duration <= 0) {
         qWarning() << "Failed to get duration or duration is invalid:" << durationStr;
-        QMessageBox::warning(this, "Sorry! Strange Error", "Failed to get duration or duration is invalid. Aborting.");
+        QMessageBox::warning(this, "Sorry! Strange Error", "Failed to get duration or duration is invalid. Fatal error.");
         MainWindow::close();
         return 0;
     }
@@ -748,13 +748,18 @@ int MainWindow::getMediaDuration(const QString &filePath) {
 
 void MainWindow::updatePlaybackDuration() {
     if (player) {
+
         qint64 currentPosition = player->position();
         qint64 totalDuration = player->duration(); 
 
         QString currentTime = QDateTime::fromMSecsSinceEpoch(currentPosition).toUTC().toString("hh:mm:ss");
         QString totalTime = QDateTime::fromMSecsSinceEpoch(totalDuration).toUTC().toString("hh:mm:ss");
 
-        QString durationText = QString("%1 / %2").arg(currentTime).arg(totalTime);
+        QString durationText = QString("%1 / %2 - %3")
+                                .arg(currentTime)
+                                .arg(totalTime)
+                                .arg(currentVideoName);
+        
         durationTextItem->setPlainText(durationText); 
     }
 }
@@ -767,14 +772,14 @@ void MainWindow::addProgressBarToScene(QGraphicsScene *scene, qint64 duration) {
         progressSong = nullptr;
     }
     // Barra de progresso
-    progressSong = new QGraphicsRectItem(0, 0, 640, 12);
+    progressSong = new QGraphicsRectItem(0, 0, 640, 6);
     progressSong->setBrush(QBrush(windowTextColor));
     scene->addItem(progressSong);
     progressSong->setPos(0, 0); // below cronômetro
 
     connect(player.data(), &QMediaPlayer::positionChanged, this, [=](qint64 currentPosition) {
         qreal progress = qreal(currentPosition) / ( duration * 1000 );
-        progressSong->setRect(0, 0, 640 * progress, 12);
+        progressSong->setRect(0, 0, 640 * progress, 6);
     });
 }
 
@@ -807,6 +812,7 @@ void MainWindow::fetchVideo() {
         QString videoFilePath = QFileDialog::getOpenFileName(this, "Choose the downloaded playback or any another", directory, "Videos (*.mp4 *.mkv *.avi)");
         if (!videoFilePath.isEmpty()) {
             currentVideoFile = videoFilePath;  // Store the video playback file path
+            currentVideoName = QFileInfo(currentVideoFile).baseName();
             player->setSource(QUrl::fromLocalFile(videoFilePath)); 
             player->play(); // play playback for preview
             playbackTimer->start(1000); // Update every second
@@ -815,7 +821,7 @@ void MainWindow::fetchVideo() {
             videoWidget->show();
 
             singButton->setEnabled(true); 
-            logTextEdit->append("Playback preview. Press SING to start recording.");
+            logTextEdit->append("Previewing playback. Press SING to start recording.");
             downloadStatusLabel->setText("Download YouTube URL");
         }
     });

@@ -433,7 +433,8 @@ void MainWindow::handleRecorderError(QMediaRecorder::Error error) {
 
     try {
         if (mediaRecorder ) {
-            qDebug() << "Stopping media recorder due to error...";
+            qDebug() << "Stopping media due to error...";
+            player->stop();
             mediaRecorder->stop();
         }
     } catch (const std::exception &e) {
@@ -447,14 +448,15 @@ void MainWindow::handleRecorderError(QMediaRecorder::Error error) {
 void MainWindow::handleRecordingError() {
     logTextEdit->append("Attempting to recover from recording error...");
 
-    qDebug() << "Cleaning up..";
-    camera->stop();
-    previewItem->hide();
-    wakkaLogoItem->show();
-    recordingIndicator->hide();
     isRecording = false;
 
-    resetAudioComponents(false);
+    qDebug() << "Cleaning up..";
+    camera->stop();
+    recordingIndicator->hide();
+    previewItem->hide();
+    wakkaLogoItem->show();
+    videoWidget->hide();
+    placeholderLabel->show();
 
     singButton->setEnabled(false);
     singButton->setText("SING");
@@ -462,8 +464,8 @@ void MainWindow::handleRecordingError() {
     fetchButton->setEnabled(true);
     chooseInputButton->setEnabled(true);
 
-    placeholderLabel->show();
-    videoWidget->hide();
+    resetAudioComponents(false);
+
 }
 
 // render //

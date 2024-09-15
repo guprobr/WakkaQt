@@ -87,7 +87,7 @@ MainWindow::MainWindow(QWidget *parent)
     // Create durationTextItem and position it at the bottom-center
     durationTextItem = new QGraphicsTextItem;
     durationTextItem->setDefaultTextColor(palette.color(QPalette::Text));
-    durationTextItem->setFont(QFont("Helvetica", 10));
+    durationTextItem->setFont(QFont("Verdana", 10));
     // Set text width to 85% of the view width
     qreal textWidth = viewWidth * 0.85;
     durationTextItem->setTextWidth(textWidth);
@@ -324,7 +324,7 @@ try {
         if (!recordingCheckTimer) {
             recordingCheckTimer.reset(new QTimer(this));
             connect(recordingCheckTimer.data(), &QTimer::timeout, this, &MainWindow::checkRecordingStart);
-            recordingCheckTimer->start(55);
+            recordingCheckTimer->start(1);
         }
                
     } catch (const std::exception &e) {
@@ -335,14 +335,14 @@ try {
 
 void MainWindow::checkRecordingStart() {
     if (mediaRecorder->duration() > 0) {
-        recordingEventTime = QDateTime::currentMSecsSinceEpoch() + mediaRecorder->duration();
+        recordingEventTime = QDateTime::currentMSecsSinceEpoch();
         qDebug() << "Detected recording started. Duration gap:" << mediaRecorder->duration();
 
         recordingCheckTimer->stop();
         recordingCheckTimer.reset();
 
     // fixme: try to detect lockdown
-        if ( mediaRecorder->duration() > 300 ) {
+        if ( mediaRecorder->duration() > 360 ) {
             qWarning() << "Something is wrong with mediaRecorder. Aborting recording session. SORRY";
             logTextEdit->append("detected unstable mediaRecorder. PLEASE TRY AGAIN SORRY");
             handleRecordingError();
@@ -533,7 +533,7 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
 
     int totalDuration = getMediaDuration(videoFilePath);  // Get the total duration
     progressBar = new QProgressBar(this);
-    progressBar->setMinimumSize(640, 12);
+    progressBar->setMinimumSize(640, 16);
     progressBar->setRange(0, 100);
 
     // Create QProcess instance
@@ -543,7 +543,7 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
     // Create QLabel for progress indication
     QLabel *progressLabel = new QLabel("Processing...", this);
     progressLabel->setAlignment(Qt::AlignCenter);
-    progressLabel->setFont(QFont("Helvetica", 7));
+    progressLabel->setFont(QFont("Arial", 7));
     // Get the main layout and add the progress label
     QVBoxLayout *layout = qobject_cast<QVBoxLayout*>(centralWidget()->layout());
     layout->insertWidget(0, progressLabel, 0, Qt::AlignCenter);
@@ -566,7 +566,8 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
             
     // In case of video output
     if ( outputFilePath.endsWith(".mp4") || outputFilePath.endsWith(".avi") || outputFilePath.endsWith(".mkv") ) {
-        arguments << "-filter_complex" << QString("[0:v]scale=%1[webcam];[1:v]scale=%1[video];[video][webcam]vstack;")
+        arguments << "-filter_complex" << QString("[0:v]trim=%1,scale=%2[webcam];[1:v]scale=%2[video];[video][webcam]vstack;")
+                                                .arg(millisecondsToSecondsString(offset))
                                                 .arg(userRez);
     }
 

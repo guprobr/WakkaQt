@@ -2,7 +2,6 @@
 #include "sndwidget.h"
 #include "previewdialog.h"
 
-#include <QGuiApplication>
 #include <QFileInfo>
 #include <QRegularExpression>
 #include <QStringList>
@@ -17,21 +16,19 @@
 #include <QFileDialog>
 #include <QInputDialog>
 
-#include <QVideoWidget>
 #include <QMediaDevices>
 #include <QMediaPlayer>
 #include <QMediaRecorder>
 #include <QMediaCaptureSession>
 
-#include <QGraphicsScene>
-#include <QGraphicsView>
-#include <QGraphicsVideoItem>
-#include <QGraphicsProxyWidget>
-
-#include <QVideoWidget>
 #include <QAudioFormat>
 #include <QAudioOutput>
 #include <QAudioInput>
+
+#include <QVideoWidget>
+#include <QGraphicsScene>
+#include <QGraphicsView>
+#include <QGraphicsVideoItem>
 
 #include <QSysInfo> // For platform detection
 #include <QDebug>
@@ -188,17 +185,49 @@ void MainWindow::resetAudioComponents(bool isStarting) {
     if (!isStarting)
         disconnectAllSignals(); // Ensure all signals are disconnected
 
-    // Reset the audio components
-    audioInput.reset();         
-    format.reset();        
-    mediaRecorder.reset();      
-    mediaCaptureSession.reset();
-    player.reset();
-    audioOutput.reset();
-    camera.reset();
+    // Reset multimedia components with null checks to avoid double free
+    if (player) {
+        if (player->playbackState() == QMediaPlayer::PlayingState) {
+            player->stop();
+        }
+        player.reset(nullptr);
+    }
+    
+    if (audioOutput) {
+        audioOutput->setMuted(true);
+        audioOutput.reset(nullptr);
+    }
+
+    if (mediaRecorder) {
+        if (mediaRecorder->recorderState() == QMediaRecorder::RecordingState) {
+            mediaRecorder->stop();
+        }
+        mediaRecorder.reset(nullptr);
+    }
+
+    if (mediaCaptureSession) {
+        mediaCaptureSession.reset(nullptr);
+    }
+
+    if (audioInput) {
+        audioInput->setMuted(true); 
+        audioInput.reset(nullptr);
+    }
+
+    if (format) {
+        format.reset(nullptr);
+    }
+
+    if (camera) {
+        if (camera->isActive()) {
+            camera->stop(); 
+        }
+        camera.reset(nullptr);
+    } 
 
     configureMediaComponents(); // Reinitialize components
 }
+
 
 void MainWindow::configureMediaComponents()
 {
@@ -219,7 +248,6 @@ void MainWindow::configureMediaComponents()
     player->setVideoOutput(videoWidget);
     player->setAudioOutput(audioOutput.data());
 
-    // Reconfigure components
     audioInput->setDevice(selectedDevice);
     audioInput->setVolume(1.0f);
     updateDeviceLabel(selectedDevice);
@@ -311,10 +339,6 @@ try {
         resetAudioComponents(false);
 
         playbackEventTime = QDateTime::currentMSecsSinceEpoch();
-                        
-        mediaCaptureSession->setCamera(camera.data());
-        mediaCaptureSession->setAudioInput(audioInput.data());
-        mediaCaptureSession->setRecorder(mediaRecorder.data());
 
         connect(player.data(), &QMediaPlayer::mediaStatusChanged, this, &MainWindow::onPlayerMediaStatusChanged);
         player->setSource(QUrl::fromLocalFile(currentVideoFile));
@@ -333,6 +357,12 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status)
     if (status == QMediaPlayer::BufferedMedia) {
         if (mediaRecorder) {
             qDebug() << "Player is buffered. Start recording...";
+
+            // Link camera and session after configuring other components
+            qWarning() << "Configuring mediaCaptureSession..";
+            mediaCaptureSession->setCamera(camera.data());
+            mediaCaptureSession->setAudioInput(audioInput.data());
+            mediaCaptureSession->setRecorder(mediaRecorder.data());
             camera->start();
             mediaRecorder->record();
         }
@@ -380,7 +410,9 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
     if (state == QMediaRecorder::StoppedState) {
         qDebug() << "Recording stopped.";
         
-        player->stop();
+        if (player->playbackState() == QMediaPlayer::PlayingState) {
+            player->stop();
+        }
         playbackTimer->stop();
 
         videoWidget->hide();
@@ -415,9 +447,10 @@ void MainWindow::stopRecording() {
 
         camera->stop();
         mediaRecorder->stop();
+        recordingIndicator->hide();
         previewItem->hide();
         wakkaLogoItem->show();
-        recordingIndicator->hide();
+        
         isRecording = false;
         singButton->setText("♪ SING ♪");
 
@@ -434,7 +467,9 @@ void MainWindow::handleRecorderError(QMediaRecorder::Error error) {
     try {
         if (mediaRecorder ) {
             qDebug() << "Stopping media due to error...";
-            player->stop();
+            if (player->playbackState() == QMediaPlayer::PlayingState) {
+                player->stop();
+            }
             mediaRecorder->stop();
         }
     } catch (const std::exception &e) {
@@ -471,7 +506,9 @@ void MainWindow::handleRecordingError() {
 // render //
 void MainWindow::renderAgain()
 {
-    player->stop();
+    if (player->playbackState() == QMediaPlayer::PlayingState) {
+        player->stop();
+    }
     playbackTimer->stop();
     resetAudioComponents(false);
 
@@ -729,6 +766,7 @@ int MainWindow::getMediaDuration(const QString &filePath) {
     QProcess ffprobeProcess;
     ffprobeProcess.start("ffprobe", QStringList() << "-v" << "error" << "-show_entries" << "format=duration" << "-of" << "default=noprint_wrappers=1:nokey=1" << filePath);
     ffprobeProcess.waitForFinished();
+
     QString durationStr = QString::fromUtf8(ffprobeProcess.readAllStandardOutput()).trimmed();
     
     bool ok;
@@ -855,16 +893,26 @@ MainWindow::~MainWindow() {
 
     disconnectAllSignals();
 
-    player.reset();
-    audioOutput.reset();
-    mediaRecorder.reset();
-    mediaCaptureSession.reset();
-    audioInput.reset();
-    format.reset();
-    delete videoWidget;
-    delete soundLevelWidget;
-    delete progressSong;
-    recordingCheckTimer.reset();
+    if ( player )
+        player.reset();
+    if ( audioOutput )
+        audioOutput.reset();
+    if ( mediaRecorder )
+        mediaRecorder.reset();
+    if ( mediaCaptureSession )
+        mediaCaptureSession.reset();
+    if ( audioInput )
+        audioInput.reset();
+    if ( format )
+        format.reset();
+    if ( videoWidget )
+        delete videoWidget;
+    if ( soundLevelWidget )
+        delete soundLevelWidget;
+    if ( progressSong )
+        delete progressSong;
+    if ( recordingCheckTimer )
+        recordingCheckTimer.reset();
 }
 
 // Function to disconnect all signals
@@ -872,12 +920,12 @@ void MainWindow::disconnectAllSignals() {
 
     // Disconnect signals from mediaRecorder
     if (mediaRecorder) {
-        disconnect(mediaRecorder.get(), &QMediaRecorder::recorderStateChanged, this, &MainWindow::onRecorderStateChanged);
-        disconnect(mediaRecorder.get(), &QMediaRecorder::errorOccurred, this, &MainWindow::handleRecorderError);
+        disconnect(mediaRecorder.data(), &QMediaRecorder::recorderStateChanged, this, &MainWindow::onRecorderStateChanged);
+        disconnect(mediaRecorder.data(), &QMediaRecorder::errorOccurred, this, &MainWindow::handleRecorderError);
     }
 
     if (player) {
-        disconnect(player.get(), &QMediaPlayer::mediaStatusChanged, this, &MainWindow::onPlayerMediaStatusChanged);
+        disconnect(player.data(), &QMediaPlayer::mediaStatusChanged, this, &MainWindow::onPlayerMediaStatusChanged);
     }
 
 }

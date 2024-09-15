@@ -37,10 +37,9 @@ SndWidget::~SndWidget() {
 }
 
 void SndWidget::setInputDevice(const QAudioDevice &device) {
+
     if (audioSource) {
-        audioSource->stop();
-        delete audioSource;
-        audioSource = nullptr;
+        audioSource->suspend();
     }
 
     // Initialize the audio source with the new device
@@ -110,7 +109,7 @@ void SndWidget::updateWaveform() {
 
 void SndWidget::onAudioStateChanged(QAudio::State state) {
     if (state == QAudio::IdleState) {
-        audioSource->stop();
+        audioSource->suspend();
         audioBuffer->close();
     }
 }

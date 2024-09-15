@@ -41,6 +41,7 @@ private slots:
 private:
 
     QColor windowTextColor;
+    QString setRez = "1920x540"; // its a vstack, same width, half the height
     bool isRecording;
 
     qint64 playbackEventTime = 0;
@@ -109,7 +110,7 @@ private:
     void addProgressBarToScene(QGraphicsScene *scene, qint64 duration);
     void updateProgress(const QString& output, QProgressBar* progressBar, int totalDuration);
     int getMediaDuration(const QString &filePath);
-    void mixAndRender(const QString &videoFile, const QString &webcamFile, const QString &outputFile, double vocalVolume);
+    void mixAndRender(const QString &videoFile, const QString &webcamFile, const QString &outputFile, double vocalVolume, QString userRez);
     void renderAgain();
 
     void resetAudioComponents(bool isStarting);

@@ -14,10 +14,11 @@ WakkaQt is a karaoke application built with C++ and Qt6, designed to record voca
 - **Rendering** with FFmpeg for high-quality output.
 - **Cross-platform compatibility** (Windows, macOS, Linux).
 
+![Screenshot from 2024-09-16 06-48-18](https://github.com/user-attachments/assets/fe3c86a1-1ee9-4529-90b4-d97e50ca5bf7)
+
 ## Requirements
 
 To build and run this application, ensure you have the following:
-
 
 - **C++17** or later
 - **Qt6** (Qt Multimedia module)

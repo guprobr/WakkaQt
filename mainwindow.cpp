@@ -306,14 +306,13 @@ void MainWindow::chooseVideo()
 
         singButton->setEnabled(true);
         renderAgainButton->setVisible(false);
+        placeholderLabel->hide();
+        videoWidget->show();
 
         addProgressBarToScene(scene, getMediaDuration(currentVideoFile));
         player->setSource(QUrl::fromLocalFile(currentVideoFile)); 
-        player->play(); // playback preview
         playbackTimer->start(1000); 
-
-        placeholderLabel->hide();
-        videoWidget->show();
+        player->play(); // playback preview
 
         logTextEdit->append("Playback preview. Press SING to start recording.");
     }
@@ -365,6 +364,10 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status)
             mediaCaptureSession->setRecorder(mediaRecorder.data());
             camera->start();
             mediaRecorder->record();
+
+            if (player) {
+                disconnect(player.data(), &QMediaPlayer::mediaStatusChanged, this, &MainWindow::onPlayerMediaStatusChanged);
+            }
         }
     }
 }
@@ -376,16 +379,17 @@ void MainWindow::checkRecordingStart() {
 
         recordingEventTime = QDateTime::currentMSecsSinceEpoch();
         qDebug() << "Detected recording started. Duration gap:" << mediaRecorder->duration();
-        offset = ( recordingEventTime - playbackEventTime );
+        // This is an estimated offset for better sync: the absolute time between events, 
+        offset = ( recordingEventTime - playbackEventTime ) + mediaRecorder->duration(); // plus the margin of error based on system latency.
         qDebug() << "Offset between playback start and recording start: " << offset << " ms";
         logTextEdit->append(QString("Offset between playback start and recording start: %1 ms").arg(offset));
 
-    // fixme: try to detect lockdown
-        if ( mediaRecorder->duration() > 360 ) {
+    // Protect the sanity of Time :O This code guards the Universe from becoming unstable and cease existance of us all
+        if ( mediaRecorder->duration() > 111 ) {
             qWarning() << "Something is wrong with mediaRecorder. Aborting recording session. SORRY";
             logTextEdit->append("detected unstable mediaRecorder. PLEASE TRY AGAIN SORRY");
             handleRecordingError();
-            QMessageBox::warning(this, "Rec unstable", "Detected QtMediaRecorder unstable: SORRY, let's try again. Recording aborted to prevent further failure.");
+            QMessageBox::warning(this, "Recorder unstable", "Detected QtMediaRecorder unstable: SORRY, let's try again. Recording aborted to prevent further failure while singing or resulting in an empty file.");
         }
     }
 }
@@ -404,7 +408,7 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
         if (!recordingCheckTimer) {
             recordingCheckTimer.reset(new QTimer(this));
             connect(recordingCheckTimer.data(), &QTimer::timeout, this, &MainWindow::checkRecordingStart);
-            recordingCheckTimer->start(111);
+            recordingCheckTimer->start(1);
         }
     }
     if (state == QMediaRecorder::StoppedState) {
@@ -922,10 +926,6 @@ void MainWindow::disconnectAllSignals() {
     if (mediaRecorder) {
         disconnect(mediaRecorder.data(), &QMediaRecorder::recorderStateChanged, this, &MainWindow::onRecorderStateChanged);
         disconnect(mediaRecorder.data(), &QMediaRecorder::errorOccurred, this, &MainWindow::handleRecorderError);
-    }
-
-    if (player) {
-        disconnect(player.data(), &QMediaPlayer::mediaStatusChanged, this, &MainWindow::onPlayerMediaStatusChanged);
     }
 
 }

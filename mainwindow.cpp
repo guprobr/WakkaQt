@@ -178,7 +178,7 @@ MainWindow::MainWindow(QWidget *parent)
     playbackTimer = new QTimer(this);
     connect(playbackTimer, &QTimer::timeout, this, &MainWindow::updatePlaybackDuration);
 
-    resetAudioComponents(false);
+    resetAudioComponents(true);
 }
 
 void MainWindow::resetAudioComponents(bool isStarting) {
@@ -348,7 +348,6 @@ try {
         chooseInputDevice();
         resetAudioComponents(false);
 
-        playbackEventTime = QDateTime::currentMSecsSinceEpoch();
         connect(player.data(), &QMediaPlayer::mediaStatusChanged, this, &MainWindow::onPlayerMediaStatusChanged);
         player->setSource(QUrl::fromLocalFile(currentVideoFile));
         playbackTimer->start(1000); // Update every second
@@ -367,6 +366,7 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status)
     if (status == QMediaPlayer::BufferedMedia) {
         if (mediaRecorder) {
             qDebug() << "Player is buffered. Start recording...";
+            playbackEventTime = QDateTime::currentMSecsSinceEpoch();
 
             // Link camera and session after configuring other components
             qWarning() << "Configuring mediaCaptureSession..";

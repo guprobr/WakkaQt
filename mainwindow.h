@@ -2,34 +2,38 @@
 #define MAINWINDOW_H
 
 #include "sndwidget.h"
-#include <QScopedPointer>
+
 #include <QMainWindow>
-#include <QMessageBox>
-#include <QMediaPlayer>
-#include <QVideoWidget>
-#include <QGraphicsView>
-#include <QGraphicsVideoItem>
-#include <QMediaFormat>
-#include <QMediaRecorder>
-#include <QMediaCaptureSession>
-#include <QCamera>
-#include <QVideoWidget>
-#include <QAudioInput>
-#include <QAudioSink>
-#include <QBuffer>
+#include <QScopedPointer>
 #include <QCloseEvent>
+
+#include <QMessageBox>
+#include <QFile>
+#include <QFileInfo>
 #include <QLineEdit>
 #include <QTextEdit>
 #include <QProgressBar>
-#include <QFile>
-#include <QFileInfo>
 
+#include <QVideoWidget>
+#include <QGraphicsView>
+#include <QGraphicsVideoItem>
+
+#include <QMediaFormat>
+#include <QMediaPlayer>
+#include <QMediaRecorder>
+#include <QMediaCaptureSession>
+#include <QCamera>
+
+#include <QAudioInput>
+#include <QAudioSink>
+#include <QBuffer>
 
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
 
 public:
+    QString Wakka_versione = "v0.2";
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
@@ -42,14 +46,7 @@ private:
 
     QColor windowTextColor;
     QString setRez = "1920x540"; // its a vstack, same width, half the height
-    bool isRecording;
 
-    qint64 playbackEventTime = 0;
-    qint64 recordingEventTime = 0;
-    qint64 offset;
-
-    QVideoWidget *videoWidget;
- 
     QGraphicsScene *scene;
     QGraphicsView *previewView;
     QGraphicsVideoItem *previewItem;
@@ -57,7 +54,12 @@ private:
     QGraphicsTextItem *durationTextItem;
     QGraphicsPixmapItem *wakkaLogoItem;
 
+    bool isRecording;
+    qint64 playbackEventTime = 0;
+    qint64 recordingEventTime = 0;
+    qint64 offset;
     QTimer *playbackTimer;
+    QScopedPointer<QTimer> recordingCheckTimer; 
 
     QAudioDevice selectedDevice;
     QBuffer *audioBuffer;
@@ -65,7 +67,9 @@ private:
     QProgressBar *progressBar;
     int totalDuration;
 
-    QScopedPointer<QTimer> recordingCheckTimer; 
+    QVideoWidget *videoWidget;
+
+    
     QScopedPointer<QMediaPlayer> player;
     QScopedPointer<QAudioOutput> audioOutput;
     QScopedPointer<QAudioInput> audioInput;
@@ -74,7 +78,6 @@ private:
     QScopedPointer<QMediaCaptureSession> mediaCaptureSession;
     QScopedPointer<QCamera> camera;
     
-
     QPushButton *singButton;
     QPushButton *chooseVideoButton;
     QPushButton *chooseInputButton;

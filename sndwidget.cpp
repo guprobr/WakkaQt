@@ -1,5 +1,6 @@
 #include "sndwidget.h"
 
+#include <QMediaDevices>
 #include <QVBoxLayout>
 #include <QPainter>
 #include <QPaintEvent>

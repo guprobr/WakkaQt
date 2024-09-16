@@ -38,9 +38,11 @@ MainWindow::MainWindow(QWidget *parent)
     , isRecording(false)
 {
 
+    QString Wakka_welcome = "Welcome to WakkaQt " + Wakka_versione;
+
     // acquire app palette
     QPalette palette = this->palette();
-    windowTextColor = palette.color(QPalette::WindowText);
+    windowTextColor = palette.color(QPalette::AlternateBase);
 
     // Create video widget
     videoWidget = new QVideoWidget(this);
@@ -61,7 +63,7 @@ MainWindow::MainWindow(QWidget *parent)
     //////////////// Create the scene and view
     scene = new QGraphicsScene(this);
     previewView = new QGraphicsView(scene, this);
-    previewView->setMinimumSize(640, 240);
+    previewView->setMinimumSize(640, 200);
     previewView->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     previewView->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     // Get the size of the view (the window size when it is first created)
@@ -69,9 +71,9 @@ MainWindow::MainWindow(QWidget *parent)
     qreal viewHeight = previewView->height();
     // Create the webcam video previewItem and set it in the center
     previewItem = new QGraphicsVideoItem; 
-    previewItem->setSize(QSizeF(640, 200)); // size for the webcam video preview
+    previewItem->setSize(QSizeF(320, 128)); // size for the webcam video preview
     // Create a QGraphicsPixmapItem for placeholder while webcam preview is not onscreen
-    wakkaLogoItem = new QGraphicsPixmapItem(placeholderPixmap.scaled(640, 200, Qt::AspectRatioMode::IgnoreAspectRatio, Qt::SmoothTransformation));
+    wakkaLogoItem = new QGraphicsPixmapItem(placeholderPixmap.scaled(320, 128, Qt::AspectRatioMode::IgnoreAspectRatio, Qt::SmoothTransformation));
     // Calculate position to center the previewItem
     qreal previewX = (viewWidth - previewItem->boundingRect().width()) / 2;
     qreal previewY = (viewHeight - previewItem->boundingRect().height()) / 2; 
@@ -92,7 +94,7 @@ MainWindow::MainWindow(QWidget *parent)
     qreal textX = ( viewWidth - textWidth ) / 2;
     qreal textY = viewHeight - durationTextItem->boundingRect().height();
     durationTextItem->setPos(textX, textY);
-    durationTextItem->setPlainText("Welcome to WakkaQt v0.1 alpha");
+    durationTextItem->setPlainText(Wakka_welcome);
     scene->addItem(durationTextItem);
     // Set the scene rect based on the initial view size
     scene->setSceneRect(0, 0, viewWidth, viewHeight);
@@ -105,9 +107,9 @@ MainWindow::MainWindow(QWidget *parent)
     renderAgainButton = new QPushButton("RENDER AGAIN", this);
 
     // Create the red recording indicator
-    recordingIndicator = new QLabel("⦿ REC", this);
+    recordingIndicator = new QLabel("⦿ rec", this);
     recordingIndicator->setStyleSheet("color: red;");
-    recordingIndicator->setFixedSize(64, 12); // Adjust the size
+    recordingIndicator->setFixedSize(64, 16); // Adjust the size
     QHBoxLayout *indicatorLayout = new QHBoxLayout();
     indicatorLayout->addStretch(); // Add stretchable space to the left
     indicatorLayout->addWidget(recordingIndicator, 0, Qt::AlignCenter); // Center the indicator
@@ -115,7 +117,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Instantiate the SndWidget (green waveform volume meter)
     soundLevelWidget = new SndWidget(this);
-    soundLevelWidget->setMinimumSize(200, 25); // Set a minimum size
+    soundLevelWidget->setMinimumSize(200, 64); // Set a minimum size
 
     deviceLabel = new QLabel("Selected Device: None", this);
     selectedDevice = QMediaDevices::defaultAudioInput();
@@ -134,7 +136,7 @@ MainWindow::MainWindow(QWidget *parent)
     // Create a widget to display output logs from yt-dlp and FFmpeg
     logTextEdit = new QTextEdit(this);
     logTextEdit->setReadOnly(true); // prevent user to edit contents of the widget
-    logTextEdit->append("Welcome to WakkaQt v0.1 alpha!");
+    logTextEdit->append(Wakka_welcome);
     connect(logTextEdit, &QTextEdit::textChanged, this, [=]() {
         logTextEdit->moveCursor(QTextCursor::End);  // Move cursor to the end
         logTextEdit->ensureCursorVisible();
@@ -176,7 +178,7 @@ MainWindow::MainWindow(QWidget *parent)
     playbackTimer = new QTimer(this);
     connect(playbackTimer, &QTimer::timeout, this, &MainWindow::updatePlaybackDuration);
 
-    resetAudioComponents(true);
+    resetAudioComponents(false);
 }
 
 void MainWindow::resetAudioComponents(bool isStarting) {
@@ -187,45 +189,53 @@ void MainWindow::resetAudioComponents(bool isStarting) {
 
     // Reset multimedia components with null checks to avoid double free
     if (player) {
-        if (player->playbackState() == QMediaPlayer::PlayingState) {
-            player->stop();
-        }
-        player.reset(nullptr);
+        player->stop();
+        player->setVideoOutput(nullptr);  // Clear video output before resetting
+        player->setAudioOutput(nullptr);  // Clear audio output before resetting
+        player->setSource(QUrl());        // Explicitly clear the media source
+        player->deleteLater();            // Schedule safe deletion
+        player.reset();                   // Reset the unique pointer
     }
     
     if (audioOutput) {
         audioOutput->setMuted(true);
-        audioOutput.reset(nullptr);
+        audioOutput->deleteLater(); 
+        audioOutput.reset();
     }
 
     if (mediaRecorder) {
         if (mediaRecorder->recorderState() == QMediaRecorder::RecordingState) {
             mediaRecorder->stop();
         }
-        mediaRecorder.reset(nullptr);
+        mediaRecorder->deleteLater();  
+        mediaRecorder.reset();
     }
 
     if (mediaCaptureSession) {
-        mediaCaptureSession.reset(nullptr);
+        mediaCaptureSession->deleteLater(); 
+        mediaCaptureSession.reset();
     }
 
     if (audioInput) {
         audioInput->setMuted(true); 
-        audioInput.reset(nullptr);
+        audioInput->deleteLater();  
+        audioInput.reset();
     }
 
     if (format) {
-        format.reset(nullptr);
+        format.reset();
     }
 
     if (camera) {
         if (camera->isActive()) {
             camera->stop(); 
         }
-        camera.reset(nullptr);
-    } 
+        camera->deleteLater(); 
+        camera.reset();
+    }
 
-    configureMediaComponents(); // Reinitialize components
+    // Reinitialize components synchronously (no delay)
+    configureMediaComponents();  // Reinitialize immediately after cleanup
 }
 
 
@@ -264,6 +274,8 @@ void MainWindow::configureMediaComponents()
     mediaRecorder->setOutputLocation(QUrl::fromLocalFile(webcamRecorded));
     mediaRecorder->setQuality(QMediaRecorder::VeryHighQuality);
 
+    qDebug() << "Reconfigured media components";
+
 }
 
 void MainWindow::chooseInputDevice()
@@ -301,19 +313,18 @@ void MainWindow::chooseVideo()
     currentVideoFile = QFileDialog::getOpenFileName(this, "Open Playback File", QString(), "Video or Audio (*.mp4 *.avi *.mov *.mp3 *.wav *.flac)");
     if (!currentVideoFile.isEmpty()) {
 
-        currentVideoName = QFileInfo(currentVideoFile).baseName();
         resetAudioComponents(false);
+        player->setSource(QUrl::fromLocalFile(currentVideoFile)); 
+        playbackTimer->start(1000); 
+        player->play(); // playback preview
 
         singButton->setEnabled(true);
         renderAgainButton->setVisible(false);
         placeholderLabel->hide();
         videoWidget->show();
 
+        currentVideoName = QFileInfo(currentVideoFile).baseName();        
         addProgressBarToScene(scene, getMediaDuration(currentVideoFile));
-        player->setSource(QUrl::fromLocalFile(currentVideoFile)); 
-        playbackTimer->start(1000); 
-        player->play(); // playback preview
-
         logTextEdit->append("Playback preview. Press SING to start recording.");
     }
 }
@@ -338,12 +349,12 @@ try {
         resetAudioComponents(false);
 
         playbackEventTime = QDateTime::currentMSecsSinceEpoch();
-
         connect(player.data(), &QMediaPlayer::mediaStatusChanged, this, &MainWindow::onPlayerMediaStatusChanged);
         player->setSource(QUrl::fromLocalFile(currentVideoFile));
         playbackTimer->start(1000); // Update every second
-        addProgressBarToScene(scene, getMediaDuration(currentVideoFile));
         player->play();
+                
+        addProgressBarToScene(scene, getMediaDuration(currentVideoFile));
                
     } catch (const std::exception &e) {
         logTextEdit->append("Error during startRecording: " + QString::fromStdString(e.what()));
@@ -365,6 +376,7 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status)
             camera->start();
             mediaRecorder->record();
 
+            // disconnect, don't need it anymore
             if (player) {
                 disconnect(player.data(), &QMediaPlayer::mediaStatusChanged, this, &MainWindow::onPlayerMediaStatusChanged);
             }
@@ -374,17 +386,19 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status)
 
 void MainWindow::checkRecordingStart() {
     if (mediaRecorder->duration() > 0) {
+
+        // stop probing
         recordingCheckTimer->stop();
         recordingCheckTimer.reset();
 
         recordingEventTime = QDateTime::currentMSecsSinceEpoch();
-        qDebug() << "Detected recording started. Duration gap:" << mediaRecorder->duration();
+        qDebug() << "Detected rec started. mediaRecorder Duration gap:" << mediaRecorder->duration();
         // This is an estimated offset for better sync: the absolute time between events, 
         offset = ( recordingEventTime - playbackEventTime ) + mediaRecorder->duration(); // plus the margin of error based on system latency.
         qDebug() << "Offset between playback start and recording start: " << offset << " ms";
         logTextEdit->append(QString("Offset between playback start and recording start: %1 ms").arg(offset));
 
-    // Protect the sanity of Time :O This code guards the Universe from becoming unstable and cease existance of us all
+    // Protect the sanity of Time (!) This tiny part of code guards the Universe from becoming unstable and cease existance of us all! !!
         if ( mediaRecorder->duration() > 111 ) {
             qWarning() << "Something is wrong with mediaRecorder. Aborting recording session. SORRY";
             logTextEdit->append("detected unstable mediaRecorder. PLEASE TRY AGAIN SORRY");
@@ -395,12 +409,16 @@ void MainWindow::checkRecordingStart() {
 }
 
 void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
+
+    // FINAL PART OF START RECORDING
     if (mediaRecorder->recorderState() == QMediaRecorder::RecordingState) {
+
         isRecording = true;
         recordingIndicator->show();
         singButton->setText("Finish!");
         singButton->setEnabled(true);
 
+        // last part: turn on the webcam preview
         mediaCaptureSession->setVideoOutput(previewItem);
         wakkaLogoItem->hide();
         previewItem->show();
@@ -409,14 +427,14 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
             recordingCheckTimer.reset(new QTimer(this));
             connect(recordingCheckTimer.data(), &QTimer::timeout, this, &MainWindow::checkRecordingStart);
             recordingCheckTimer->start(1);
-        }
+        }  // start violently probing for confirmed recording condition
     }
+
+    // BEGINNING of "stop recording"
     if (state == QMediaRecorder::StoppedState) {
         qDebug() << "Recording stopped.";
         
-        if (player->playbackState() == QMediaPlayer::PlayingState) {
-            player->stop();
-        }
+        player->stop();
         playbackTimer->stop();
 
         videoWidget->hide();
@@ -434,6 +452,7 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
             fetchButton->setEnabled(true);
             chooseInputButton->setEnabled(true);
             singButton->setEnabled(false);
+            
             resetAudioComponents(false);
             QMessageBox::warning(this, "SORRY: mediaRecorder ERROR", "File size is zero.");
         }
@@ -471,9 +490,8 @@ void MainWindow::handleRecorderError(QMediaRecorder::Error error) {
     try {
         if (mediaRecorder ) {
             qDebug() << "Stopping media due to error...";
-            if (player->playbackState() == QMediaPlayer::PlayingState) {
-                player->stop();
-            }
+            player->stop();
+            playbackTimer->stop();
             mediaRecorder->stop();
         }
     } catch (const std::exception &e) {
@@ -510,9 +528,8 @@ void MainWindow::handleRecordingError() {
 // render //
 void MainWindow::renderAgain()
 {
-    if (player->playbackState() == QMediaPlayer::PlayingState) {
-        player->stop();
-    }
+    
+    player->stop();
     playbackTimer->stop();
     resetAudioComponents(false);
 
@@ -582,7 +599,7 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
     // Create QLabel for progress indication
     QLabel *progressLabel = new QLabel("Processing...", this);
     progressLabel->setAlignment(Qt::AlignCenter);
-    progressLabel->setFont(QFont("Arial", 7));
+    progressLabel->setFont(QFont("Arial", 8));
     // Get the main layout and add the progress label
     QVBoxLayout *layout = qobject_cast<QVBoxLayout*>(centralWidget()->layout());
     layout->insertWidget(0, progressLabel, 0, Qt::AlignCenter);
@@ -590,49 +607,36 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
 
     QFileInfo outfileInfo(outputFilePath);
     QFileInfo videofileInfo(videoFilePath);
+    QString videorama = "";
 
-    arguments << "-y" // Overwrite output file if it exists
-            << "-fflags" << "+genpts"
-            << "-i" << webcamFilePath // recorded vocals
-            << "-i" << videoFilePath // playback file
-            << "-filter_complex"
-            << QString("[0:a]afftdn=nf=-20:nr=10:nt=w,speechnorm,acompressor=threshold=0.5:ratio=4,highpass=f=200, \
-                        lv2=http\\\\://gareus.org/oss/lv2/fat1:c=mode=Auto|channelf=Any|bias=1.0|filter=0.1|offset=0.1|bendrange=2|corr=1.0, \
-                        aecho=0.7:0.7:84:0.21,treble=g=12,volume=%1,atrim=%2[vocals]; \
-                        [1:a][vocals]amix=inputs=2:normalize=0;")
-                        .arg(vocalVolume)
-                        .arg(millisecondsToSecondsString(offset));
-            
-    // In case of video output
-    if ( outputFilePath.endsWith(".mp4") || outputFilePath.endsWith(".avi") || outputFilePath.endsWith(".mkv") ) {
-        arguments << "-filter_complex" << QString("[0:v]trim=%1,scale=%2[webcam];[1:v]scale=%2[video];[video][webcam]vstack;")
-                                                .arg(millisecondsToSecondsString(offset))
-                                                .arg(userRez);
+    if ( (outputFilePath.endsWith(".mp4") || outputFilePath.endsWith(".avi") || outputFilePath.endsWith(".mkv")) 
+    && !( (videoFilePath.endsWith("mp3")) || (videoFilePath.endsWith("wav")) || (videoFilePath.endsWith("flac"))) ) {
+        // Combine audio and video filters into the same -filter_complex
+        videorama = QString("[0:v]trim=%1,scale=%2[webcam]; \
+                            [1:v]scale=%2[video]; \
+                            [video][webcam]vstack;")
+                            .arg(millisecondsToSecondsString(offset))
+                            .arg(userRez);
     }
 
-    // Selecina codec segundo conteiner    
-    if (outputFilePath.endsWith(".mp4")) {
-            // Para MP4, codecs comuns são libx264 para vídeo e aac para áudio
-                arguments << "-c:v" << "libx264" << "-c:a" << "aac";
-            } else if (outputFilePath.endsWith(".mkv")) {
-                // Para MKV, libx265 para vídeo e vorbis para áudio são comuns
-                arguments << "-c:v" << "libx265" << "-c:a" << "vorbis";
-            } else if (outputFilePath.endsWith(".avi")) {
-                // AVI geralmente usa mpeg4 para vídeo e mp3 para áudio
-                arguments << "-c:v" << "mpeg4" << "-c:a" << "libmp3lame";
-            } else if (outputFilePath.endsWith(".mp3")) {
-                // Para MP3, só precisa de áudio
-                arguments << "-vn" << "-c:a" << "libmp3lame";
-            } else if (outputFilePath.endsWith(".flac")) {
-                // Para FLAC, só precisa de áudio
-                arguments << "-vn" << "-c:a" << "flac";
-            } else if (outputFilePath.endsWith(".wav")) {
-                // Para WAV, só precisa de áudio com PCM
-                arguments << "-vn" << "-c:a" << "pcm_s16le";
-        }
-        arguments << "-ac" << "2" // force stereo
-        << "-dither_method" << "none" // dithering
-                << outputFilePath;
+    arguments << "-y" // Overwrite output file if it exists
+          << "-fflags" << "+genpts"
+          << "-i" << webcamFilePath // recorded vocals
+          << "-i" << videoFilePath // playback file
+          << "-filter_complex" 
+          << QString("[0:a]afftdn=nf=-20:nr=10:nt=w,speechnorm,acompressor=threshold=0.5:ratio=4,highpass=f=200, \
+                      lv2=http\\\\://gareus.org/oss/lv2/fat1:c=mode=Auto|channelf=Any|bias=1.0|filter=0.1|offset=0.1|bendrange=2|corr=1.0, \
+                      aecho=0.7:0.7:84:0.21,treble=g=12,volume=%1,atrim=%2[vocals]; \
+                      [1:a][vocals]amix=inputs=2:normalize=0[wakkamix];%3" 
+                      ).arg(vocalVolume).arg(millisecondsToSecondsString(offset))
+                      .arg(videorama);
+
+    // Map audio output
+    arguments << "-ac" << "2" // Force stereo
+            << "-dither_method" << "none" // dithering off
+            << "-map" << "[wakkamix]"      // ensure audio goes on the pack
+            << outputFilePath;
+
     
     // Connect signals to display output and errors
     connect(process, &QProcess::readyReadStandardOutput, [process, progressLabel, this]() {
@@ -658,37 +662,41 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
         }
     });
 
-    connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), [process, progressLabel](int exitCode, QProcess::ExitStatus exitStatus) {
-        progressLabel->hide();
-        process->deleteLater(); // Clean up the process object
-    });
-
     connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), [this, process, outputFilePath, progressLabel](int exitCode, QProcess::ExitStatus exitStatus) {
         qDebug() << "FFmpeg finished with exit code" << exitCode << "and status" << (exitStatus == QProcess::NormalExit ? "NormalExit" : "CrashExit");
         
+        progressLabel->hide();
+        delete this->progressBar;
+        process->deleteLater(); // Clean up the process object
+
         if ( exitStatus == QProcess::CrashExit) {
             this->logTextEdit->append("FFmpeg crashed!!");
             chooseVideoButton->setEnabled(true);
             fetchButton->setEnabled(true);
             renderAgainButton->setVisible(true);
-            progressLabel->hide();
-            process->deleteLater(); // Clean up the process object
-            delete this->progressBar;
+            QMessageBox::warning(this, "FFMpeg crashed :(", "Aborting.. Verify if FFMpeg is correctly installed and in the PATH to be executed. Verify logs for FFMpeg error. This program requires a LV2 plugin callex X42 by Gareus.");
             return;
         }
-        else
+        else {
+            QMessageBox::warning(this, "Rendering Done!", "Prepare to preview performance. You can press RenderAgain button to adjust volume again or select a different filename, file type or resolution.");
             this->logTextEdit->append("FFmpeg finished.");
+        }
 
-        delete this->progressBar;
         QFile file(outputFilePath);
         if (!file.exists()) {
             qDebug() << "Output path does not exist: " << outputFilePath;
+            QMessageBox::warning(this, "FFMpeg ?", "Aborted playback. Strange error: output file does not exist.");
             return;
         }
 
+        // And now, for something completely different: play the rendered performance! :D
+
+        chooseVideoButton->setEnabled(true);
+        fetchButton->setEnabled(true);
+        renderAgainButton->setVisible(true);
+
         qDebug() << "Setting media source to" << outputFilePath;
         player->setSource(QUrl::fromLocalFile(outputFilePath));
-        
         player->play();
         playbackTimer->start(1000); // Update every second
         addProgressBarToScene(scene, getMediaDuration(outputFilePath));
@@ -698,9 +706,6 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
 
         this->logTextEdit->append("Playing mix!");
 
-        chooseVideoButton->setEnabled(true);
-        fetchButton->setEnabled(true);
-        renderAgainButton->setVisible(true);
     });
 
     // Start the process for FFmpeg command and arguments
@@ -750,7 +755,6 @@ void MainWindow::updateProgress(const QString& output, QProgressBar* progressBar
         int totalDurationMilliseconds = totalDuration * 1000;
         if (totalDurationMilliseconds <= 0) {
             qWarning() << "Total duration is not valid";
-            QMessageBox::warning(this, "Sorry! Strange Error", "Total duration is not valid.");
             return;
         }
 
@@ -777,8 +781,6 @@ int MainWindow::getMediaDuration(const QString &filePath) {
     double duration = durationStr.toDouble(&ok);
     if (!ok || duration <= 0) {
         qWarning() << "Failed to get duration or duration is invalid:" << durationStr;
-        QMessageBox::warning(this, "Sorry! Strange Error", "Failed to get duration or duration is invalid. Fatal error.");
-        MainWindow::close();
         return 0;
     }
 
@@ -807,20 +809,22 @@ void MainWindow::updatePlaybackDuration() {
 
 void MainWindow::addProgressBarToScene(QGraphicsScene *scene, qint64 duration) {
      
+    disconnect(player.data(), &QMediaPlayer::positionChanged, this, nullptr);
+
      if (progressSong) {
         scene->removeItem(progressSong);
         delete progressSong;
         progressSong = nullptr;
     }
-    // Barra de progresso
-    progressSong = new QGraphicsRectItem(0, 0, 640, 6);
+    // Song progress Bar
+    progressSong = new QGraphicsRectItem(0, 6, 640, 12);
     progressSong->setBrush(QBrush(windowTextColor));
     scene->addItem(progressSong);
-    progressSong->setPos(0, 0); // below cronômetro
+    progressSong->setPos(0, 6);
 
     connect(player.data(), &QMediaPlayer::positionChanged, this, [=](qint64 currentPosition) {
         qreal progress = qreal(currentPosition) / ( duration * 1000 );
-        progressSong->setRect(0, 0, 640 * progress, 6);
+        progressSong->setRect(0, 6, 640 * progress, 12);
     });
 }
 
@@ -852,12 +856,15 @@ void MainWindow::fetchVideo() {
         // Open the choose video dialog in the directory chosen to save video
         QString videoFilePath = QFileDialog::getOpenFileName(this, "Choose the downloaded playback or any another", directory, "Videos (*.mp4 *.mkv *.avi)");
         if (!videoFilePath.isEmpty()) {
+            
             currentVideoFile = videoFilePath;  // Store the video playback file path
-            currentVideoName = QFileInfo(currentVideoFile).baseName();
-            player->setSource(QUrl::fromLocalFile(videoFilePath)); 
+            
+            player->setSource(QUrl::fromLocalFile(currentVideoFile)); 
             player->play(); // play playback for preview
             playbackTimer->start(1000); // Update every second
+            currentVideoName = QFileInfo(currentVideoFile).baseName();
             addProgressBarToScene(scene, getMediaDuration(currentVideoFile));
+            
             placeholderLabel->hide();
             videoWidget->show();
 

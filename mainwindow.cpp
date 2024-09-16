@@ -313,15 +313,15 @@ void MainWindow::chooseVideo()
     currentVideoFile = QFileDialog::getOpenFileName(this, "Open Playback File", QString(), "Video or Audio (*.mp4 *.avi *.mov *.mp3 *.wav *.flac)");
     if (!currentVideoFile.isEmpty()) {
 
-        resetAudioComponents(false);
-        player->setSource(QUrl::fromLocalFile(currentVideoFile)); 
-        playbackTimer->start(1000); 
-        player->play(); // playback preview
-
         singButton->setEnabled(true);
         renderAgainButton->setVisible(false);
         placeholderLabel->hide();
         videoWidget->show();
+
+        resetAudioComponents(false);
+        player->setSource(QUrl::fromLocalFile(currentVideoFile)); 
+        playbackTimer->start(1000); 
+        player->play(); // playback preview
 
         currentVideoName = QFileInfo(currentVideoFile).baseName();        
         addProgressBarToScene(scene, getMediaDuration(currentVideoFile));
@@ -856,17 +856,16 @@ void MainWindow::fetchVideo() {
         // Open the choose video dialog in the directory chosen to save video
         QString videoFilePath = QFileDialog::getOpenFileName(this, "Choose the downloaded playback or any another", directory, "Videos (*.mp4 *.mkv *.avi)");
         if (!videoFilePath.isEmpty()) {
+
+            placeholderLabel->hide();
+            videoWidget->show();
             
             currentVideoFile = videoFilePath;  // Store the video playback file path
-            
             player->setSource(QUrl::fromLocalFile(currentVideoFile)); 
             player->play(); // play playback for preview
             playbackTimer->start(1000); // Update every second
             currentVideoName = QFileInfo(currentVideoFile).baseName();
             addProgressBarToScene(scene, getMediaDuration(currentVideoFile));
-            
-            placeholderLabel->hide();
-            videoWidget->show();
 
             singButton->setEnabled(true); 
             logTextEdit->append("Previewing playback. Press SING to start recording.");

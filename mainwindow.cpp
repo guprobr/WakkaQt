@@ -393,8 +393,8 @@ void MainWindow::checkRecordingStart() {
 
         recordingEventTime = QDateTime::currentMSecsSinceEpoch();
         qDebug() << "Detected rec started. mediaRecorder Duration gap:" << mediaRecorder->duration();
-        // This is an estimated offset for better sync: the absolute time between events, 
-        offset = ( recordingEventTime - playbackEventTime ) + mediaRecorder->duration(); // plus the margin of error based on system latency.
+        // This is an estimated offset for better sync 
+        offset = ( recordingEventTime - playbackEventTime ) - mediaRecorder->duration();
         qDebug() << "Offset between playback start and recording start: " << offset << " ms";
         logTextEdit->append(QString("Offset between playback start and recording start: %1 ms").arg(offset));
 

@@ -42,7 +42,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     // acquire app palette
     QPalette palette = this->palette();
-    windowTextColor = palette.color(QPalette::AlternateBase);
+    alternateColor = palette.color(QPalette::AlternateBase);
 
     // Create video widget
     videoWidget = new QVideoWidget(this);
@@ -234,6 +234,11 @@ void MainWindow::resetAudioComponents(bool isStarting) {
         camera.reset();
     }
 
+    if ( recordingCheckTimer ) {
+        recordingCheckTimer->stop();
+        recordingCheckTimer.reset();
+    }
+
     // Reinitialize components synchronously (no delay)
     configureMediaComponents();  // Reinitialize immediately after cleanup
 }
@@ -262,13 +267,14 @@ void MainWindow::configureMediaComponents()
     audioInput->setVolume(1.0f);
     updateDeviceLabel(selectedDevice);
     soundLevelWidget->setInputDevice(selectedDevice);
-
+    
     format->setFileFormat(QMediaFormat::MPEG4);
     format->setVideoCodec(QMediaFormat::VideoCodec::H264);
     format->setAudioCodec(QMediaFormat::AudioCodec::AAC);
 
     connect(mediaRecorder.data(), &QMediaRecorder::recorderStateChanged, this, &MainWindow::onRecorderStateChanged);
     connect(mediaRecorder.data(), &QMediaRecorder::errorOccurred, this, &MainWindow::handleRecorderError);
+    connect(player.data(), &QMediaPlayer::mediaStatusChanged, this, &MainWindow::onPlayerMediaStatusChanged);
 
     mediaRecorder->setMediaFormat(*format);
     mediaRecorder->setOutputLocation(QUrl::fromLocalFile(webcamRecorded));
@@ -320,7 +326,6 @@ void MainWindow::chooseVideo()
 
         resetAudioComponents(false);
         player->setSource(QUrl::fromLocalFile(currentVideoFile)); 
-        playbackTimer->start(1000); 
         player->play(); // playback preview
 
         currentVideoName = QFileInfo(currentVideoFile).baseName();        
@@ -347,14 +352,12 @@ try {
 
         chooseInputDevice();
         resetAudioComponents(false);
-
-        connect(player.data(), &QMediaPlayer::mediaStatusChanged, this, &MainWindow::onPlayerMediaStatusChanged);
+        
+        isRecording = true;
         player->setSource(QUrl::fromLocalFile(currentVideoFile));
-        playbackTimer->start(1000); // Update every second
-        player->play();
-                
         addProgressBarToScene(scene, getMediaDuration(currentVideoFile));
-               
+        player->play();
+
     } catch (const std::exception &e) {
         logTextEdit->append("Error during startRecording: " + QString::fromStdString(e.what()));
         handleRecordingError();
@@ -363,74 +366,48 @@ try {
 
 void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status)
 {
-    if (status == QMediaPlayer::BufferedMedia) {
-        if (mediaRecorder) {
-            qDebug() << "Player is buffered. Start recording...";
-            playbackEventTime = QDateTime::currentMSecsSinceEpoch();
+    if (status == QMediaPlayer::BufferedMedia ) { 
+        
+        playbackTimer->start(1000); // the playback cronometer
 
-            // Link camera and session after configuring other components
-            qWarning() << "Configuring mediaCaptureSession..";
-            mediaCaptureSession->setCamera(camera.data());
-            mediaCaptureSession->setAudioInput(audioInput.data());
-            mediaCaptureSession->setRecorder(mediaRecorder.data());
-            camera->start();
-            mediaRecorder->record();
-
-            // disconnect, don't need it anymore
-            if (player) {
-                disconnect(player.data(), &QMediaPlayer::mediaStatusChanged, this, &MainWindow::onPlayerMediaStatusChanged);
+        if ( isRecording ) {
+            if (mediaRecorder ) {
+                playbackEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK PLAYBACK TIMESTAMP
+                qDebug() << "Media is playing! Start mediaRecorder.";
+                // START TO RECORD ONLY AFTER PLAYBACK
+                qWarning() << "Configuring mediaCaptureSession..";
+                mediaCaptureSession->setCamera(camera.data());
+                mediaCaptureSession->setAudioInput(audioInput.data());
+                mediaCaptureSession->setRecorder(mediaRecorder.data());
+                camera->start();
+                mediaRecorder->record();
             }
         }
-    }
-}
 
-void MainWindow::checkRecordingStart() {
-    if (mediaRecorder->duration() > 0) {
-
-        // stop probing
-        recordingCheckTimer->stop();
-        recordingCheckTimer.reset();
-
-        recordingEventTime = QDateTime::currentMSecsSinceEpoch();
-        qDebug() << "Detected rec started. mediaRecorder Duration gap:" << mediaRecorder->duration();
-        // This is an estimated offset for better sync 
-        offset = ( recordingEventTime - playbackEventTime ) - mediaRecorder->duration();
-        qDebug() << "Offset between playback start and recording start: " << offset << " ms";
-        logTextEdit->append(QString("Offset between playback start and recording start: %1 ms").arg(offset));
-
-    // Protect the sanity of Time (!) This tiny part of code guards the Universe from becoming unstable and cease existance of us all! !!
-        if ( mediaRecorder->duration() > 111 ) {
-            qWarning() << "Something is wrong with mediaRecorder. Aborting recording session. SORRY";
-            logTextEdit->append("detected unstable mediaRecorder. PLEASE TRY AGAIN SORRY");
-            handleRecordingError();
-            QMessageBox::warning(this, "Recorder unstable", "Detected QtMediaRecorder unstable: SORRY, let's try again. Recording aborted to prevent further failure while singing or resulting in an empty file.");
-        }
     }
 }
 
 void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
 
-    // FINAL PART OF START RECORDING
     if (mediaRecorder->recorderState() == QMediaRecorder::RecordingState) {
 
-        isRecording = true;
         recordingIndicator->show();
         singButton->setText("Finish!");
         singButton->setEnabled(true);
 
-        // last part: turn on the webcam preview
+        // turn on the webcam preview
         mediaCaptureSession->setVideoOutput(previewItem);
         wakkaLogoItem->hide();
         previewItem->show();
 
         if (!recordingCheckTimer) {
-            recordingCheckTimer.reset(new QTimer(this));
-            connect(recordingCheckTimer.data(), &QTimer::timeout, this, &MainWindow::checkRecordingStart);
-            recordingCheckTimer->start(1);
-        }  // start violently probing for confirmed recording condition
+                recordingCheckTimer.reset(new QTimer(this));
+                connect(recordingCheckTimer.data(), &QTimer::timeout, this, &MainWindow::checkRecordingStart);
+                recordingCheckTimer->start(1);
+        }  // start violently probing for confirmed recording data. this generates offset also guards mediaRecorder sanity.
     }
 
-    // BEGINNING of "stop recording"
+    // when "Finished recording"
     if (state == QMediaRecorder::StoppedState) {
         qDebug() << "Recording stopped.";
         
@@ -459,6 +436,41 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
     }
 }
 
+
+void MainWindow::checkRecordingStart() {
+
+    if (mediaRecorder->duration() > 0) {
+
+        if ( player->position() > 0 ) { // media is actually playing when this is not zero
+            // stop probing
+            recordingCheckTimer->stop();
+            recordingCheckTimer.reset();
+
+            recordingEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK RECORDING TIMESTAMP
+            qDebug() << "partial mediaRecorder Duration:" << mediaRecorder->duration();
+
+            // This is an estimated offset for better sync
+            // when rendering, we trim the recorded audio and video by this offset
+        
+            offset = (recordingEventTime - playbackEventTime) + player->position() + mediaRecorder->duration();
+        
+            qDebug() << "Offset between playback start and recording start: " << offset << " ms";
+            logTextEdit->append(QString("Offset between playback start and recording start: %1 ms").arg(offset));
+
+            player->setPosition(offset);
+        }
+
+    // Protect the sanity of Time (!) This tiny part of code guards the Universe from becoming unstable and cease existance of us all! !!
+        if ( mediaRecorder->duration() > 111 ) {
+            qWarning() << "Something is wrong with mediaRecorder. Aborting recording session. SORRY";
+            logTextEdit->append("detected unstable mediaRecorder. PLEASE TRY AGAIN SORRY");
+            handleRecordingError();
+            QMessageBox::warning(this, "Sorry, let's try again", "Detected QtMediaRecorder unstable: Recording aborted to prevent further failure while singing or resulting in an empty file.");
+        }
+    }
+}
+
+// recording FINISH button
 void MainWindow::stopRecording() {
     try {
         if (!isRecording) {
@@ -470,6 +482,7 @@ void MainWindow::stopRecording() {
 
         camera->stop();
         mediaRecorder->stop();
+
         recordingIndicator->hide();
         previewItem->hide();
         wakkaLogoItem->show();
@@ -624,11 +637,11 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
           << "-i" << webcamFilePath // recorded vocals
           << "-i" << videoFilePath // playback file
           << "-filter_complex" 
-          << QString("[0:a]afftdn=nf=-20:nr=10:nt=w,speechnorm,acompressor=threshold=0.5:ratio=4,highpass=f=200, \
+          << QString("[0:a]atrim=%1,afftdn=nf=-20:nr=10:nt=w,speechnorm,acompressor=threshold=0.5:ratio=4,highpass=f=200, \
                       lv2=http\\\\://gareus.org/oss/lv2/fat1:c=mode=Auto|channelf=Any|bias=1.0|filter=0.1|offset=0.1|bendrange=2|corr=1.0, \
-                      aecho=0.7:0.7:84:0.21,treble=g=12,volume=%1,atrim=%2[vocals]; \
+                      aecho=0.7:0.7:84:0.21,treble=g=12,volume=%2[vocals]; \
                       [1:a][vocals]amix=inputs=2:normalize=0[wakkamix];%3" 
-                      ).arg(vocalVolume).arg(millisecondsToSecondsString(offset))
+                      ).arg(millisecondsToSecondsString(offset)).arg(vocalVolume)
                       .arg(videorama);
 
     // Map audio output
@@ -694,15 +707,14 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
         chooseVideoButton->setEnabled(true);
         fetchButton->setEnabled(true);
         renderAgainButton->setVisible(true);
+        placeholderLabel->hide();
+        videoWidget->show();
 
         qDebug() << "Setting media source to" << outputFilePath;
         player->setSource(QUrl::fromLocalFile(outputFilePath));
         player->play();
         playbackTimer->start(1000); // Update every second
         addProgressBarToScene(scene, getMediaDuration(outputFilePath));
-        
-        placeholderLabel->hide();
-        videoWidget->show();
 
         this->logTextEdit->append("Playing mix!");
 
@@ -803,7 +815,7 @@ void MainWindow::updatePlaybackDuration() {
                                 .arg(totalTime)
                                 .arg(currentVideoName);
         
-        durationTextItem->setPlainText(durationText); 
+        durationTextItem->setPlainText(durationText);
     }
 }
 
@@ -818,7 +830,7 @@ void MainWindow::addProgressBarToScene(QGraphicsScene *scene, qint64 duration) {
     }
     // Song progress Bar
     progressSong = new QGraphicsRectItem(0, 6, 640, 12);
-    progressSong->setBrush(QBrush(windowTextColor));
+    progressSong->setBrush(QBrush(alternateColor));
     scene->addItem(progressSong);
     progressSong->setPos(0, 6);
 
@@ -863,13 +875,13 @@ void MainWindow::fetchVideo() {
             currentVideoFile = videoFilePath;  // Store the video playback file path
             player->setSource(QUrl::fromLocalFile(currentVideoFile)); 
             player->play(); // play playback for preview
-            playbackTimer->start(1000); // Update every second
             currentVideoName = QFileInfo(currentVideoFile).baseName();
             addProgressBarToScene(scene, getMediaDuration(currentVideoFile));
 
+            downloadStatusLabel->setText("Download YouTube URL");
             singButton->setEnabled(true); 
             logTextEdit->append("Previewing playback. Press SING to start recording.");
-            downloadStatusLabel->setText("Download YouTube URL");
+            
         }
     });
 
@@ -932,6 +944,14 @@ void MainWindow::disconnectAllSignals() {
     if (mediaRecorder) {
         disconnect(mediaRecorder.data(), &QMediaRecorder::recorderStateChanged, this, &MainWindow::onRecorderStateChanged);
         disconnect(mediaRecorder.data(), &QMediaRecorder::errorOccurred, this, &MainWindow::handleRecorderError);
+    }
+
+    if (player) {
+        disconnect(player.data(), &QMediaPlayer::mediaStatusChanged, this, &MainWindow::onPlayerMediaStatusChanged);
+    }
+
+    if (recordingCheckTimer) {
+        disconnect(recordingCheckTimer.data(), &QTimer::timeout, this, &MainWindow::checkRecordingStart);
     }
 
 }

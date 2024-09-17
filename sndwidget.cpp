@@ -15,7 +15,7 @@ SndWidget::SndWidget(QWidget *parent)
       audioBuffer(new QBuffer(this)) {
 
     // Initialize the buffer
-    waveformBuffer.resize(2048, 0.0f);
+    waveformBuffer.resize(512, 0.0f);
 
     // Set up the default audio format
     format.setSampleRate(44100);
@@ -27,7 +27,7 @@ SndWidget::SndWidget(QWidget *parent)
     //setInputDevice(device);
 
     connect(timer, &QTimer::timeout, this, &SndWidget::updateWaveform);
-    timer->start(50); // Update every 50 milliseconds
+    timer->start(200); // Update every 200 milliseconds
 }
 
 SndWidget::~SndWidget() {
@@ -39,7 +39,7 @@ SndWidget::~SndWidget() {
 void SndWidget::setInputDevice(const QAudioDevice &device) {
 
     if (audioSource) {
-        audioSource->suspend();
+        audioSource->stop();
     }
 
     // Initialize the audio source with the new device
@@ -109,7 +109,7 @@ void SndWidget::updateWaveform() {
 
 void SndWidget::onAudioStateChanged(QAudio::State state) {
     if (state == QAudio::IdleState) {
-        audioSource->suspend();
+        audioSource->stop();
         audioBuffer->close();
     }
 }

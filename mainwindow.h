@@ -33,18 +33,19 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    QString Wakka_versione = "v0.2";
+    QString Wakka_versione = "v0.2alpha";
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
 private slots:
+    //void onAudioInputsChanged();
     void onRecorderStateChanged(QMediaRecorder::RecorderState state);
     void onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status);
     void handleRecorderError(QMediaRecorder::Error error);
     
 private:
 
-    QColor windowTextColor;
+    QColor alternateColor;
     QString setRez = "1920x540"; // its a vstack, same width, half the height
 
     QGraphicsScene *scene;
@@ -57,7 +58,7 @@ private:
     bool isRecording;
     qint64 playbackEventTime = 0;
     qint64 recordingEventTime = 0;
-    qint64 offset;
+    qint64 offset = 0;
     QTimer *playbackTimer;
     QScopedPointer<QTimer> recordingCheckTimer; 
 

@@ -389,6 +389,7 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status)
 
 void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
 
+    // when "Recording Starts"
     if (mediaRecorder->recorderState() == QMediaRecorder::RecordingState) {
 
         recordingIndicator->show();
@@ -404,7 +405,8 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
                 recordingCheckTimer.reset(new QTimer(this));
                 connect(recordingCheckTimer.data(), &QTimer::timeout, this, &MainWindow::checkRecordingStart);
                 recordingCheckTimer->start(1);
-        }  // start violently probing for confirmed recording data. this generates offset also guards mediaRecorder sanity.
+        }  // start violently probing for confirmed recording data.
+        // this generates offset also guards mediaRecorder sanity.
     }
 
     // when "Finished recording"
@@ -422,6 +424,7 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
             qDebug() << "Recording saved successfully";
             renderAgain();
         } else {
+        // damn it we tought we were recording but we did not record anything!
             qDebug() << "*FAILURE* File size is zero.";
             logTextEdit->append("Recording ERROR. File size is zero.");
 
@@ -436,18 +439,18 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
     }
 }
 
-
 void MainWindow::checkRecordingStart() {
 
     if (mediaRecorder->duration() > 0) {
 
-        if ( player->position() > 0 ) { // media is actually playing when this is not zero
+        if ( player->position() > 0 ) { // media is actually playing, when this is not zero
             // stop probing
             recordingCheckTimer->stop();
             recordingCheckTimer.reset();
 
             recordingEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK RECORDING TIMESTAMP
             qDebug() << "partial mediaRecorder Duration:" << mediaRecorder->duration();
+            qDebug() << "player postition:" << player->position();
 
             // This is an estimated offset for better sync
             // when rendering, we trim the recorded audio and video by this offset
@@ -713,9 +716,10 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
         qDebug() << "Setting media source to" << outputFilePath;
         player->setSource(QUrl::fromLocalFile(outputFilePath));
         player->play();
-        playbackTimer->start(1000); // Update every second
         addProgressBarToScene(scene, getMediaDuration(outputFilePath));
 
+        qDebug() << "Offset between playback start and recording start: " << offset << " ms";
+        logTextEdit->append(QString("Offset between playback start and recording start: %1 ms").arg(offset));
         this->logTextEdit->append("Playing mix!");
 
     });

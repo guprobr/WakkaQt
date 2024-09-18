@@ -193,13 +193,11 @@ void MainWindow::resetAudioComponents(bool isStarting) {
         player->setVideoOutput(nullptr);  // Clear video output before resetting
         player->setAudioOutput(nullptr);  // Clear audio output before resetting
         player->setSource(QUrl());        // Explicitly clear the media source
-        player->deleteLater();            // Schedule safe deletion
         player.reset();                   // Reset the unique pointer
     }
     
     if (audioOutput) {
         audioOutput->setMuted(true);
-        audioOutput->deleteLater(); 
         audioOutput.reset();
     }
 
@@ -207,18 +205,15 @@ void MainWindow::resetAudioComponents(bool isStarting) {
         if (mediaRecorder->recorderState() == QMediaRecorder::RecordingState) {
             mediaRecorder->stop();
         }
-        mediaRecorder->deleteLater();  
         mediaRecorder.reset();
     }
 
     if (mediaCaptureSession) {
-        mediaCaptureSession->deleteLater(); 
         mediaCaptureSession.reset();
     }
 
     if (audioInput) {
         audioInput->setMuted(true); 
-        audioInput->deleteLater();  
         audioInput.reset();
     }
 
@@ -230,7 +225,6 @@ void MainWindow::resetAudioComponents(bool isStarting) {
         if (camera->isActive()) {
             camera->stop(); 
         }
-        camera->deleteLater(); 
         camera.reset();
     }
 
@@ -326,7 +320,7 @@ void MainWindow::chooseVideo()
 
         resetAudioComponents(false);
         player->setSource(QUrl::fromLocalFile(currentVideoFile)); 
-        player->play(); // playback preview
+     //   player->play(); // playback preview
 
         currentVideoName = QFileInfo(currentVideoFile).baseName();        
         addProgressBarToScene(scene, getMediaDuration(currentVideoFile));
@@ -355,8 +349,8 @@ try {
         
         isRecording = true;
         player->setSource(QUrl::fromLocalFile(currentVideoFile));
+        // player->play();
         addProgressBarToScene(scene, getMediaDuration(currentVideoFile));
-        player->play();
 
     } catch (const std::exception &e) {
         logTextEdit->append("Error during startRecording: " + QString::fromStdString(e.what()));
@@ -384,6 +378,11 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status)
             }
         }
 
+    }
+
+    if (status == QMediaPlayer::BufferingMedia || status == QMediaPlayer::LoadedMedia) {
+        // Ensure player starts or resumes correctly
+        player->play();
     }
 }
 
@@ -644,7 +643,8 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
                       lv2=http\\\\://gareus.org/oss/lv2/fat1:c=mode=Auto|channelf=Any|bias=1.0|filter=0.1|offset=0.1|bendrange=2|corr=1.0, \
                       aecho=0.7:0.7:84:0.21,treble=g=12,volume=%2[vocals]; \
                       [1:a][vocals]amix=inputs=2:normalize=0[wakkamix];%3" 
-                      ).arg(millisecondsToSecondsString(offset)).arg(vocalVolume)
+                      ).arg(millisecondsToSecondsString(offset))
+                      .arg(vocalVolume)
                       .arg(videorama);
 
     // Map audio output
@@ -715,7 +715,7 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
 
         qDebug() << "Setting media source to" << outputFilePath;
         player->setSource(QUrl::fromLocalFile(outputFilePath));
-        player->play();
+        //player->play();
         addProgressBarToScene(scene, getMediaDuration(outputFilePath));
 
         qDebug() << "Offset between playback start and recording start: " << offset << " ms";
@@ -878,7 +878,7 @@ void MainWindow::fetchVideo() {
             
             currentVideoFile = videoFilePath;  // Store the video playback file path
             player->setSource(QUrl::fromLocalFile(currentVideoFile)); 
-            player->play(); // play playback for preview
+            //player->play(); // play playback for preview
             currentVideoName = QFileInfo(currentVideoFile).baseName();
             addProgressBarToScene(scene, getMediaDuration(currentVideoFile));
 
@@ -944,7 +944,7 @@ MainWindow::~MainWindow() {
 // Function to disconnect all signals
 void MainWindow::disconnectAllSignals() {
 
-    // Disconnect signals from mediaRecorder
+    // Disconnect media signals
     if (mediaRecorder) {
         disconnect(mediaRecorder.data(), &QMediaRecorder::recorderStateChanged, this, &MainWindow::onRecorderStateChanged);
         disconnect(mediaRecorder.data(), &QMediaRecorder::errorOccurred, this, &MainWindow::handleRecorderError);
@@ -953,7 +953,6 @@ void MainWindow::disconnectAllSignals() {
     if (player) {
         disconnect(player.data(), &QMediaPlayer::mediaStatusChanged, this, &MainWindow::onPlayerMediaStatusChanged);
     }
-
     if (recordingCheckTimer) {
         disconnect(recordingCheckTimer.data(), &QTimer::timeout, this, &MainWindow::checkRecordingStart);
     }

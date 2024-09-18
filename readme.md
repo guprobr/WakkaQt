@@ -1,4 +1,5 @@
-This software is currently in Alpha stage for developers to test. Help requested: for Windows and MacOS tests. NOTE: gStreamer is required on all platforms.
+This software is currently in Alpha stage for developers to test. Help requested: for Windows and MacOS tests. 
+NOTE: gStreamer is mandatory on all platforms.
 
 *WARNING*:  realtime kernel 6.8 seems unstable;
 * I'm currently investigating where the issue could be. 
@@ -7,7 +8,7 @@ This software is currently in Alpha stage for developers to test. Help requested
 
 # WakkaQt - Karaoke App
 
-WakkaQt is a karaoke application built with C++ and Qt6, designed to record vocals over a video/audio track and mix them into a rendered file. This app features webcam recording, YouTube video downloading, real-time sound visualization, and post-recording video rendering with FFmpeg.
+WakkaQt is a karaoke application built with C++ and Qt6, designed to record vocals over a video/audio track and mix them into a rendered file. This app features webcam recording, YouTube video downloading, real-time sound visualization, and post-recording video rendering with FFmpeg. It automatically does some masterization on the vocal tracks. It uses Gareus AutoTune X42 LV2 plugin for smoothing the results.
 
 ## Features
 
@@ -29,6 +30,7 @@ To build and run this application, ensure you have the following:
 - **Qt6** (Qt Multimedia module)
 - **FFmpeg** (for video/audio mixing and rendering)
 - **yt-dlp** (for downloading YouTube videos)
+- Gareus X42 plugin LV2 for AutoTune
 
 ## Installation
 
@@ -45,6 +47,11 @@ To build and run this application, ensure you have the following:
     - FFmpeg: Install from [FFmpeg website](https://ffmpeg.org/) or via your system package manager.
     - yt-dlp: Install from [yt-dlp GitHub page](https://github.com/yt-dlp/yt-dlp).
 
+### Install LV2 plugin for AutoTune
+```
+https://x42-plugins.com/x42/x42-autotune
+```
+
 3. Build the project:
 
     ```bash
@@ -59,11 +66,6 @@ To build and run this application, ensure you have the following:
     ```bash
     ./WakkaQt
     ```
-
-## Install LV2 plugin for AutoTune
-
-https://x42-plugins.com/x42/x42-autotune
-
 ## Usage
 
 1. **Load Karaoke Track:** Use the "Load playback from disk" button to load a video or audio file for the karaoke session.

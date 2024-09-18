@@ -1,6 +1,9 @@
 This software is currently in Alpha stage for developers to test. Help requested: for Windows and MacOS tests. NOTE: gStreamer is required on all platforms.
 
-*WARNING*: low-latency kernel seems unstable, I'm currently investigating where the issue could be. Don't run the app on low-latency kernel to avoid system locks, etc. If you are a developer, Help really wanted with this. 
+*WARNING*:  realtime kernel 6.8 seems unstable;
+* I'm currently investigating where the issue could be. 
+* Don't run the app on Ubuntu PRO realtime kernel to avoid system locks, etc. 
+* If you are a developer, Help really wanted with this. 
 
 # WakkaQt - Karaoke App
 

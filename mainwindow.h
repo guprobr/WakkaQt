@@ -56,11 +56,11 @@ private:
     QGraphicsPixmapItem *wakkaLogoItem;
 
     bool isRecording;
+    QTimer *playbackTimer;
+    QScopedPointer<QTimer> recordingCheckTimer; 
     qint64 playbackEventTime = 0;
     qint64 recordingEventTime = 0;
     qint64 offset = 0;
-    QTimer *playbackTimer;
-    QScopedPointer<QTimer> recordingCheckTimer; 
 
     QAudioDevice selectedDevice;
     QBuffer *audioBuffer;
@@ -68,9 +68,7 @@ private:
     QProgressBar *progressBar;
     int totalDuration;
 
-    QVideoWidget *videoWidget;
-
-    
+    QVideoWidget *videoWidget;    
     QScopedPointer<QMediaPlayer> player;
     QScopedPointer<QAudioOutput> audioOutput;
     QScopedPointer<QAudioInput> audioInput;
@@ -94,7 +92,6 @@ private:
     
     QTextEdit *logTextEdit; // logs
     
-    QFile *webcamOutputFile;
     QString currentVideoFile;
     QString currentVideoName;
     QString webcamRecorded; 
@@ -103,6 +100,7 @@ private:
     SndWidget *soundLevelWidget;
 
     void chooseVideo();
+    void updatePlaybackDuration();
     void checkRecordingStart();
     void startRecording();
     void stopRecording();
@@ -111,10 +109,10 @@ private:
     void fetchVideo();
 
     QString millisecondsToSecondsString(qint64 milliseconds);
-    void updatePlaybackDuration();
+    int getMediaDuration(const QString &filePath);
     void addProgressBarToScene(QGraphicsScene *scene, qint64 duration);
     void updateProgress(const QString& output, QProgressBar* progressBar, int totalDuration);
-    int getMediaDuration(const QString &filePath);
+    
     void mixAndRender(const QString &videoFile, const QString &webcamFile, const QString &outputFile, double vocalVolume, QString userRez);
     void renderAgain();
 

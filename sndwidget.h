@@ -7,7 +7,6 @@
 #include <QAudioBuffer>
 #include <QBuffer>
 #include <QMutex>
-#include <QAudioDevice>
 
 class SndWidget : public QWidget {
     Q_OBJECT
@@ -30,9 +29,9 @@ private:
 
     QTimer *timer;
 
+    QAudioFormat format;
     QAudioSource *audioSource;
     QBuffer *audioBuffer;
-    QAudioFormat format;
 
     QVector<qint16> audioData;
     QVector<float> waveformBuffer;

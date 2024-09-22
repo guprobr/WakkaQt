@@ -18,14 +18,32 @@ find_package(Qt6 REQUIRED COMPONENTS
     MultimediaWidgets
 )
 
-# Platform-specific GStreamer configuration
 if (WIN32)
-    # Windows-specific GStreamer settings
-    set(GSTREAMER_INCLUDE_DIRS "C:/gstreamer/1.0/x86_64/include/gstreamer-1.0" "C:/gstreamer/1.0/x86_64/include/glib-2.0" "C:/gstreamer/1.0/x86_64/lib/glib-2.0/include")
-    set(GSTREAMER_LIBRARY_DIRS "C:/gstreamer/1.0/x86_64/lib")
-    set(GSTREAMER_LIBRARIES "gstreamer-1.0" "glib-2.0" "gobject-2.0")
+    message(STATUS "Detected Windows (WIN32)")
+
+    # GStreamer include and library directories
+    set(GSTREAMER_INCLUDE_DIRS 
+        "C:/gstreamer/1.0/mingw_x86_64/include/gstreamer-1.0"
+        "C:/gstreamer/1.0/mingw_x86_64/include/glib-2.0"
+        "C:/gstreamer/1.0/mingw_x86_64/lib/glib-2.0/include")
+    
+    set(GSTREAMER_LIBRARY_DIRS "C:/gstreamer/1.0/mingw_x86_64/lib")
+
+    # Libraries to link against (adjusted for MinGW)
+    set(GSTREAMER_LIBRARIES
+        ${GSTREAMER_LIBRARY_DIRS}/libgstreamer-1.0.dll.a
+        ${GSTREAMER_LIBRARY_DIRS}/libgobject-2.0.dll.a
+        ${GSTREAMER_LIBRARY_DIRS}/libglib-2.0.dll.a
+        ${GSTREAMER_LIBRARY_DIRS}/libgmodule-2.0.dll.a
+        ${GSTREAMER_LIBRARY_DIRS}/libgthread-2.0.dll.a
+    )
+
+    # Include directories and link directories
+    include_directories(${GSTREAMER_INCLUDE_DIRS})
+    link_directories(${GSTREAMER_LIBRARY_DIRS})
+
 else()
-    # Linux-specific GStreamer settings using pkg-config
+    # For Linux (or Unix-like systems)
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(GSTREAMER REQUIRED gstreamer-1.0)
     include_directories(${GSTREAMER_INCLUDE_DIRS})

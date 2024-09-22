@@ -18,12 +18,19 @@ find_package(Qt6 REQUIRED COMPONENTS
     MultimediaWidgets
 )
 
-# Find and configure GStreamer
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(GSTREAMER REQUIRED gstreamer-1.0)
-include_directories(${GSTREAMER_INCLUDE_DIRS})
-link_directories(${GSTREAMER_LIBRARY_DIRS})
-
+# Platform-specific GStreamer configuration
+if (WIN32)
+    # Windows-specific GStreamer settings
+    set(GSTREAMER_INCLUDE_DIRS "C:/gstreamer/1.0/x86_64/include/gstreamer-1.0" "C:/gstreamer/1.0/x86_64/include/glib-2.0" "C:/gstreamer/1.0/x86_64/lib/glib-2.0/include")
+    set(GSTREAMER_LIBRARY_DIRS "C:/gstreamer/1.0/x86_64/lib")
+    set(GSTREAMER_LIBRARIES "gstreamer-1.0" "glib-2.0" "gobject-2.0")
+else()
+    # Linux-specific GStreamer settings using pkg-config
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(GSTREAMER REQUIRED gstreamer-1.0)
+    include_directories(${GSTREAMER_INCLUDE_DIRS})
+    link_directories(${GSTREAMER_LIBRARY_DIRS})
+endif()
 message(STATUS "GStreamer include directories: ${GSTREAMER_INCLUDE_DIRS}")
 
 # Add the resource file

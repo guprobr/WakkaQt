@@ -310,7 +310,7 @@ void MainWindow::updateDeviceLabel(const QAudioDevice &device) {
 
 void MainWindow::chooseVideo()
 {
-    currentVideoFile = QFileDialog::getOpenFileName(this, "Open Playback File", QString(), "Video or Audio (*.mp4 *.avi *.mov *.mp3 *.wav *.flac)");
+    currentVideoFile = QFileDialog::getOpenFileName(this, "Open Playback File", QString(), "Video or Audio (*.mp4 *.mkv *.webm *.avi *.mov *.mp3 *.wav *.flac)");
     if (!currentVideoFile.isEmpty()) {
 
         singButton->setEnabled(true);

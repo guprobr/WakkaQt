@@ -21,13 +21,16 @@ find_package(Qt6 REQUIRED COMPONENTS
 if (WIN32)
     message(STATUS "Detected Windows (WIN32)")
 
+    set(MinGW_runtime ${MINGW_LIB_DIR}/libmingw32.a )
+    message(STATUS "MinGW runtime: ${MinGW_runtime}" )
+    
     # GStreamer include and library directories
     set(GSTREAMER_INCLUDE_DIRS 
-        "C:/gstreamer/1.0/mingw_x86_64/include/gstreamer-1.0"
-        "C:/gstreamer/1.0/mingw_x86_64/include/glib-2.0"
-        "C:/gstreamer/1.0/mingw_x86_64/lib/glib-2.0/include")
+        "C:/gstreamer/include/gstreamer-1.0"
+        "C:/gstreamer/include/glib-2.0"
+        "C:/gstreamer/lib/glib-2.0/include")
     
-    set(GSTREAMER_LIBRARY_DIRS "C:/gstreamer/1.0/mingw_x86_64/lib")
+    set(GSTREAMER_LIBRARY_DIRS "C:/gstreamer/lib")
 
     # Libraries to link against (adjusted for MinGW)
     set(GSTREAMER_LIBRARIES
@@ -75,6 +78,7 @@ target_link_libraries(${PROJECT_NAME}
     Qt6::Multimedia
     Qt6::MultimediaWidgets
     ${GSTREAMER_LIBRARIES}
+    ${MinGW_runtime}
 )
 
 # Include headers

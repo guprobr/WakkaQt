@@ -1,10 +1,7 @@
 This software is currently in Alpha stage for developers to test. Help requested: for Windows and MacOS tests. 
-NOTE: gStreamer is mandatory on all platforms.
+NOTE: *gStreamer is mandatory on all platforms*.
 
-*WARNING*:  realtime kernel 6.8 seems unstable;
-* I'm currently investigating where the issue could be. 
-* Don't run the app on Ubuntu PRO realtime kernel to avoid system locks, etc. 
-* If you are a developer, Help really wanted with this. 
+*WARNING*:  Latest ubuntu "realtime" kernel 6.8 seems unstable; "low-latency" and the usual "generic" seems fine.
 
 # WakkaQt - Karaoke App
 
@@ -30,7 +27,8 @@ To build and run this application, ensure you have the following:
 - **Qt6** (Qt Multimedia module)
 - **FFmpeg** (for video/audio mixing and rendering)
 - **yt-dlp** (for downloading YouTube videos)
-- Gareus X42 plugin LV2 for AutoTune
+- **AutoTalent** (LADSPA pitch correction plugin)
+- **gStreamer** (plugins good, bad, ugly support)
 
 ## Installation
 
@@ -46,11 +44,7 @@ To build and run this application, ensure you have the following:
     - Qt6: Install via your system package manager or the official [Qt website](https://www.qt.io/).
     - FFmpeg: Install from [FFmpeg website](https://ffmpeg.org/) or via your system package manager.
     - yt-dlp: Install from [yt-dlp GitHub page](https://github.com/yt-dlp/yt-dlp).
-
-### Install LV2 plugin for AutoTune
-```
-https://x42-plugins.com/x42/x42-autotune
-```
+    - LADSPA Tom Baran AutoTalent: Install from [His website](http://tombaran.info/autotalent.html) or via pkg manager
 
 3. Build the project:
 

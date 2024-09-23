@@ -5,7 +5,7 @@ NOTE: *gStreamer is mandatory on all platforms*.
 
 # WakkaQt - Karaoke App
 
-WakkaQt is a karaoke application built with C++ and Qt6, designed to record vocals over a video/audio track and mix them into a rendered file. This app features webcam recording, YouTube video downloading, real-time sound visualization, and post-recording video rendering with FFmpeg. It automatically does some masterization on the vocal tracks. It uses Gareus AutoTune X42 LV2 plugin for smoothing the results.
+WakkaQt is a karaoke application built with C++ and Qt6, designed to record vocals over a video/audio track and mix them into a rendered file. This app features webcam recording, YouTube video downloading, real-time sound visualization, and post-recording video rendering with FFmpeg. It automatically does some masterization on the vocal tracks. It also uses an AutoTuner LADSPA plugin for smoothing the results, with pitch shift/correction and formant preservation.
 
 ## Features
 

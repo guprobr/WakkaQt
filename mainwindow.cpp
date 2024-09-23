@@ -320,8 +320,6 @@ void MainWindow::chooseVideo()
 
         resetAudioComponents(false);
         player->setSource(QUrl::fromLocalFile(currentVideoFile)); 
-     //   player->play(); // playback preview
-
         currentVideoName = QFileInfo(currentVideoFile).baseName();        
         addProgressBarToScene(scene, getMediaDuration(currentVideoFile));
         logTextEdit->append("Playback preview. Press SING to start recording.");
@@ -349,7 +347,6 @@ try {
         
         isRecording = true;
         player->setSource(QUrl::fromLocalFile(currentVideoFile));
-        // player->play();
         addProgressBarToScene(scene, getMediaDuration(currentVideoFile));
 
     } catch (const std::exception &e) {
@@ -403,7 +400,7 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
         if (!recordingCheckTimer) {
                 recordingCheckTimer.reset(new QTimer(this));
                 connect(recordingCheckTimer.data(), &QTimer::timeout, this, &MainWindow::checkRecordingStart);
-                recordingCheckTimer->start(1);
+                recordingCheckTimer->start(55);
         }  // start violently probing for confirmed recording data.
         // this generates offset also guards mediaRecorder sanity.
     }
@@ -463,7 +460,7 @@ void MainWindow::checkRecordingStart() {
         }
 
     // Protect the sanity of Time (!) This tiny part of code guards the Universe from becoming unstable and cease existance of us all! !!
-        if ( mediaRecorder->duration() > 111 ) {
+        if ( mediaRecorder->duration() > 333 ) {
             qWarning() << "Something is wrong with mediaRecorder. Aborting recording session. SORRY";
             logTextEdit->append("detected unstable mediaRecorder. PLEASE TRY AGAIN SORRY");
             handleRecordingError();
@@ -640,7 +637,7 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
           << "-i" << videoFilePath // playback file
           << "-filter_complex" 
           << QString("[0:a]atrim=%1,afftdn=nf=-20:nr=10:nt=w,speechnorm,acompressor=threshold=0.5:ratio=4,highpass=f=200, \
-                      lv2=http\\\\://gareus.org/oss/lv2/fat1:c=mode=Auto|channelf=Any|bias=1.0|filter=0.1|offset=0.1|bendrange=2|corr=1.0, \
+                      ladspa=file=autotalent:plugin=autotalent, \
                       aecho=0.7:0.7:84:0.21,treble=g=12,volume=%2[vocals]; \
                       [1:a][vocals]amix=inputs=2:normalize=0[wakkamix];%3" 
                       ).arg(millisecondsToSecondsString(offset))

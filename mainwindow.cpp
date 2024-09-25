@@ -46,7 +46,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Create video widget
     videoWidget = new QVideoWidget(this);
-    videoWidget->setMinimumSize(640, 480);
+    videoWidget->setMinimumSize(320, 240);
     videoWidget->hide();
 
     // Create a QLabel to display the placeholder image
@@ -71,9 +71,9 @@ MainWindow::MainWindow(QWidget *parent)
     qreal viewHeight = previewView->height();
     // Create the webcam video previewItem and set it in the center
     previewItem = new QGraphicsVideoItem; 
-    previewItem->setSize(QSizeF(320, 128)); // size for the webcam video preview
+    previewItem->setSize(QSizeF(160, 120)); // size for the webcam video preview
     // Create a QGraphicsPixmapItem for placeholder while webcam preview is not onscreen
-    wakkaLogoItem = new QGraphicsPixmapItem(placeholderPixmap.scaled(320, 128, Qt::AspectRatioMode::IgnoreAspectRatio, Qt::SmoothTransformation));
+    wakkaLogoItem = new QGraphicsPixmapItem(placeholderPixmap.scaled(160, 120, Qt::AspectRatioMode::IgnoreAspectRatio, Qt::SmoothTransformation));
     // Calculate position to center the previewItem
     qreal previewX = (viewWidth - previewItem->boundingRect().width()) / 2;
     qreal previewY = (viewHeight - previewItem->boundingRect().height()) / 2; 
@@ -117,7 +117,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Instantiate the SndWidget (green waveform volume meter)
     soundLevelWidget = new SndWidget(this);
-    soundLevelWidget->setMinimumSize(200, 64); // Set a minimum size
+    soundLevelWidget->setMinimumSize(200, 32); // Set a minimum size
 
     deviceLabel = new QLabel("Selected Device: None", this);
     selectedDevice = QMediaDevices::defaultAudioInput();
@@ -631,16 +631,22 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
                             .arg(userRez);
     }
 
+#ifdef _WIN32  // on Windows we need to use TalentedHack since AutoTalent does not export LADSPA descriptor correctly for the .dll
+    QString talent = "lv2=urn\\:jeremy.salwen\\:plugins\\:talentedhack,";
+#else  // on Linux AutoTalent is widely available on website and also package managers
+    QString talent = "ladspa=file=autotalent:plugin=autotalent,";
+#endif   
+
     arguments << "-y" // Overwrite output file if it exists
           << "-fflags" << "+genpts"
           << "-i" << webcamFilePath // recorded vocals
           << "-i" << videoFilePath // playback file
           << "-filter_complex" 
-          << QString("[0:a]atrim=%1,afftdn=nf=-20:nr=10:nt=w,speechnorm,acompressor=threshold=0.5:ratio=4,highpass=f=200, \
-                      ladspa=file=autotalent:plugin=autotalent, \
-                      aecho=0.7:0.7:84:0.21,treble=g=12,volume=%2[vocals]; \
-                      [1:a][vocals]amix=inputs=2:normalize=0[wakkamix];%3" 
+          << QString("[0:a]aformat=channel_layouts=stereo,atrim=%1,afftdn=nf=-20:nr=10:nt=w,speechnorm,acompressor=threshold=0.5:ratio=4,highpass=f=200,%2 \
+                      aecho=0.7:0.7:84:0.21,treble=g=12,volume=%3[vocals]; \
+                      [1:a][vocals]amix=inputs=2:normalize=0[wakkamix];%4" 
                       ).arg(millisecondsToSecondsString(offset))
+                      .arg(talent)
                       .arg(vocalVolume)
                       .arg(videorama);
 

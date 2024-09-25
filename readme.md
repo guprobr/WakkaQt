@@ -1,11 +1,12 @@
-This software is currently in Alpha stage for developers to test. Help requested: for Windows and MacOS tests. 
+This software is currently in Alpha stage for developers to test. 
+Help requested: for Windows and MacOS tests. 
 NOTE: *gStreamer is mandatory on all platforms*.
 
 *WARNING*:  Latest ubuntu "realtime" kernel 6.8 seems unstable; "low-latency" and the usual "generic" seems fine.
 
 # WakkaQt - Karaoke App
 
-WakkaQt is a karaoke application built with C++ and Qt6, designed to record vocals over a video/audio track and mix them into a rendered file. This app features webcam recording, YouTube video downloading, real-time sound visualization, and post-recording video rendering with FFmpeg. It automatically does some masterization on the vocal tracks. It also uses an AutoTuner LADSPA plugin for smoothing the results, with pitch shift/correction and formant preservation.
+WakkaQt is a karaoke application built with C++ and Qt6, designed to record vocals over a video/audio track and mix them into a rendered file. This app features webcam recording, YouTube video downloading, real-time sound visualization, and post-recording video rendering with FFmpeg. It automatically does some masterization on the vocal tracks. It also uses an AutoTuner LADSPA plugin for smoothing the results, Tom Baran's AutoTalent, with pitch shift/correction and formant preservation. On Windows it uses TalentedHack LV2 plugin to accomplish this.
 
 ## Features
 
@@ -41,10 +42,19 @@ To build and run this application, ensure you have the following:
 
 2. Install dependencies:
    
+    - gStreamer: Probably already installed, but must have good, bad, ugly plugin set; 
+      NOTE: if compiling gStreamer, pass -Dgpl=enabled to Meson to enable x264enc.
+    - GSTREAMER MINGW RUNTIME ON WINDOWS: [This is the website](https://gstreamer.freedesktop.org/download/#windows)
+
     - Qt6: Install via your system package manager or the official [Qt website](https://www.qt.io/).
     - FFmpeg: Install from [FFmpeg website](https://ffmpeg.org/) or via your system package manager.
     - yt-dlp: Install from [yt-dlp GitHub page](https://github.com/yt-dlp/yt-dlp).
+
+    Pitch correction plugin for LINUX hosts:
     - LADSPA Tom Baran AutoTalent: Install from [His website](http://tombaran.info/autotalent.html) or via pkg manager
+    Pitch correction plugin for WINDOWS hosts:
+    - LV2 TalentedHack: bundled in ZIP, but [The website is here](https://github.com/jeremysalwen/TalentedHack).
+
 
 3. Build the project:
 
@@ -60,6 +70,8 @@ To build and run this application, ensure you have the following:
     ```bash
     ./WakkaQt
     ```
+
+
 ## Usage
 
 1. **Load Karaoke Track:** Use the "Load playback from disk" button to load a video or audio file for the karaoke session.

@@ -72,18 +72,26 @@ void PreviewDialog::initializeGStreamer() {
 
 
 void PreviewDialog::on_pad_added(GstElement *src, GstPad *pad, gpointer data) {
+
     GstPad *sink_pad = gst_element_get_static_pad(static_cast<GstElement*>(data), "sink");
+    if (!sink_pad) {
+        qWarning("Sink pad for audioconvert not found");
+        return;
+    }
+
     if (gst_pad_link(pad, sink_pad) != GST_PAD_LINK_OK) {
         qWarning("Failed to link decodebin pad to audioconvert sink pad");
+    } else {
+        qDebug() << "Successfully linked decodebin to audioconvert";
     }
     gst_object_unref(sink_pad);
+
 }
 
 void PreviewDialog::setAudioFile(const QString &filePath) {
     if (source) {
         g_object_set(source, "location", filePath.toStdString().c_str(), nullptr);
-        gst_element_set_state(pipeline, GST_STATE_PLAYING);
-        timer->start(1000); // Update elapsed time every second
+        gst_element_set_state(pipeline, GST_STATE_PAUSED);
     }
 }
 

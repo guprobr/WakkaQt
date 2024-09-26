@@ -1,12 +1,13 @@
-This software is currently in Alpha stage for developers to test. 
-Help requested: for Windows and MacOS tests. 
-NOTE: *gStreamer is mandatory on all platforms*.
+This software is currently in **Alpha stage** for developers to test. 
+Help requested: for Windows and MacOS tests. **Windows x86_64 zip bundle with binaries will be available soon.**
+
+NOTE: **gStreamer is mandatory on all platforms**
 
 *WARNING*:  Latest ubuntu "realtime" kernel 6.8 seems unstable; "low-latency" and the usual "generic" seems fine.
 
 # WakkaQt - Karaoke App
 
-WakkaQt is a karaoke application built with C++ and Qt6, designed to record vocals over a video/audio track and mix them into a rendered file. This app features webcam recording, YouTube video downloading, real-time sound visualization, and post-recording video rendering with FFmpeg. It automatically does some masterization on the vocal tracks. It also uses an AutoTuner LADSPA plugin for smoothing the results, Tom Baran's AutoTalent, with pitch shift/correction and formant preservation. On Windows it uses TalentedHack LV2 plugin to accomplish this.
+WakkaQt is a karaoke application built with C++ and Qt6, designed to record vocals over a video/audio track and mix them into a rendered file. This app features webcam recording, YouTube video downloading, real-time sound visualization, and post-recording video rendering with FFmpeg. It automatically does some masterization on the vocal tracks. It also uses an AutoTuner LV2 plugin for smoothing the results, X42 by Robin Gareus, with slight pitch shift/correction and formant preservation.
 
 ## Features
 
@@ -15,10 +16,8 @@ WakkaQt is a karaoke application built with C++ and Qt6, designed to record voca
 - **Real-time sound visualization** (green waveform volume meter).
 - **Download YouTube videos** and use them as karaoke tracks.
 - **Audio device selection** for recording.
-- **Rendering** with FFmpeg for high-quality output.
-- **Cross-platform compatibility** (Windows, macOS, Linux).
-
-![Screenshot from 2024-09-16 06-48-18](https://github.com/user-attachments/assets/fe3c86a1-1ee9-4529-90b4-d97e50ca5bf7)
+- **Rendering** with FFmpeg for high-quality output, automatic masterization and vocal enhancement;
+- **Intended Cross-platform compatibility** (Windows, macOS, Linux).
 
 ## Requirements
 
@@ -28,7 +27,7 @@ To build and run this application, ensure you have the following:
 - **Qt6** (Qt Multimedia module)
 - **FFmpeg** (for video/audio mixing and rendering)
 - **yt-dlp** (for downloading YouTube videos)
-- **AutoTalent** (LADSPA pitch correction plugin)
+- **Gareus X42 AutoTune** (LV2 pitch correction plugin)
 - **gStreamer** (plugins good, bad, ugly support)
 
 ## Installation
@@ -43,18 +42,15 @@ To build and run this application, ensure you have the following:
 2. Install dependencies:
    
     - gStreamer: Probably already installed, but must have good, bad, ugly plugin set; 
-      NOTE: if compiling gStreamer, pass -Dgpl=enabled to Meson to enable x264enc.
-    - GSTREAMER MINGW RUNTIME ON WINDOWS: [This is the website](https://gstreamer.freedesktop.org/download/#windows)
+      NOTE: if you are compiling your own gStreamer, pass -Dgpl=enabled to Meson to enable x264enc, etc.
+      NOTE COMPILING ON WINDOWS: Install GSTREAMER "MINGW" *64 bit RUNTIME & DEVEL*: [This is the website](https://gstreamer.freedesktop.org/download/#windows)
 
     - Qt6: Install via your system package manager or the official [Qt website](https://www.qt.io/).
     - FFmpeg: Install from [FFmpeg website](https://ffmpeg.org/) or via your system package manager.
     - yt-dlp: Install from [yt-dlp GitHub page](https://github.com/yt-dlp/yt-dlp).
 
-    Pitch correction plugin for LINUX hosts:
-    - LADSPA Tom Baran AutoTalent: Install from [His website](http://tombaran.info/autotalent.html) or via pkg manager
-    Pitch correction plugin for WINDOWS hosts:
-    - LV2 TalentedHack: bundled in ZIP, but [The website is here](https://github.com/jeremysalwen/TalentedHack).
-
+    Pitch correction LV2 plugin:
+    - Gareus Autotuner X42 [Visit website](https://x42-plugins.com/x42/x42-autotune) or install via package managers.
 
 3. Build the project:
 
@@ -71,15 +67,16 @@ To build and run this application, ensure you have the following:
     ./WakkaQt
     ```
 
-
 ## Usage
 
-1. **Load Karaoke Track:** Use the "Load playback from disk" button to load a video or audio file for the karaoke session.
+1. **Load Karaoke Track:** Use the "Load playback from disk" button to load a video or audio file for the karaoke session. It will start a preview of the playback, and enables the SING button so you can start recording.
 2. **Select Input Device:** Choose the microphone or audio input device for recording.
 3. **Sing & Record:** Click the "♪ SING ♪" button to start recording. The webcam will be used to record a video, while the audio input will record your voice.
 4. **Stop Recording:** Once finished, click the "Finish!" button to stop the recording.
-5. **Render the Video:** You can preview the mix of vocals and the karaoke track before saving the final video or audio file.
-6. **Download YouTube Video:** You can enter a YouTube URL to download and use as a karaoke track.
+5. **Adjust vocals volume** Once finished recording, a dialog appears with a slider for you to amplify or reduce volume of the vocals.
+6. **Render the Video:** You can render and preview the mix of vocals and the karaoke track before the final video or audio file.
+7. **Download YouTube Video:** You can enter a YouTube URL to download and use as a karaoke track. Other streaming services URL might work as well.
+8. **Render again:** This button appears after rendering, so you can save a new filename and adjust options again, then render, again :D
 
 ## Project Structure
 
@@ -92,7 +89,17 @@ To build and run this application, ensure you have the following:
 
 The application uses FFmpeg to mix the recorded webcam video and vocals with the karaoke video. It applies various audio filters like normalization, echo, and compression to enhance vocal quality.
 
-Ensure that FFmpeg is correctly installed and added to your system's `PATH` for the app to work as expected.
+Ensure that FFmpeg is correctly installed and added to your system's `PATH` for the app to work as expected. Except on windows, because:
+
+## About Windows bundle ZIP
+
+  - **A proper FFMPEG binary version with LV2 support** is already on the root of the application directory.
+  - **yt-dlp** is already there too, for your convenience.
+  - First download and **INSTALL the GStreamer mingw 64 bit _runtime_ .MSI** [official link](https://gstreamer.freedesktop.org/download/#windows)
+  - You will need DirectX runtime [download and install from Microsoft](https://www.microsoft.com/en-us/download/details.aspx?id=35)
+  - You will need VC REDIST x64 [download and install from Microsoft](https://aka.ms/vs/17/release/vc_redist.x64.exe) 
+  - After extracting the ZIP, please double-click to **run as _normal_ user the CONFIG.BAT script**. It will set up environment variables and copy the LV2 plugin to the correct directory. It will ask admin permissions for that. PS: run as _normal user_, admin permissions will be _asked later_;
+  - NOTE: **antivirus software degrade this software a lot**, and **VPNs might make streaming services to block** the fetching of the video file when running *yt-dlp*.
 
 ## Contributing
 
@@ -100,5 +107,5 @@ Feel free to contribute by submitting pull requests or reporting issues in the [
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License
 

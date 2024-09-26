@@ -631,11 +631,15 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
                             .arg(userRez);
     }
 
+/*
 #ifdef _WIN32  // on Windows we need to use TalentedHack since AutoTalent does not export LADSPA descriptor correctly for the .dll
     QString talent = "lv2=urn\\\\:jeremy.salwen\\\\:plugins\\\\:talentedhack,";
 #else  // on Linux AutoTalent is widely available on website and also package managers
     QString talent = "ladspa=file=autotalent:plugin=autotalent,";
-#endif   
+#endif   */
+
+    // Gareus is less violent and results in a less robotic voice.
+    QString talent = "lv2=http\\\\://gareus.org/oss/lv2/fat1,";
 
     arguments << "-y" // Overwrite output file if it exists
           << "-fflags" << "+genpts"

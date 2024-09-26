@@ -26,11 +26,12 @@ if (WIN32)
     
     # GStreamer include and library directories
     set(GSTREAMER_INCLUDE_DIRS 
-        "C:/gstreamer/include/gstreamer-1.0"
-        "C:/gstreamer/include/glib-2.0"
-        "C:/gstreamer/lib/glib-2.0/include")
+        "C:/gstreamer/1.0/mingw_x86_64/include/gstreamer-1.0"
+        "C:/gstreamer/1.0/mingw_x86_64/include/glib-2.0"
+        "C:/gstreamer/1.0/mingw_x86_64/include/"
+        "C:/gstreamer/1.0/mingw_x86_64/lib/glib-2.0/include")
     
-    set(GSTREAMER_LIBRARY_DIRS "C:/gstreamer/lib")
+    set(GSTREAMER_LIBRARY_DIRS "C:/gstreamer/1.0/mingw_x86_64/lib")
 
     # Libraries to link against (adjusted for MinGW)
     set(GSTREAMER_LIBRARIES

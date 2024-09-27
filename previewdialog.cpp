@@ -118,16 +118,31 @@ double PreviewDialog::getVolume() const {
 }
 
 void PreviewDialog::replayAudioPreview() {
-    // Stop the amplifier to reset the state properly
+    // Check if amplifier is playing
     if (amplifier->isPlaying()) {
+        // Stop playback and reset the audio components before replaying
         amplifier->stop();
+        amplifier->resetAudioComponents();  // Reset the amplifier components
     }
 
-    // Rewind the amplifier (audio buffer)
-    amplifier->rewind();
+    QString tempAudioFile = QDir::temp().filePath("WakkaQt_extracted_audio.wav");
+    
+    // Check if file exists and is valid
+    QFile audioFile(tempAudioFile);
+    if (audioFile.exists() && audioFile.size() > 0) {
+        audioFile.open(QIODevice::ReadOnly);
+        QByteArray audioData = audioFile.readAll();
+        audioFile.close();
 
-    // Start playback again
-    amplifier->start();
+        // Set the audio data to the amplifier
+        amplifier->setAudioData(audioData);
+
+        // Rewind and start playback
+        amplifier->rewind();
+        amplifier->start();
+    } else {
+        qWarning() << "Audio extraction failed or file is empty.";
+    }
 }
 
 void PreviewDialog::stopAudioPreview() {

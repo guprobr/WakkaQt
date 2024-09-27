@@ -274,7 +274,7 @@ void MainWindow::configureMediaComponents()
     
     format->setFileFormat(QMediaFormat::MPEG4);
     format->setVideoCodec(QMediaFormat::VideoCodec::H264);
-    format->setAudioCodec(QMediaFormat::AudioCodec::AC3);
+    format->setAudioCodec(QMediaFormat::AudioCodec::Wave);
 
     connect(mediaRecorder.data(), &QMediaRecorder::recorderStateChanged, this, &MainWindow::onRecorderStateChanged);
     connect(mediaRecorder.data(), &QMediaRecorder::errorOccurred, this, &MainWindow::handleRecorderError);

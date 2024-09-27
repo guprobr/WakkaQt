@@ -400,7 +400,7 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
         if (!recordingCheckTimer) {
                 recordingCheckTimer.reset(new QTimer(this));
                 connect(recordingCheckTimer.data(), &QTimer::timeout, this, &MainWindow::checkRecordingStart);
-                recordingCheckTimer->start(55);
+                recordingCheckTimer->start(1);
         }  // start violently probing for confirmed recording data.
         // this generates offset also guards mediaRecorder sanity.
     }
@@ -446,17 +446,17 @@ void MainWindow::checkRecordingStart() {
 
             recordingEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK RECORDING TIMESTAMP
             qDebug() << "partial mediaRecorder Duration:" << mediaRecorder->duration();
-            qDebug() << "player postition:" << player->position();
+            qDebug() << "player position:" << player->position();
 
             // This is an estimated offset for better sync
             // when rendering, we trim the recorded audio and video by this offset
         
-            offset = (recordingEventTime - playbackEventTime);
+            offset = (recordingEventTime - ( playbackEventTime + player->position() ));
         
             qDebug() << "Offset between playback start and recording start: " << offset << " ms";
             logTextEdit->append(QString("Offset between playback start and recording start: %1 ms").arg(offset));
 
-            player->setPosition(offset);
+            //player->setPosition(offset);
         }
 
     // Protect the sanity of Time (!) This tiny part of code guards the Universe from becoming unstable and cease existance of us all! !!

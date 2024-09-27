@@ -1,181 +1,155 @@
 #include "previewdialog.h"
+#include "audioamplifier.h"
+
 #include <QVBoxLayout>
-#include <QHBoxLayout>
-#include <QFileDialog>
-#include <QMessageBox>
-#include <QThread>
+#include <QProcess>
+#include <QFile>
+#include <QDir>
 #include <QTimer>
+#include <QString>
 
+// PreviewDialog class implementation
 PreviewDialog::PreviewDialog(QWidget *parent)
-    : QDialog(parent),
-      volumeSlider(new QSlider(Qt::Horizontal)),
-      volumeValueLabel(new QLabel("Volume: 100%")), // Initial label for 100%
-      durationLabel(new QLabel("Duration: 00:00:00")), // Label for duration
-      playButton(new QPushButton("Play")),
-      stopButton(new QPushButton("Stop")),
-      renderButton(new QPushButton("Render")),
-      currentVolume(100), // Initialize currentVolume to 100%
-      timer(new QTimer(this)) // Initialize the timer
-{
-    setupUi();
+    : QDialog(parent), amplifier(nullptr), volume(1.0), pendingVolumeValue(100) { // Initialize pendingVolumeValue
+    setWindowTitle("Audio Preview with Amplification");
 
-    // Connect the timer's timeout signal to the update duration slot
-    connect(timer, &QTimer::timeout, this, &PreviewDialog::updateDuration);
+    // Setup UI
+    QVBoxLayout *layout = new QVBoxLayout(this);
+
+    volumeDial = new QDial(this);  // Change from QSlider to QDial
+    volumeDial->setRange(0, 300);   // 0% to 300% amplification
+    volumeDial->setValue(100);       // Default 100% volume (no amplification)
+    volumeDial->setNotchesVisible(true); // Show notches for better precision
+
+    // Initialize UI elements
+    QLabel *volumeLabel = new QLabel("Volume Amplification", this);
+    this->volumeLabel = new QLabel("Current Volume: 100%", this); // Initialize the volume label
+
+    startButton = new QPushButton("Replay", this);
+    stopButton = new QPushButton("Render", this);
+
+    layout->addWidget(volumeLabel);
+    layout->addWidget(volumeDial);
+    layout->addWidget(this->volumeLabel); // Add the volume label to the layout
+    layout->addWidget(startButton);
+    layout->addWidget(stopButton);
+
+    setLayout(layout);
+    setFixedSize(800, 240);
+
+    // Setup audio format
+    QAudioFormat format;
+    format.setSampleRate(44100);
+    format.setChannelCount(2);
+    format.setSampleFormat(QAudioFormat::SampleFormat::Int16);  // Set sample format to Int16
+
+    // Initialize Audio Amplifier
+    amplifier = new AudioAmplifier(format, this);
+
+    // Connect UI elements to functions
+    connect(startButton, &QPushButton::clicked, this, &PreviewDialog::replayAudioPreview);
+    connect(stopButton, &QPushButton::clicked, this, &PreviewDialog::stopAudioPreview);
+    connect(volumeDial, &QDial::valueChanged, this, &PreviewDialog::onDialValueChanged);  // Connect to dial value change
+
+    // Initialize the volume change timer
+    volumeChangeTimer = new QTimer(this);
+    connect(volumeChangeTimer, &QTimer::timeout, this, &PreviewDialog::updateVolume);
+    volumeChangeTimer->setSingleShot(true);  // Ensure the timer only runs once for each dial adjustment
 }
 
 PreviewDialog::~PreviewDialog() {
-    // Clean up media players and audio outputs
-    qDeleteAll(mediaPlayers);
-    qDeleteAll(audioOutputs);
-    mediaPlayers.clear();
-    audioOutputs.clear();
-}
-
-void PreviewDialog::setupUi() {
-    // Set window title
-    this->setWindowTitle("Vocal Preview & Volume Adjustment");
-
-    volumeSlider->setRange(0, 1000); // Volume range from 0% to 1000%
-    volumeSlider->setValue(100); // Default volume to 100%
-
-    // Create explanation label
-    QLabel *explanationLabel = new QLabel("This is a very low quality vocal preview just to adjust volume before rendering");
-
-    // Set up layout
-    QVBoxLayout *mainLayout = new QVBoxLayout(this);
-    
-    // Add explanation label to the top of the layout
-    mainLayout->addWidget(explanationLabel);
-
-    // Create a layout for the volume control
-    QHBoxLayout *volumeLayout = new QHBoxLayout();
-    volumeLayout->addWidget(volumeSlider);
-    volumeLayout->addWidget(volumeValueLabel);
-    
-    // Create a layout for the control buttons
-    QHBoxLayout *controlsLayout = new QHBoxLayout();
-    controlsLayout->addWidget(playButton);
-    controlsLayout->addWidget(stopButton);
-    controlsLayout->addWidget(renderButton);
-    
-    // Create a layout for the duration label
-    QHBoxLayout *durationLayout = new QHBoxLayout();
-    durationLayout->addWidget(durationLabel);
-
-    // Add all layouts to the main layout
-    mainLayout->addLayout(volumeLayout);
-    mainLayout->addLayout(controlsLayout);
-    mainLayout->addLayout(durationLayout);
-
-    setLayout(mainLayout);
-
-    // Connect signals and slots
-    connect(volumeSlider, &QSlider::valueChanged, this, &PreviewDialog::updateVolume); // Connect volume slider change
-    connect(playButton, &QPushButton::clicked, this, &PreviewDialog::playAudio);
-    connect(stopButton, &QPushButton::clicked, this, &PreviewDialog::stopAudio);
-    connect(renderButton, &QPushButton::clicked, this, &PreviewDialog::accept); // Call accept when render button is clicked
+    amplifier->stop();
+    delete amplifier;
 }
 
 void PreviewDialog::setAudioFile(const QString &filePath) {
-    audioFilePath = filePath; // Store the audio file path
+    audioFilePath = filePath;  // Store the provided file path
+    qDebug() << "Audio file set to:" << audioFilePath;
+
+    // Initialize the QProcess
+    QProcess *ffmpegProcess = new QProcess(this);
+
+    // Temporary output file for the extracted audio
+    QString tempAudioFile = QDir::temp().filePath("WakkaQt_extracted_audio.wav");
+
+    // Prepare FFmpeg command
+    QStringList arguments;
+    arguments << "-y" << "-i" << audioFilePath << "-vn" << "-acodec" << "pcm_s16le" << tempAudioFile;
+
+    // Connect the finished signal
+    connect(ffmpegProcess, &QProcess::finished, this, [this, tempAudioFile, ffmpegProcess](int exitCode, QProcess::ExitStatus exitStatus) {
+        if (exitStatus == QProcess::CrashExit || exitCode != 0) {
+            qWarning() << "FFmpeg process crashed or exited with error code:" << exitCode;
+            return;
+        }
+
+        // Check if the extraction was successful
+        QFile audioFile(tempAudioFile);
+        if (audioFile.exists() && audioFile.size() > 0) {
+            audioFile.open(QIODevice::ReadOnly);
+            QByteArray audioData = audioFile.readAll();
+            audioFile.close();
+
+            // Set the audio data in the AudioAmplifier
+            amplifier->setAudioData(audioData);
+
+            // Start playback if necessary
+            amplifier->start();
+        } else {
+            qWarning() << "Audio extraction failed or file is empty.";
+        }
+
+        ffmpegProcess->deleteLater(); // Clean up process object
+    });
+
+    // Start the process
+    ffmpegProcess->start("ffmpeg", arguments);
+    if (!ffmpegProcess->waitForStarted()) {
+        qWarning() << "Failed to start FFmpeg.";
+        delete ffmpegProcess; // Clean up if starting failed
+        return;
+    }
 }
 
 double PreviewDialog::getVolume() const {
-    return currentVolume / 100; 
+    return volume;  // Return the current volume level
 }
 
-void PreviewDialog::accept() {
-    currentVolume = volumeSlider->value(); // Update the current volume before accepting
-    QDialog::accept(); // Call base class accept
-}
-
-void PreviewDialog::playAudio() {
-    // Clear previous media players and audio outputs
-    qDeleteAll(mediaPlayers);
-    qDeleteAll(audioOutputs);
-    mediaPlayers.clear();
-    audioOutputs.clear();
-
-    // Check if audio file path is set
-    if (audioFilePath.isEmpty()) {
-        QMessageBox::warning(this, "Warning", "No audio file selected.");
-        return;
+void PreviewDialog::replayAudioPreview() {
+    // Stop the amplifier to reset the state properly
+    if (amplifier->isPlaying()) {
+        amplifier->stop();
     }
 
-    int numberOfPlayers = 5;     
+    // Rewind the amplifier (audio buffer)
+    amplifier->rewind();
 
-    for (int i = 0; i < numberOfPlayers; ++i) {
-        QMediaPlayer *player = new QMediaPlayer(this);
-        QAudioOutput *audioOutput = new QAudioOutput(this);
-
-        player->setSource(QUrl::fromLocalFile(audioFilePath));
-        audioOutput->setVolume(1.0); // Set volume to 100% for each audio output
-        player->setAudioOutput(audioOutput); // Link the media player to the audio output
-        
-        // Start playback
-        player->play();
-
-        // Store the player and audio output for cleanup later
-        mediaPlayers.append(player);
-        audioOutputs.append(audioOutput);
-    }
-    for (QMediaPlayer *player : mediaPlayers) 
-       player->setPosition(0);
-        
-
-    // Start the timer to update duration and adj vol to current slider value
-    updateVolume(currentVolume);
-    timer->start(1000); // Update every second
+    // Start playback again
+    amplifier->start();
 }
 
-void PreviewDialog::stopAudio() {
-    // Stop all media players
-    for (QMediaPlayer *player : mediaPlayers)
-        player->stop();
-
-    // Stop the timer
-    timer->stop();
-    durationLabel->setText("Duration: 00:00:00"); // Reset duration label when stopped
+void PreviewDialog::stopAudioPreview() {
+    amplifier->stop();
+    qWarning() << "Volume adj factor:" << volume;
+    accept();
 }
 
-void PreviewDialog::updateVolume(int value) {
-    volumeValueLabel->setText(QString("Volume: %1%").arg(value)); // Update the label to show the current volume
-    currentVolume = value; // Update current volume
+void PreviewDialog::onDialValueChanged(int value) {
+    // Stop the timer if it's already running
+    volumeChangeTimer->stop();
 
-    // Update volume for all audio outputs
-    double scaledVolume = value / 500.0; 
-    for (QAudioOutput *audioOutput : audioOutputs) {
-        audioOutput->setVolume(scaledVolume); // Set the volume for each audio output
-    }
+    // Store the pending volume value
+    pendingVolumeValue = value;
+
+    // Start the timer to update volume after a delay (1 sec)
+    volumeChangeTimer->start(1000);
 }
 
-void PreviewDialog::updateDuration() {
-    // Update elapsed duration and total duration label for the first media player only
-    if (!mediaPlayers.isEmpty()) {
-        QMediaPlayer *player = mediaPlayers.first(); // Get the first player
+void PreviewDialog::updateVolume() {
+    // Scale the dial value to a volume factor, where 100% = 1.0 (no amplification) and zero = mute
+    volume = static_cast<double>(pendingVolumeValue) / 100.0;
+    amplifier->setVolumeFactor(volume);
 
-        // Get elapsed position in milliseconds
-        qint64 elapsedDuration = player->position(); 
-        // Get total duration in milliseconds
-        qint64 totalDuration = player->duration(); 
-
-        // Convert elapsed milliseconds to hh:mm:ss format
-        int elapsedSeconds = (elapsedDuration / 1000) % 60;
-        int elapsedMinutes = (elapsedDuration / (1000 * 60)) % 60;
-        int elapsedHours = (elapsedDuration / (1000 * 60 * 60)) % 24;
-
-        // Convert total milliseconds to hh:mm:ss format
-        int totalSeconds = (totalDuration / 1000) % 60;
-        int totalMinutes = (totalDuration / (1000 * 60)) % 60;
-        int totalHours = (totalDuration / (1000 * 60 * 60)) % 24;
-
-        // Update duration label to show elapsed and total duration
-        durationLabel->setText(QString("Elapsed: %1:%2:%3 / Total: %4:%5:%6")
-            .arg(elapsedHours, 2, 10, QChar('0'))
-            .arg(elapsedMinutes, 2, 10, QChar('0'))
-            .arg(elapsedSeconds, 2, 10, QChar('0'))
-            .arg(totalHours, 2, 10, QChar('0'))
-            .arg(totalMinutes, 2, 10, QChar('0'))
-            .arg(totalSeconds, 2, 10, QChar('0')));
-    }
+    // Update the volume label to inform the user
+    volumeLabel->setText(QString("Current Volume: %1%").arg(pendingVolumeValue));
 }

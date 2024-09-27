@@ -2,49 +2,41 @@
 #define PREVIEWDIALOG_H
 
 #include <QDialog>
-#include <QMediaPlayer>
-#include <QAudioOutput>
-#include <QSlider>
-#include <QLabel>
+#include <QAudioFormat>
+#include <QDial>
 #include <QPushButton>
-#include <QList>
-#include <QString>
-#include <QTimer> 
+#include <QLabel>
+#include <QProcess>
+#include <QTimer>
+
+class AudioAmplifier;  // Forward declaration
 
 class PreviewDialog : public QDialog {
     Q_OBJECT
 
 public:
     explicit PreviewDialog(QWidget *parent = nullptr);
-    ~PreviewDialog() override;
+    ~PreviewDialog();
 
     void setAudioFile(const QString &filePath);
     double getVolume() const;
 
-protected:
-    void accept() override;
-
 private slots:
-    void playAudio();
-    void stopAudio();
-    void updateVolume(int value);
-    void updateDuration(); 
+    void replayAudioPreview();
+    void stopAudioPreview();
+    void onDialValueChanged(int value);
+    void updateVolume();
 
 private:
-    void setupUi();
-
-    QSlider *volumeSlider;
-    QLabel *volumeValueLabel;
-    QLabel *durationLabel; 
-    QPushButton *playButton;
+    AudioAmplifier *amplifier;
+    QDial *volumeDial;
+    QPushButton *startButton;
     QPushButton *stopButton;
-    QPushButton *renderButton;
-
+    QLabel *volumeLabel;           // Label to display the current volume
+    QTimer *volumeChangeTimer;
     QString audioFilePath;
-    QList<QMediaPlayer *> mediaPlayers;
-    QList<QAudioOutput *> audioOutputs;
-    QTimer *timer; // Timer to update duration
-    int currentVolume;
+    double volume;
+    int pendingVolumeValue;        // Store the pending volume value
 };
 
 #endif // PREVIEWDIALOG_H

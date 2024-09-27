@@ -143,8 +143,8 @@ void PreviewDialog::onDialValueChanged(int value) {
     // Store the pending volume value
     pendingVolumeValue = value;
 
-    // Start the timer to update volume after a delay (1 sec)
-    volumeChangeTimer->start(1000);
+    // Start the timer to update volume after a delay (2 sec)
+    volumeChangeTimer->start(2000);
 }
 
 void PreviewDialog::updateVolume() {

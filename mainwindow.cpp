@@ -371,7 +371,6 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status)
         if ( isRecording ) {
 
             qDebug() << "Media is playing! Start mediaRecorder.";
-            playbackEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK PLAYBACK TIMESTAMP
             camera->start();
             mediaRecorder->record();
 
@@ -381,6 +380,7 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status)
     if (status == QMediaPlayer::LoadedMedia || status == QMediaPlayer::BufferingMedia ) {
         // Ensure player starts or resumes correctly
         player->play();
+        playbackEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK PLAYBACK TIMESTAMP
         playbackTimer->start(1000); // the playback cronometer
     }
 }
@@ -402,7 +402,7 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
         if (!recordingCheckTimer) {
                 recordingCheckTimer.reset(new QTimer(this));
                 connect(recordingCheckTimer.data(), &QTimer::timeout, this, &MainWindow::checkRecordingStart);
-                recordingCheckTimer->start(1);
+                recordingCheckTimer->start(33);
         }  // start violently probing for confirmed recording data.
         // this generates offset also guards mediaRecorder sanity.
     }
@@ -439,9 +439,11 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
 
 void MainWindow::checkRecordingStart() {
 
-    if (mediaRecorder->duration() > 0) { // ONLY if we are sure recording is happening...
+    if (mediaRecorder->duration() > 0) 
+    { 
 
-        if ( player->position() > 0 ) { // and we are sure media is actually playing, when this is not zero
+        if ( player->position() > 0 ) 
+        { 
             // stop probing
             recordingCheckTimer->stop();
             recordingCheckTimer.reset();
@@ -456,10 +458,9 @@ void MainWindow::checkRecordingStart() {
             qDebug() << "Offset between playback start and recording start: " << offset << " ms";
             logTextEdit->append(QString("Offset between playback start and recording start: %1 ms").arg(offset));
 
-            player->setPosition(offset); // :)
+            /////player->setPosition(offset); // :)
         }
-
-    // Protect the sanity of Time (!) This tiny part of code guards the Universe from becoming unstable and cease existance of us all! !!
+        
         if ( mediaRecorder->duration() > 333 ) {
             qWarning() << "Something is wrong with mediaRecorder. Aborting recording session. SORRY";
             logTextEdit->append("detected unstable mediaRecorder. PLEASE TRY AGAIN SORRY");

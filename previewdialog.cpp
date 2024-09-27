@@ -74,7 +74,7 @@ void PreviewDialog::setAudioFile(const QString &filePath) {
 
     // Prepare FFmpeg command
     QStringList arguments;
-    arguments << "-y" << "-i" << audioFilePath << "-vn" << "-acodec" << "pcm_s16le" << tempAudioFile;
+    arguments << "-y" << "-i" << audioFilePath << "-vn" << "-acodec" << "pcm_s16le" << "-ar" << "44100" << tempAudioFile;
 
     // Connect the finished signal
     connect(ffmpegProcess, &QProcess::finished, this, [this, tempAudioFile, ffmpegProcess](int exitCode, QProcess::ExitStatus exitStatus) {

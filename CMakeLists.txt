@@ -44,9 +44,8 @@ if (WIN32)
     )
 
     # Ensure static linking options are added correctly
-    list(APPEND CMAKE_CXX_FLAGS -static-libgcc)
-    list(APPEND CMAKE_CXX_FLAGS -static-libstdc++)
-    list(APPEND CMAKE_EXE_LINKER_FLAGS -static)
+    list(APPEND CMAKE_CXX_FLAGS "-static-libgcc" "-static-libstdc++")
+    list(APPEND CMAKE_EXE_LINKER_FLAGS "-static")
     
     # Include directories and link directories
     include_directories(${GSTREAMER_INCLUDE_DIRS})

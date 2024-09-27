@@ -282,7 +282,7 @@ void MainWindow::configureMediaComponents()
 
     mediaRecorder->setMediaFormat(*format);
     mediaRecorder->setOutputLocation(QUrl::fromLocalFile(webcamRecorded));
-    mediaRecorder->setQuality(QMediaRecorder::VeryLowQuality);
+    mediaRecorder->setQuality(QMediaRecorder::VeryHighQuality);
 
     qDebug() << "Reconfigured media components";
 
@@ -356,10 +356,11 @@ try {
         resetAudioComponents(false);
         
         isRecording = true;
-        playbackEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK PLAYBACK TIMESTAMP
+        
         player->setSource(QUrl::fromLocalFile(currentVideoFile));
         addProgressBarToScene(scene, getMediaDuration(currentVideoFile));
-
+        playbackEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK PLAYBACK TIMESTAMP 
+        
         if (mediaRecorder ) {
 
             // START TO RECORD ONLY AFTER PLAYBACK OKEY
@@ -369,6 +370,8 @@ try {
             mediaCaptureSession->setRecorder(mediaRecorder.data());
                 
         }
+
+        
 
     } catch (const std::exception &e) {
         logTextEdit->append("Error during startRecording: " + QString::fromStdString(e.what()));
@@ -412,7 +415,7 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
         if (!recordingCheckTimer) {
                 recordingCheckTimer.reset(new QTimer(this));
                 connect(recordingCheckTimer.data(), &QTimer::timeout, this, &MainWindow::checkRecordingStart);
-                recordingCheckTimer->start(111);
+                recordingCheckTimer->start(1);
         }  // start violently probing for confirmed recording data.
         // this generates offset also guards mediaRecorder sanity.
     }
@@ -461,14 +464,11 @@ void MainWindow::checkRecordingStart() {
             qDebug() << "partial mediaRecorder Duration:" << mediaRecorder->duration();
             qDebug() << "mediaPlayer position:" << player->position();
 
+            player->setPosition(mediaRecorder->duration()); // :)
+
             offset = (recordingEventTime - playbackEventTime);
-        
             qDebug() << "Offset between playback start and recording start: " << offset << " ms";
             logTextEdit->append(QString("Offset between playback start and recording start: %1 ms").arg(offset));
-
-            player->setPosition(offset); // :)
-
-            offset = mediaRecorder->duration();
         }
         
         if ( mediaRecorder->duration() > 333 ) {

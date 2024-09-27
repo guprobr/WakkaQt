@@ -46,7 +46,7 @@ void AudioAmplifier::start() {
         // Create a timer to periodically check the buffer state
         QTimer* bufferCheckTimer = new QTimer(this);
         connect(bufferCheckTimer, &QTimer::timeout, this, &AudioAmplifier::checkBufferState);
-        bufferCheckTimer->start(100);  // Check every 100 ms
+        bufferCheckTimer->start(50);  // Check every 50 ms
 
         qDebug() << "Started playback with amplified audio data.";
     } else {
@@ -58,7 +58,7 @@ void AudioAmplifier::checkBufferState() {
     qint64 totalDuration = audioBuffer.size() * 1000000 / (audioSink->format().sampleRate() * audioSink->format().channelCount() * audioSink->format().bytesPerSample()); // Total duration in microseconds
     qint64 processedDuration = audioSink->processedUSecs();  // How much has been processed
 
-    qint64 threshold = 500000;  // Stop 500 ms (500,000 us) before the end
+    qint64 threshold = 800000;  // Stop 800 ms (800,000 us) before the end
 
     // Check if we're near the end of the buffer
     if (processedDuration >= totalDuration - threshold) {

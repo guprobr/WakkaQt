@@ -43,8 +43,10 @@ if (WIN32)
         ${GSTREAMER_LIBRARY_DIRS}/libgthread-2.0.dll.a
     )
 
-    # MinGW runtime (static)
-    set(MINGW_RUNTIME "-static-libgcc -static-libstdc++ -static")
+    # Ensure static linking options are added correctly
+    list(APPEND CMAKE_CXX_FLAGS -static-libgcc)
+    list(APPEND CMAKE_CXX_FLAGS -static-libstdc++)
+    list(APPEND CMAKE_EXE_LINKER_FLAGS -static)
     
     # Include directories and link directories
     include_directories(${GSTREAMER_INCLUDE_DIRS})
@@ -91,9 +93,3 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${GSTREAMER_INCLUDE_DIRS}
 )
-
-# Set the necessary linker flags for MinGW
-if(MINGW)
-    target_compile_options(${PROJECT_NAME} PRIVATE ${MINGW_RUNTIME})
-    set_target_properties(${PROJECT_NAME} PROPERTIES LINK_FLAGS "${MINGW_RUNTIME} -static")
-endif()

@@ -58,6 +58,7 @@ MainWindow::MainWindow(QWidget *parent)
         placeholderLabel->setPixmap(placeholderPixmap.scaled(320, 240, Qt::KeepAspectRatio));
     }
     placeholderLabel->setAlignment(Qt::AlignCenter);
+    placeholderLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
     // Create the scene and view
     scene = new QGraphicsScene(this);

@@ -9,6 +9,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)  # Enable automatic handling of Qt resource files
 
+# Force static linking
+set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
+set(BUILD_SHARED_LIBS OFF)  # Disable shared libraries by default
+
 # Find the required Qt modules
 find_package(Qt6 REQUIRED COMPONENTS
     Core
@@ -21,9 +25,6 @@ find_package(Qt6 REQUIRED COMPONENTS
 if (WIN32)
     message(STATUS "Detected Windows (WIN32)")
 
-    set(MinGW_runtime ${MINGW_LIB_DIR}/libmingw32.a )
-    message(STATUS "MinGW runtime: ${MinGW_runtime}" )
-    
     # GStreamer include and library directories
     set(GSTREAMER_INCLUDE_DIRS 
         "C:/gstreamer/1.0/mingw_x86_64/include/gstreamer-1.0"
@@ -33,15 +34,18 @@ if (WIN32)
     
     set(GSTREAMER_LIBRARY_DIRS "C:/gstreamer/1.0/mingw_x86_64/lib")
 
-    # Libraries to link against (adjusted for MinGW)
+    # Libraries to link against (use static libraries)
     set(GSTREAMER_LIBRARIES
-        ${GSTREAMER_LIBRARY_DIRS}/libgstreamer-1.0.dll.a
-        ${GSTREAMER_LIBRARY_DIRS}/libgobject-2.0.dll.a
-        ${GSTREAMER_LIBRARY_DIRS}/libglib-2.0.dll.a
-        ${GSTREAMER_LIBRARY_DIRS}/libgmodule-2.0.dll.a
-        ${GSTREAMER_LIBRARY_DIRS}/libgthread-2.0.dll.a
+        ${GSTREAMER_LIBRARY_DIRS}/libgstreamer-1.0.a
+        ${GSTREAMER_LIBRARY_DIRS}/libgobject-2.0.a
+        ${GSTREAMER_LIBRARY_DIRS}/libglib-2.0.a
+        ${GSTREAMER_LIBRARY_DIRS}/libgmodule-2.0.a
+        ${GSTREAMER_LIBRARY_DIRS}/libgthread-2.0.a
     )
 
+    # MinGW runtime (static)
+    set(MINGW_RUNTIME "-static-libgcc -static-libstdc++ -static")
+    
     # Include directories and link directories
     include_directories(${GSTREAMER_INCLUDE_DIRS})
     link_directories(${GSTREAMER_LIBRARY_DIRS})
@@ -53,6 +57,7 @@ else()
     include_directories(${GSTREAMER_INCLUDE_DIRS})
     link_directories(${GSTREAMER_LIBRARY_DIRS})
 endif()
+
 message(STATUS "GStreamer include directories: ${GSTREAMER_INCLUDE_DIRS}")
 
 # Add the resource file
@@ -79,7 +84,6 @@ target_link_libraries(${PROJECT_NAME}
     Qt6::Multimedia
     Qt6::MultimediaWidgets
     ${GSTREAMER_LIBRARIES}
-    ${MinGW_runtime}
 )
 
 # Include headers
@@ -87,3 +91,9 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${GSTREAMER_INCLUDE_DIRS}
 )
+
+# Set the necessary linker flags for MinGW
+if(MINGW)
+    target_compile_options(${PROJECT_NAME} PRIVATE ${MINGW_RUNTIME})
+    set_target_properties(${PROJECT_NAME} PROPERTIES LINK_FLAGS "${MINGW_RUNTIME} -static")
+endif()

@@ -96,8 +96,7 @@ Ensure that FFmpeg is correctly installed and added to your system's `PATH` for 
   - **A proper FFMPEG binary version with LV2 support** is already on the root of the application directory.
   - **yt-dlp** is already there too, for your convenience.
   - First download and **INSTALL the GStreamer mingw 64 bit _runtime_ .MSI** [official link](https://gstreamer.freedesktop.org/download/#windows)
-  - You will need DirectX runtime [download and install from Microsoft](https://www.microsoft.com/en-us/download/details.aspx?id=35)
-  - You will need VC REDIST x64 [download and install from Microsoft](https://aka.ms/vs/17/release/vc_redist.x64.exe) 
+
   - After extracting the ZIP, please double-click to **run as _normal_ user the CONFIG.BAT script**. It will set up environment variables and copy the LV2 plugin to the correct directory. It will ask admin permissions for that. PS: run as _normal user_, admin permissions will be _asked later_;
   - NOTE: **antivirus software degrade this software a lot**, and **VPNs might make streaming services to block** the fetching of the video file when running *yt-dlp*.
 

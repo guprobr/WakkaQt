@@ -43,16 +43,6 @@ if (WIN32)
         ${GSTREAMER_LIBRARY_DIRS}/libgthread-2.0.dll.a
     )
 
-    # Ensure static linking options are added correctly
-    target_compile_options(${PROJECT_NAME} PRIVATE
-        -static-libgcc
-        -static-libstdc++
-    )
-    
-    target_link_options(${PROJECT_NAME} PRIVATE
-        -static
-    )
-    
     # Include directories and link directories
     include_directories(${GSTREAMER_INCLUDE_DIRS})
     link_directories(${GSTREAMER_LIBRARY_DIRS})
@@ -82,6 +72,21 @@ add_executable(${PROJECT_NAME}
     previewdialog.h
     ${resources}
 )
+
+# Set static linking options for Windows
+if (WIN32)
+    message(STATUS "Detected Windows (WIN32)")
+
+    # Ensure static linking options are added correctly
+    target_compile_options(${PROJECT_NAME} PRIVATE
+        -static-libgcc
+        -static-libstdc++
+    )
+    
+    target_link_options(${PROJECT_NAME} PRIVATE
+        -static
+    )
+endif()
 
 # Link libraries in the correct order
 target_link_libraries(${PROJECT_NAME}

@@ -450,7 +450,7 @@ void MainWindow::checkRecordingStart() {
             qDebug() << "partial mediaRecorder Duration:" << mediaRecorder->duration();
             qDebug() << "player position:" << player->position();
 
-            offset = (recordingEventTime - playbackEventTime);
+            offset = (recordingEventTime - playbackEventTime) - player->position();
             offset += mediaRecorder->duration();
         
             qDebug() << "Offset between playback start and recording start: " << offset << " ms";

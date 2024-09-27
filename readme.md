@@ -1,8 +1,6 @@
 This software is currently in **Alpha stage** for developers to test. 
 Help requested: for Windows and MacOS tests. **Windows x86_64 zip bundle with binaries will be available soon.**
 
-NOTE: **gStreamer is mandatory on all platforms**
-
 *WARNING*:  Latest ubuntu "realtime" kernel 6.8 seems unstable; "low-latency" and the usual "generic" seems fine.
 
 # WakkaQt - Karaoke App
@@ -28,7 +26,6 @@ To build and run this application, ensure you have the following:
 - **FFmpeg** (for video/audio mixing and rendering)
 - **yt-dlp** (for downloading YouTube videos)
 - **Gareus X42 AutoTune** (LV2 pitch correction plugin)
-- **gStreamer** (plugins good, bad, ugly support)
 
 ## Installation
 
@@ -41,10 +38,6 @@ To build and run this application, ensure you have the following:
 
 2. Install dependencies:
    
-    - gStreamer: Probably already installed, but must have good, bad, ugly plugin set; 
-      NOTE: if you are compiling your own gStreamer, pass -Dgpl=enabled to Meson to enable x264enc, etc.
-      NOTE COMPILING ON WINDOWS: Install GSTREAMER "MINGW" *64 bit RUNTIME & DEVEL*: [This is the website](https://gstreamer.freedesktop.org/download/#windows)
-
     - Qt6: Install via your system package manager or the official [Qt website](https://www.qt.io/).
     - FFmpeg: Install from [FFmpeg website](https://ffmpeg.org/) or via your system package manager.
     - yt-dlp: Install from [yt-dlp GitHub page](https://github.com/yt-dlp/yt-dlp).
@@ -73,7 +66,7 @@ To build and run this application, ensure you have the following:
 2. **Select Input Device:** Choose the microphone or audio input device for recording.
 3. **Sing & Record:** Click the "♪ SING ♪" button to start recording. The webcam will be used to record a video, while the audio input will record your voice.
 4. **Stop Recording:** Once finished, click the "Finish!" button to stop the recording.
-5. **Adjust vocals volume** Once finished recording, a dialog appears with a slider for you to amplify or reduce volume of the vocals.
+5. **Adjust vocals volume** Once finished recording, a dialog appears with a slider for you to amplify or reduce volume of the vocals. It is a very low quality sound, just to adjust volumes. After rendering it will sound much better.
 6. **Render the Video:** You can render and preview the mix of vocals and the karaoke track before the final video or audio file.
 7. **Download YouTube Video:** You can enter a YouTube URL to download and use as a karaoke track. Other streaming services URL might work as well.
 8. **Render again:** This button appears after rendering, so you can save a new filename and adjust options again, then render, again :D
@@ -95,8 +88,6 @@ Ensure that FFmpeg is correctly installed and added to your system's `PATH` for 
 
   - **A proper FFMPEG binary version with LV2 support** is already on the root of the application directory.
   - **yt-dlp** is already there too, for your convenience.
-  - First download and **INSTALL the GStreamer mingw 64 bit _runtime_ .MSI** [official link](https://gstreamer.freedesktop.org/download/#windows)
-
   - After extracting the ZIP, please double-click to **run as _normal_ user the CONFIG.BAT script**. It will set up environment variables and copy the LV2 plugin to the correct directory. It will ask admin permissions for that. PS: run as _normal user_, admin permissions will be _asked later_;
   - NOTE: **antivirus software degrade this software a lot**, and **VPNs might make streaming services to block** the fetching of the video file when running *yt-dlp*.
 

@@ -2,64 +2,49 @@
 #define PREVIEWDIALOG_H
 
 #include <QDialog>
+#include <QMediaPlayer>
+#include <QAudioOutput>
 #include <QSlider>
-#include <QPushButton>
 #include <QLabel>
-#include <QTimer>
-#include <gst/gst.h>
+#include <QPushButton>
+#include <QList>
+#include <QString>
+#include <QTimer> 
 
-class PreviewDialog : public QDialog
-{
+class PreviewDialog : public QDialog {
     Q_OBJECT
 
 public:
     explicit PreviewDialog(QWidget *parent = nullptr);
-    ~PreviewDialog();
+    ~PreviewDialog() override;
 
     void setAudioFile(const QString &filePath);
     double getVolume() const;
 
+protected:
+    void accept() override;
+
 private slots:
-    void onOkButtonClicked();
-    void onVolumeSliderChanged(int value);
-    void onPlayButtonClicked();
-    void onStopButtonClicked();
-    void onSeekForwardButtonClicked();
-    void onSeekBackwardButtonClicked();
-    void enableSeekButtons();
-    void updateElapsedTime();
+    void playAudio();
+    void stopAudio();
+    void updateVolume(int value);
+    void updateDuration(); 
 
 private:
-    void initializeGStreamer();
-    bool pipelineIsValid();
-    void seek(gint64 timeOffset);
-    void rewindToBeginning();
-    static void on_pad_added(GstElement *src, GstPad *pad, gpointer data);
+    void setupUi();
 
     QSlider *volumeSlider;
-
-    QPushButton *okButton;
+    QLabel *volumeValueLabel;
+    QLabel *durationLabel; 
     QPushButton *playButton;
     QPushButton *stopButton;
-    QPushButton *seekForwardButton;
-    QPushButton *seekBackwardButton;
-    
-    QTimer *seekDelayTimer;
-    bool seekAllowed;
+    QPushButton *renderButton;
 
-    QLabel *sliderLabel;
-    QLabel *volumeValueLabel;
-    QLabel *elapsedTimeLabel;
-
-    QTimer *timer;
-
-    GstElement *pipeline;
-    GstElement *source;
-    GstElement *decode;
-    GstElement *convert;
-    GstElement *volume;
-    GstElement *sink;
-    GstElement *seeker;
+    QString audioFilePath;
+    QList<QMediaPlayer *> mediaPlayers;
+    QList<QAudioOutput *> audioOutputs;
+    QTimer *timer; // Timer to update duration
+    int currentVolume;
 };
 
 #endif // PREVIEWDIALOG_H

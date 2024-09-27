@@ -373,7 +373,7 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status)
         
     }
 
-    if (status == QMediaPlayer::LoadedMedia) {
+    if (status == QMediaPlayer::LoadedMedia || status == QMediaPlayer::BufferingMedia ) {
         // Ensure player starts or resumes correctly
         player->play();
         playbackTimer->start(1000); // the playback cronometer

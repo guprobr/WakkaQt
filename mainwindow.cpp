@@ -349,6 +349,16 @@ try {
         player->setSource(QUrl::fromLocalFile(currentVideoFile));
         addProgressBarToScene(scene, getMediaDuration(currentVideoFile));
 
+        if (mediaRecorder ) {
+
+            // START TO RECORD ONLY AFTER PLAYBACK OKEY
+            qWarning() << "Configuring mediaCaptureSession..";
+            mediaCaptureSession->setCamera(camera.data());
+            mediaCaptureSession->setAudioInput(audioInput.data());
+            mediaCaptureSession->setRecorder(mediaRecorder.data());
+                
+        }
+
     } catch (const std::exception &e) {
         logTextEdit->append("Error during startRecording: " + QString::fromStdString(e.what()));
         handleRecordingError();
@@ -358,34 +368,20 @@ try {
 void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status)
 {
     if (status == QMediaPlayer::BufferedMedia ) {
-
         if ( isRecording ) {
-            if (mediaRecorder ) {
 
-                // START TO RECORD ONLY AFTER PLAYBACK OKEY
-                qWarning() << "Configuring mediaCaptureSession..";
-                mediaCaptureSession->setCamera(camera.data());
-                mediaCaptureSession->setAudioInput(audioInput.data());
-                mediaCaptureSession->setRecorder(mediaRecorder.data());
-                
-            }
-        }
-        
+            qDebug() << "Media is playing! Start mediaRecorder.";
+            playbackEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK PLAYBACK TIMESTAMP
+            camera->start();
+            mediaRecorder->record();
+
+        }        
     }
 
     if (status == QMediaPlayer::LoadedMedia || status == QMediaPlayer::BufferingMedia ) {
         // Ensure player starts or resumes correctly
         player->play();
         playbackTimer->start(1000); // the playback cronometer
-
-        if ( isRecording ) {
-            qDebug() << "Media is playing! Start mediaRecorder.";
-            playbackEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK PLAYBACK TIMESTAMP
-            camera->start();
-            mediaRecorder->record();
-        }
-
-
     }
 }
 
@@ -454,16 +450,13 @@ void MainWindow::checkRecordingStart() {
             qDebug() << "partial mediaRecorder Duration:" << mediaRecorder->duration();
             qDebug() << "player position:" << player->position();
 
-            // This is an estimated offset for better sync
-            // when rendering, we trim the recorded audio and video by this offset
-            // we compensante for system latency with the EventTime timestamps.
-
-            offset = (recordingEventTime - playbackEventTime) + player->position();
+            offset = (recordingEventTime - playbackEventTime);
+            offset += mediaRecorder->duration();
         
             qDebug() << "Offset between playback start and recording start: " << offset << " ms";
             logTextEdit->append(QString("Offset between playback start and recording start: %1 ms").arg(offset));
 
-            ///////////////////////////////////player->setPosition(0); // :)
+            player->setPosition(offset); // :)
         }
 
     // Protect the sanity of Time (!) This tiny part of code guards the Universe from becoming unstable and cease existance of us all! !!

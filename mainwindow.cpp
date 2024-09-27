@@ -451,12 +451,12 @@ void MainWindow::checkRecordingStart() {
             // This is an estimated offset for better sync
             // when rendering, we trim the recorded audio and video by this offset
         
-            offset = (recordingEventTime - ( playbackEventTime + player->position() ));
+            offset = (recordingEventTime - playbackEventTime );
         
             qDebug() << "Offset between playback start and recording start: " << offset << " ms";
             logTextEdit->append(QString("Offset between playback start and recording start: %1 ms").arg(offset));
 
-            //player->setPosition(offset);
+            player->setPosition(mediaRecorder->duration());
         }
 
     // Protect the sanity of Time (!) This tiny part of code guards the Universe from becoming unstable and cease existance of us all! !!

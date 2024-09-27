@@ -37,7 +37,6 @@ MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , isRecording(false)
 {
-
     QString Wakka_welcome = "Welcome to WakkaQt " + Wakka_versione;
 
     // acquire app palette
@@ -47,56 +46,58 @@ MainWindow::MainWindow(QWidget *parent)
     // Create video widget
     videoWidget = new QVideoWidget(this);
     videoWidget->setMinimumSize(320, 240);
+    videoWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     videoWidget->hide();
-
+    
     // Create a QLabel to display the placeholder image
     placeholderLabel = new QLabel(this);
     QPixmap placeholderPixmap(":/images/logo.jpg");
     if (placeholderPixmap.isNull()) {
         qWarning() << "Failed to load placeholder image!";
     } else {
-        placeholderLabel->setPixmap(placeholderPixmap.scaled(videoWidget->size(), Qt::KeepAspectRatio));
+        placeholderLabel->setPixmap(placeholderPixmap.scaled(320, 240, Qt::KeepAspectRatio));
     }
     placeholderLabel->setAlignment(Qt::AlignCenter);
-    placeholderLabel->setGeometry(videoWidget->geometry());
 
-    //////////////// Create the scene and view
+    // Create the scene and view
     scene = new QGraphicsScene(this);
     previewView = new QGraphicsView(scene, this);
     previewView->setMinimumSize(640, 200);
+    previewView->setMaximumSize(1920, 200);
     previewView->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     previewView->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    previewView->setAlignment(Qt::AlignCenter);
+
     // Get the size of the view (the window size when it is first created)
     qreal viewWidth = previewView->width();
     qreal viewHeight = previewView->height();
+
     // Create the webcam video previewItem and set it in the center
-    previewItem = new QGraphicsVideoItem; 
+    previewItem = new QGraphicsVideoItem;
     previewItem->setSize(QSizeF(160, 120)); // size for the webcam video preview
-    // Create a QGraphicsPixmapItem for placeholder while webcam preview is not onscreen
-    wakkaLogoItem = new QGraphicsPixmapItem(placeholderPixmap.scaled(160, 120, Qt::AspectRatioMode::IgnoreAspectRatio, Qt::SmoothTransformation));
-    // Calculate position to center the previewItem
+    
+    wakkaLogoItem = new QGraphicsPixmapItem(placeholderPixmap.scaled(160, 120, Qt::KeepAspectRatio, Qt::SmoothTransformation));
     qreal previewX = (viewWidth - previewItem->boundingRect().width()) / 2;
     qreal previewY = (viewHeight - previewItem->boundingRect().height()) / 2; 
     previewItem->setPos(previewX, previewY);
     wakkaLogoItem->setPos(previewX, previewY);
+    
     scene->addItem(previewItem);
     scene->addItem(wakkaLogoItem);
     previewItem->hide();
     wakkaLogoItem->show();
-    // Create durationTextItem and position it at the bottom-center
+    
+    // Create durationTextItem
     durationTextItem = new QGraphicsTextItem;
     durationTextItem->setDefaultTextColor(palette.color(QPalette::Text));
     durationTextItem->setFont(QFont("Verdana", 10));
-    // Set text width to 85% of the view width
     qreal textWidth = viewWidth * 0.85;
     durationTextItem->setTextWidth(textWidth);
-    // Calculate position to center the durationTextItem at the bottom
-    qreal textX = ( viewWidth - textWidth ) / 2;
+    qreal textX = (viewWidth - textWidth) / 2;
     qreal textY = viewHeight - durationTextItem->boundingRect().height();
     durationTextItem->setPos(textX, textY);
     durationTextItem->setPlainText(Wakka_welcome);
     scene->addItem(durationTextItem);
-    // Set the scene rect based on the initial view size
     scene->setSceneRect(0, 0, viewWidth, viewHeight);
 
     // Create buttons
@@ -106,19 +107,21 @@ MainWindow::MainWindow(QWidget *parent)
     chooseInputButton = new QPushButton("Choose Input Device", this);
     renderAgainButton = new QPushButton("RENDER AGAIN", this);
 
-    // Create the red recording indicator
+    // Recording indicator
     recordingIndicator = new QLabel("⦿ rec", this);
     recordingIndicator->setStyleSheet("color: red;");
-    recordingIndicator->setFixedSize(64, 16); // Adjust the size
+    recordingIndicator->setFixedSize(64, 16);
     QHBoxLayout *indicatorLayout = new QHBoxLayout();
-    indicatorLayout->addStretch(); // Add stretchable space to the left
-    indicatorLayout->addWidget(recordingIndicator, 0, Qt::AlignCenter); // Center the indicator
-    indicatorLayout->addStretch(); // Add stretchable space to the right
+    indicatorLayout->addStretch();
+    indicatorLayout->addWidget(recordingIndicator, 0, Qt::AlignCenter);
+    indicatorLayout->addStretch();
 
-    // Instantiate the SndWidget (green waveform volume meter)
+    // Instantiate SndWidget
     soundLevelWidget = new SndWidget(this);
-    soundLevelWidget->setMinimumSize(200, 32); // Set a minimum size
+    soundLevelWidget->setMinimumSize(200, 32);
+    soundLevelWidget->setMaximumSize(1920, 32);
 
+    // Selected device
     deviceLabel = new QLabel("Selected Device: None", this);
     selectedDevice = QMediaDevices::defaultAudioInput();
     updateDeviceLabel(selectedDevice);
@@ -133,23 +136,26 @@ MainWindow::MainWindow(QWidget *parent)
     fetchLayout->addWidget(fetchButton);
     fetchLayout->addWidget(downloadStatusLabel);
 
-    // Create a widget to display output logs from yt-dlp and FFmpeg
+    // Log text
     logTextEdit = new QTextEdit(this);
-    logTextEdit->setReadOnly(true); // prevent user to edit contents of the widget
+    logTextEdit->setReadOnly(true);
     logTextEdit->append(Wakka_welcome);
+    logTextEdit->setFixedHeight(100);
+    logTextEdit->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    // Move cursor to the end of the text when text is appended
     connect(logTextEdit, &QTextEdit::textChanged, this, [=]() {
-        logTextEdit->moveCursor(QTextCursor::End);  // Move cursor to the end
+        logTextEdit->moveCursor(QTextCursor::End);
         logTextEdit->ensureCursorVisible();
     });
 
-    // Create a container widget for the layout
+    // Layout
     QWidget *containerWidget = new QWidget(this);
     QVBoxLayout *layout = new QVBoxLayout(containerWidget);
     layout->addLayout(indicatorLayout);
     layout->addWidget(previewView);
     layout->addWidget(soundLevelWidget);
-    layout->addWidget(placeholderLabel);
-    layout->addWidget(videoWidget);
+    layout->addWidget(placeholderLabel);  // Placeholder below preview
+    layout->addWidget(videoWidget);       // Hidden initially
     layout->addWidget(singButton);
     layout->addWidget(chooseVideoButton);
     layout->addWidget(chooseInputButton);
@@ -158,16 +164,18 @@ MainWindow::MainWindow(QWidget *parent)
     layout->addWidget(deviceLabel);
     layout->addLayout(fetchLayout);
     layout->addWidget(logTextEdit);
+
     setCentralWidget(containerWidget);
 
-    soundLevelWidget->setVisible(true); // Show the SndWidget
-    recordingIndicator->hide(); // Hide the red indicator since we are not recording yet
-    singButton->setEnabled(false); // Disable the SING button, since we have no video selected for playback yet
-    renderAgainButton->setVisible(false); // This only shows after successful render
-    exitButton->setVisible(false); // Decided to remove this button since it's the same as closing window
-    deviceLabel->setVisible(false); // Removed since Qt does not honor user input choice if change input src in OS
+    // Widget visibility
+    soundLevelWidget->setVisible(true);
+    recordingIndicator->hide();
+    singButton->setEnabled(false);
+    renderAgainButton->setVisible(false);
+    exitButton->setVisible(false);
+    deviceLabel->setVisible(false);
 
-    // Connect button signals to slots
+    // Connections
     connect(exitButton, &QPushButton::clicked, this, &QMainWindow::close);
     connect(chooseVideoButton, &QPushButton::clicked, this, &MainWindow::chooseVideo);
     connect(singButton, &QPushButton::clicked, this, &MainWindow::startRecording);
@@ -180,6 +188,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     resetAudioComponents(true);
 }
+
 
 void MainWindow::resetAudioComponents(bool isStarting) {
     qDebug() << "Resetting audio components";
@@ -264,7 +273,7 @@ void MainWindow::configureMediaComponents()
     
     format->setFileFormat(QMediaFormat::MPEG4);
     format->setVideoCodec(QMediaFormat::VideoCodec::H264);
-    format->setAudioCodec(QMediaFormat::AudioCodec::AAC);
+    format->setAudioCodec(QMediaFormat::AudioCodec::AC3);
 
     connect(mediaRecorder.data(), &QMediaRecorder::recorderStateChanged, this, &MainWindow::onRecorderStateChanged);
     connect(mediaRecorder.data(), &QMediaRecorder::errorOccurred, this, &MainWindow::handleRecorderError);
@@ -272,7 +281,7 @@ void MainWindow::configureMediaComponents()
 
     mediaRecorder->setMediaFormat(*format);
     mediaRecorder->setOutputLocation(QUrl::fromLocalFile(webcamRecorded));
-    mediaRecorder->setQuality(QMediaRecorder::VeryHighQuality);
+    mediaRecorder->setQuality(QMediaRecorder::VeryLowQuality);
 
     qDebug() << "Reconfigured media components";
 

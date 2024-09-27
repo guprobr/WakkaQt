@@ -81,7 +81,7 @@ void PreviewDialog::setAudioFile(const QString &filePath) {
 }
 
 double PreviewDialog::getVolume() const {
-    return currentVolume / 100; // Return the current volume ( 0 to 10.0 )
+    return currentVolume / 100; 
 }
 
 void PreviewDialog::accept() {
@@ -102,7 +102,7 @@ void PreviewDialog::playAudio() {
         return;
     }
 
-    int numberOfPlayers = 10;     
+    int numberOfPlayers = 5;     
 
     for (int i = 0; i < numberOfPlayers; ++i) {
         QMediaPlayer *player = new QMediaPlayer(this);
@@ -143,7 +143,7 @@ void PreviewDialog::updateVolume(int value) {
     currentVolume = value; // Update current volume
 
     // Update volume for all audio outputs
-    double scaledVolume = value / 1000.0; // Scale value from 0-1000% to 0-1.0
+    double scaledVolume = value / 500.0; 
     for (QAudioOutput *audioOutput : audioOutputs) {
         audioOutput->setVolume(scaledVolume); // Set the volume for each audio output
     }

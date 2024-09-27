@@ -357,17 +357,16 @@ try {
         
         isRecording = true;
         
-        player->setSource(QUrl::fromLocalFile(currentVideoFile));
-        addProgressBarToScene(scene, getMediaDuration(currentVideoFile));
-        playbackEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK PLAYBACK TIMESTAMP 
-        
         if (mediaRecorder ) {
 
-            // START TO RECORD ONLY AFTER PLAYBACK OKEY
             qWarning() << "Configuring mediaCaptureSession..";
             mediaCaptureSession->setCamera(camera.data());
             mediaCaptureSession->setAudioInput(audioInput.data());
             mediaCaptureSession->setRecorder(mediaRecorder.data());
+            camera->start();
+            mediaRecorder->record();
+
+            recordingEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK RECORDING TIMESTAMP
                 
         }
 
@@ -381,21 +380,13 @@ try {
 
 void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status)
 {
-    if (status == QMediaPlayer::BufferedMedia ) {
-        if ( isRecording ) {
-
-            qDebug() << "Media is playing! Start mediaRecorder.";
-            camera->start();
-            mediaRecorder->record();
-
-        }        
-    }
-
-    if (status == QMediaPlayer::LoadedMedia || status == QMediaPlayer::BufferingMedia ) {
-        // Ensure player starts or resumes correctly
-        player->play();
+    if (status == QMediaPlayer::BufferedMedia )
         playbackTimer->start(1000); // the playback cronometer
-    }
+    
+
+    if (status == QMediaPlayer::LoadedMedia || status == QMediaPlayer::BufferingMedia ) 
+        player->play();
+    
 }
 
 void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
@@ -405,19 +396,22 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
 
         recordingIndicator->show();
         singButton->setText("Finish!");
-        singButton->setEnabled(true);
+        singButton->setEnabled(true); // Click to finish recording
 
         // turn on the webcam preview
         mediaCaptureSession->setVideoOutput(previewItem);
         wakkaLogoItem->hide();
         previewItem->show();
 
+        player->setSource(QUrl::fromLocalFile(currentVideoFile));
+        addProgressBarToScene(scene, getMediaDuration(currentVideoFile));        
+
         if (!recordingCheckTimer) {
                 recordingCheckTimer.reset(new QTimer(this));
                 connect(recordingCheckTimer.data(), &QTimer::timeout, this, &MainWindow::checkRecordingStart);
                 recordingCheckTimer->start(1);
-        }  // start violently probing for confirmed recording data.
-        // this generates offset also guards mediaRecorder sanity.
+        }  // start violently probing for confirmed recorded data written
+
     }
 
     // when "Finished recording"
@@ -456,16 +450,16 @@ void MainWindow::checkRecordingStart() {
     { 
         if ( player->position() > 0 ) 
         { 
+            playbackEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK PLAYBACK TIMESTAMP 
             // stop probing
             recordingCheckTimer->stop();
             recordingCheckTimer.reset();
 
-            recordingEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK RECORDING TIMESTAMP
             qDebug() << "partial mediaRecorder Duration:" << mediaRecorder->duration();
             qDebug() << "mediaPlayer position:" << player->position();
 
-            offset = (recordingEventTime - playbackEventTime) + (mediaRecorder->duration() - player->position());
-            player->setPosition(0); // :)
+            offset = (playbackEventTime - recordingEventTime) + mediaRecorder->duration();
+            player->setPosition(mediaRecorder->duration()); // :)
             
             qDebug() << "Offset between playback start and recording start: " << offset << " ms";
             logTextEdit->append(QString("Offset between playback start and recording start: %1 ms").arg(offset));

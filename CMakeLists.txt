@@ -36,11 +36,11 @@ if (WIN32)
 
     # Libraries to link against (use static libraries)
     set(GSTREAMER_LIBRARIES
-        ${GSTREAMER_LIBRARY_DIRS}/libgstreamer-1.0.a
-        ${GSTREAMER_LIBRARY_DIRS}/libgobject-2.0.a
-        ${GSTREAMER_LIBRARY_DIRS}/libglib-2.0.a
-        ${GSTREAMER_LIBRARY_DIRS}/libgmodule-2.0.a
-        ${GSTREAMER_LIBRARY_DIRS}/libgthread-2.0.a
+        ${GSTREAMER_LIBRARY_DIRS}/libgstreamer-1.0.dll.a
+        ${GSTREAMER_LIBRARY_DIRS}/libgobject-2.0.dll.a
+        ${GSTREAMER_LIBRARY_DIRS}/libglib-2.0.dll.a
+        ${GSTREAMER_LIBRARY_DIRS}/libgmodule-2.0.dll.a
+        ${GSTREAMER_LIBRARY_DIRS}/libgthread-2.0.dll.a
     )
 
     # MinGW runtime (static)

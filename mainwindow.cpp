@@ -356,6 +356,7 @@ try {
         resetAudioComponents(false);
         
         isRecording = true;
+        playbackEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK PLAYBACK TIMESTAMP
         player->setSource(QUrl::fromLocalFile(currentVideoFile));
         addProgressBarToScene(scene, getMediaDuration(currentVideoFile));
 
@@ -390,7 +391,6 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status)
     if (status == QMediaPlayer::LoadedMedia || status == QMediaPlayer::BufferingMedia ) {
         // Ensure player starts or resumes correctly
         player->play();
-        playbackEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK PLAYBACK TIMESTAMP
         playbackTimer->start(1000); // the playback cronometer
     }
 }
@@ -412,7 +412,7 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
         if (!recordingCheckTimer) {
                 recordingCheckTimer.reset(new QTimer(this));
                 connect(recordingCheckTimer.data(), &QTimer::timeout, this, &MainWindow::checkRecordingStart);
-                recordingCheckTimer->start(33);
+                recordingCheckTimer->start(111);
         }  // start violently probing for confirmed recording data.
         // this generates offset also guards mediaRecorder sanity.
     }
@@ -451,7 +451,6 @@ void MainWindow::checkRecordingStart() {
 
     if (mediaRecorder->duration() > 0) 
     { 
-
         if ( player->position() > 0 ) 
         { 
             // stop probing
@@ -460,15 +459,16 @@ void MainWindow::checkRecordingStart() {
 
             recordingEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK RECORDING TIMESTAMP
             qDebug() << "partial mediaRecorder Duration:" << mediaRecorder->duration();
-            qDebug() << "player position:" << player->position();
+            qDebug() << "mediaPlayer position:" << player->position();
 
-            offset = (recordingEventTime - playbackEventTime) - player->position();
-            offset += mediaRecorder->duration();
+            offset = (recordingEventTime - playbackEventTime);
         
             qDebug() << "Offset between playback start and recording start: " << offset << " ms";
             logTextEdit->append(QString("Offset between playback start and recording start: %1 ms").arg(offset));
 
-            /////player->setPosition(offset); // :)
+            player->setPosition(offset); // :)
+
+            offset = mediaRecorder->duration();
         }
         
         if ( mediaRecorder->duration() > 333 ) {
@@ -736,8 +736,8 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
         //player->play();
         addProgressBarToScene(scene, getMediaDuration(outputFilePath));
 
-        qDebug() << "Offset between playback start and recording start: " << offset << " ms";
-        logTextEdit->append(QString("Offset between playback start and recording start: %1 ms").arg(offset));
+        qDebug() << "trimmed rec offset: " << offset << " ms";
+        logTextEdit->append(QString("trimmed recording Offset: %1 ms").arg(offset));
         this->logTextEdit->append("Playing mix!");
 
     });

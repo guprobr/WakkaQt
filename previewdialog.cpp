@@ -22,15 +22,15 @@ PreviewDialog::PreviewDialog(QWidget *parent)
     volumeDial->setNotchesVisible(true); // Show notches for better precision
 
     // Initialize UI elements
-    QLabel *volumeLabel = new QLabel("Volume Amplification", this);
-    this->volumeLabel = new QLabel("Current Volume: 100%", this); // Initialize the volume label
+    QLabel *volumeBanner = new QLabel("Volume Amplification: press PLAY to resume playback", this);
+    volumeLabel = new QLabel("Current Volume: 100%", this); // Initialize the volume label
 
-    startButton = new QPushButton("Replay", this);
-    stopButton = new QPushButton("Render", this);
+    startButton = new QPushButton("PLAY", this);
+    stopButton = new QPushButton("Render Mix", this);
 
-    layout->addWidget(volumeLabel);
+    layout->addWidget(volumeBanner);
     layout->addWidget(volumeDial);
-    layout->addWidget(this->volumeLabel); // Add the volume label to the layout
+    layout->addWidget(volumeLabel); // Add the volume label to the layout
     layout->addWidget(startButton);
     layout->addWidget(stopButton);
 
@@ -137,8 +137,7 @@ void PreviewDialog::replayAudioPreview() {
         // Set the audio data to the amplifier
         amplifier->setAudioData(audioData);
 
-        // Rewind and start playback
-        amplifier->rewind();
+        //amplifier->rewind();
         amplifier->start();
     } else {
         qWarning() << "Audio extraction failed or file is empty.";
@@ -158,8 +157,8 @@ void PreviewDialog::onDialValueChanged(int value) {
     // Store the pending volume value
     pendingVolumeValue = value;
 
-    // Start the timer to update volume after a delay (2 sec)
-    volumeChangeTimer->start(2000);
+    // Start the timer to update volume after a delay (500 ms)
+    volumeChangeTimer->start(500);
 }
 
 void PreviewDialog::updateVolume() {

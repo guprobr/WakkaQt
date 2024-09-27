@@ -1,4 +1,5 @@
 #include "audioamplifier.h"
+
 #include <QDebug>
 #include <QTimer>
 #include <QAudioSink>
@@ -29,34 +30,34 @@ AudioAmplifier::~AudioAmplifier() {
 }
 
 void AudioAmplifier::start() {
-    // Verificar se há dados originais para processar
+    // Verify if there is original data to amplify
     if (!originalAudioData.isEmpty()) {
         applyAmplification();
 
-        // Validação do tamanho do buffer de áudio antes de abrir e iniciar
-        if (amplifiedAudioData.size() < 1024) { // Exemplo: Buffer mínimo de 1024 bytes
-            qWarning() << "Tamanho do buffer de áudio amplificado é muito pequeno. Tamanho:" << amplifiedAudioData.size();
-            return; // Evita iniciar a reprodução com um buffer muito pequeno
+        // Validate initial buffer size
+        if (amplifiedAudioData.size() < 1024) { 
+            qWarning() << "Amplified buffer audio size is too small:" << amplifiedAudioData.size();
+            return; 
         }
 
-        // Verifique se o buffer já está aberto e feche antes de reiniciar
+        // Verify if buffer is open, then close before starting
         if (audioBuffer->isOpen()) {
             audioBuffer->close();
         }
 
-        // Configura os dados no QBuffer e abre para leitura
+        // Configure QBuffer data and open for reading
         audioBuffer->setData(amplifiedAudioData);
         audioBuffer->open(QIODevice::ReadOnly);
 
-        // Posicionar no início ou na posição salva
+        // Resume prior position
         audioBuffer->seek(playbackPosition);
 
-        audioSink->start(audioBuffer.data()); // Iniciar o playback
-        dataPushTimer->start(11); // Começa a verificar o estado do buffer periodicamente
+        audioSink->start(audioBuffer.data()); // playback
+        dataPushTimer->start(11); // Probe buffer state periodically
 
-        qDebug() << "Iniciada a reprodução com dados de áudio amplificados.";
+        qDebug() << "Start amplified audio playback.";
     } else {
-        qWarning() << "Nenhum dado de áudio para reproduzir.";
+        qWarning() << "No audio data.";
     }
 }
 
@@ -66,23 +67,24 @@ void AudioAmplifier::checkBufferState() {
     qint64 totalDuration = audioBuffer->size() * 1000000 / (audioSink->format().sampleRate() * 
                            audioSink->format().channelCount() * audioSink->format().bytesPerSample());
     qint64 processedDuration = audioSink->processedUSecs();
-    qint64 threshold = 800000;  // Exemplo: parar 800 ms antes do fim
+    qint64 threshold = 800000;  // stop 800 ms before the end
 
-    // Verifique o tamanho do buffer durante a reprodução
-    if (audioBuffer->bytesAvailable() < 512) {  // Exemplo: Se menos de 512 bytes restantes
-        qWarning() << "O buffer de áudio está muito pequeno durante a reprodução. Reiniciando.";
+    // Verify buffer size!
+    if (audioBuffer->bytesAvailable() < 1024) {  
+        qWarning() << "Audio buffer too small during playback. Restarting playback.";
         stop();
         rewind();
         start();
         return;
     }
 
-    // Se estiver perto do fim, reiniciar
+    // When close to the end, restart playback
     if (processedDuration >= totalDuration - threshold) {
-        qDebug() << "Buffer quase no fim. Reiniciando áudio.";
+        qDebug() << "Buffer near the end. Restarting playback.";
         stop();
         rewind();
         start();
+        return;
     }
 }
 
@@ -109,7 +111,8 @@ void AudioAmplifier::setVolumeFactor(double factor) {
         // Only restart playback if there is audio data
         if (!originalAudioData.isEmpty() && isPlaying()) {
             stop();
-            start(); // Start playback with new volume
+            resetAudioComponents();
+            start();
         }
     }
 }
@@ -124,15 +127,15 @@ void AudioAmplifier::applyAmplification() {
 
     const char *data = originalAudioData.constData();
     for (int i = 0; i < originalAudioData.size(); i += 2) {
-        // Converter os dois bytes para qint16 (16-bit áudio)
+        // Convert two bytes to qint16 (16-bit audio)
         qint16 sample = static_cast<qint16>(static_cast<unsigned char>(data[i]) | 
                                             (static_cast<unsigned char>(data[i + 1]) << 8));
 
-        // Amplificar o sample e clipear para evitar overflow
+        // Amplify and clip to avoid overflow
         int amplifiedSample = static_cast<int>(sample * volumeFactor);
         amplifiedSample = std::min(std::max(amplifiedSample, -32768), 32767);
 
-        // Escrever o sample amplificado de volta no formato little-endian
+        // Rewrite amplified sample as little-endian
         amplifiedAudioData.append(static_cast<char>(amplifiedSample & 0xFF));
         amplifiedAudioData.append(static_cast<char>((amplifiedSample >> 8) & 0xFF));
     }
@@ -161,6 +164,7 @@ void AudioAmplifier::handleStateChanged(QAudio::State newState) {
     if (newState == QAudio::StoppedState) {
         if (audioSink && audioSink->error() != QAudio::NoError) {
             qWarning() << "Audio playback error:" << audioSink->error();
+            return;
         }
     }
 }

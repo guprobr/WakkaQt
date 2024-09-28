@@ -73,6 +73,7 @@ void AudioAmplifier::checkBufferState() {
     if (audioBuffer->bytesAvailable() < 1024) {  
         qWarning() << "Audio buffer too small during playback. Restarting playback.";
         stop();
+        resetAudioComponents();
         rewind();
         start();
         return;
@@ -82,6 +83,7 @@ void AudioAmplifier::checkBufferState() {
     if (processedDuration >= totalDuration - threshold) {
         qDebug() << "Buffer near the end. Restarting playback.";
         stop();
+        resetAudioComponents();
         rewind();
         start();
         return;

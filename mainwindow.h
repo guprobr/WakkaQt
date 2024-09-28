@@ -42,6 +42,7 @@ private slots:
     void onRecorderStateChanged(QMediaRecorder::RecorderState state);
     void onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status);
     void handleRecorderError(QMediaRecorder::Error error);
+    void onPreviewCheckboxToggled(bool checked);
     
 private:
 
@@ -84,6 +85,8 @@ private:
     QLabel* placeholderLabel;   // logo
     QLabel *recordingIndicator; 
     QLabel *deviceLabel;
+
+    QCheckBox *previewCheckbox;
 
     // yt-dlp
     QLineEdit *urlInput;

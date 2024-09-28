@@ -15,6 +15,7 @@
 #include <QLabel>
 #include <QFileDialog>
 #include <QInputDialog>
+#include <QCheckBox>
 
 #include <QMediaDevices>
 #include <QMediaPlayer>
@@ -149,6 +150,10 @@ MainWindow::MainWindow(QWidget *parent)
         logTextEdit->ensureCursorVisible();
     });
 
+    // custom cfgs
+    previewCheckbox = new QCheckBox("Enable Camera Preview");
+    indicatorLayout->addWidget(previewCheckbox);
+
     // Layout
     QWidget *containerWidget = new QWidget(this);
     QVBoxLayout *layout = new QVBoxLayout(containerWidget);
@@ -183,6 +188,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(fetchButton, &QPushButton::clicked, this, &MainWindow::fetchVideo);
     connect(chooseInputButton, &QPushButton::clicked, this, &MainWindow::chooseInputDevice);
     connect(renderAgainButton, &QPushButton::clicked, this, &MainWindow::renderAgain);
+    connect(previewCheckbox, &QCheckBox::toggled, this, &MainWindow::onPreviewCheckboxToggled);
 
     playbackTimer = new QTimer(this);
     connect(playbackTimer, &QTimer::timeout, this, &MainWindow::updatePlaybackDuration);
@@ -283,6 +289,8 @@ void MainWindow::configureMediaComponents()
     mediaRecorder->setMediaFormat(*format);
     mediaRecorder->setOutputLocation(QUrl::fromLocalFile(webcamRecorded));
     mediaRecorder->setQuality(QMediaRecorder::VeryHighQuality);
+
+    previewCheckbox->setEnabled(true);
 
     qDebug() << "Reconfigured media components";
 
@@ -397,10 +405,15 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
         singButton->setText("Finish!");
         singButton->setEnabled(true); // Click to finish recording
 
-        // turn on the webcam preview
-        mediaCaptureSession->setVideoOutput(previewItem);
-        wakkaLogoItem->hide();
-        previewItem->show();
+        // turn on the webcam preview?
+        if (previewCheckbox->isChecked()) {
+            mediaCaptureSession->setVideoOutput(previewItem);
+            wakkaLogoItem->hide();
+            previewItem->show();
+            qDebug() << "Camera preview enabled.";
+        }
+
+        previewCheckbox->setEnabled(false);
 
         player->setSource(QUrl::fromLocalFile(currentVideoFile));
         addProgressBarToScene(scene, getMediaDuration(currentVideoFile));        
@@ -464,7 +477,7 @@ void MainWindow::checkRecordingStart() {
             logTextEdit->append(QString("Offset between playback start and recording start: %1 ms").arg(offset));
         }
         
-        if ( mediaRecorder->duration() > 333 ) {
+        if ( mediaRecorder->duration() > 500 ) {
             qWarning() << "Something is wrong with mediaRecorder. Aborting recording session. SORRY";
             logTextEdit->append("detected unstable mediaRecorder. PLEASE TRY AGAIN SORRY");
             handleRecordingError();
@@ -921,6 +934,18 @@ void MainWindow::fetchVideo() {
     });
 
     process->start("yt-dlp", arguments);
+}
+
+void MainWindow::onPreviewCheckboxToggled(bool enable) {
+    if (enable) {
+        qDebug() << "Camera preview will be enabled next recording.";
+    } else {
+        // Hide the camera preview
+        //mediaCaptureSession->setVideoOutput(nullptr);
+        previewItem->hide(); 
+        wakkaLogoItem->show(); 
+        qDebug() << "Camera preview hidden.";
+    }
 }
 
 MainWindow::~MainWindow() {

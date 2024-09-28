@@ -53,7 +53,7 @@ void AudioAmplifier::start() {
         audioBuffer->seek(playbackPosition);
 
         audioSink->start(audioBuffer.data()); // playback
-        dataPushTimer->start(11); // Probe buffer state periodically
+        dataPushTimer->start(1); // Probe buffer state paranoia style
 
         qDebug() << "Start amplified audio playback.";
     } else {
@@ -67,7 +67,7 @@ void AudioAmplifier::checkBufferState() {
     qint64 totalDuration = audioBuffer->size() * 1000000 / (audioSink->format().sampleRate() * 
                            audioSink->format().channelCount() * audioSink->format().bytesPerSample());
     qint64 processedDuration = audioSink->processedUSecs();
-    qint64 threshold = 800000;  // stop 800 ms before the end
+    qint64 threshold = 500000;  // stop 500 ms before the end
 
     // Verify buffer size!
     if (audioBuffer->bytesAvailable() < 1024) {  

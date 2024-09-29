@@ -377,8 +377,6 @@ try {
                 
         }
 
-        
-
     } catch (const std::exception &e) {
         logTextEdit->append("Error during startRecording: " + QString::fromStdString(e.what()));
         handleRecordingError();
@@ -939,6 +937,7 @@ void MainWindow::fetchVideo() {
 void MainWindow::onPreviewCheckboxToggled(bool enable) {
     if (enable) {
         qDebug() << "Camera preview will be enabled next recording.";
+        logTextEdit->append("Camera preview will be enabled next recording.");
     } else {
         // Hide the camera preview
         //mediaCaptureSession->setVideoOutput(nullptr);

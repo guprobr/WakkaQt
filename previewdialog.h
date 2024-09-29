@@ -9,7 +9,7 @@
 #include <QProcess>
 #include <QTimer>
 
-class AudioAmplifier;  // Forward declaration
+class AudioAmplifier;  
 
 class PreviewDialog : public QDialog {
     Q_OBJECT
@@ -32,11 +32,11 @@ private:
     QDial *volumeDial;
     QPushButton *startButton;
     QPushButton *stopButton;
-    QLabel *volumeLabel;           // Label to display the current volume
+    QLabel *volumeLabel;           
     QTimer *volumeChangeTimer;
     QString audioFilePath;
     double volume;
-    int pendingVolumeValue;        // Store the pending volume value
+    int pendingVolumeValue;        
 };
 
 #endif // PREVIEWDIALOG_H

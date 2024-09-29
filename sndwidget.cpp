@@ -26,7 +26,7 @@ SndWidget::SndWidget(QWidget *parent)
     //setInputDevice(device);
 
     connect(timer, &QTimer::timeout, this, &SndWidget::updateWaveform);
-    timer->start(11); // Update every 11 milliseconds
+    timer->start(111); // Update every 111 milliseconds
 }
 
 SndWidget::~SndWidget() {

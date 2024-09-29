@@ -8,9 +8,8 @@
 #include <QTimer>
 #include <QString>
 
-// PreviewDialog class implementation
 PreviewDialog::PreviewDialog(QWidget *parent)
-    : QDialog(parent), amplifier(nullptr), volume(1.0), pendingVolumeValue(100) { // Initialize pendingVolumeValue
+    : QDialog(parent), amplifier(nullptr), volume(1.0), pendingVolumeValue(100) {
     setWindowTitle("Audio Preview with Amplification");
 
     // Setup UI
@@ -22,15 +21,14 @@ PreviewDialog::PreviewDialog(QWidget *parent)
     volumeDial->setNotchesVisible(true); // Show notches for better precision
 
     // Initialize UI elements
-    QLabel *volumeBanner = new QLabel("Volume Amplification: press PLAY to resume playback", this);
-    volumeLabel = new QLabel("Current Volume: 100%", this); // Initialize the volume label
-
+    QLabel *volumeBanner = new QLabel("Volume Amplification", this);
+    volumeLabel = new QLabel("Current Volume: 100%", this);
     startButton = new QPushButton("REWIND", this);
     stopButton = new QPushButton("Render Mix", this);
 
     layout->addWidget(volumeBanner);
     layout->addWidget(volumeDial);
-    layout->addWidget(volumeLabel); // Add the volume label to the layout
+    layout->addWidget(volumeLabel);
     layout->addWidget(startButton);
     layout->addWidget(stopButton);
 
@@ -46,10 +44,10 @@ PreviewDialog::PreviewDialog(QWidget *parent)
     // Initialize Audio Amplifier
     amplifier = new AudioAmplifier(format, this);
 
-    // Connect UI elements to functions
+    // Connect UI elements
     connect(startButton, &QPushButton::clicked, this, &PreviewDialog::replayAudioPreview);
     connect(stopButton, &QPushButton::clicked, this, &PreviewDialog::stopAudioPreview);
-    connect(volumeDial, &QDial::valueChanged, this, &PreviewDialog::onDialValueChanged);  // Connect to dial value change
+    connect(volumeDial, &QDial::valueChanged, this, &PreviewDialog::onDialValueChanged);
 
     // Initialize the volume change timer
     volumeChangeTimer = new QTimer(this);
@@ -63,7 +61,7 @@ PreviewDialog::~PreviewDialog() {
 }
 
 void PreviewDialog::setAudioFile(const QString &filePath) {
-    audioFilePath = filePath;  // Store the provided file path
+    audioFilePath = filePath;
     qDebug() << "Audio file set to:" << audioFilePath;
 
     // Initialize the QProcess
@@ -95,16 +93,16 @@ void PreviewDialog::setAudioFile(const QString &filePath) {
             // Set the audio data in the AudioAmplifier
             amplifier->setAudioData(audioData);
 
-            // Start playback if necessary
+            // Start playback
             amplifier->start();
         } else {
             qWarning() << "Audio extraction failed or file is empty.";
         }
 
-        ffmpegProcess->deleteLater(); // Clean up process object
+        ffmpegProcess->deleteLater(); // Clean up FFmpeg process object
     });
 
-    // Start the process
+    // Start the FFmpeg process
     ffmpegProcess->start("ffmpeg", arguments);
     if (!ffmpegProcess->waitForStarted()) {
         qWarning() << "Failed to start FFmpeg.";
@@ -114,7 +112,7 @@ void PreviewDialog::setAudioFile(const QString &filePath) {
 }
 
 double PreviewDialog::getVolume() const {
-    return volume;  // Return the current volume level
+    return volume;  // Returns the current volume level (we send this to render function)
 }
 
 void PreviewDialog::replayAudioPreview() {

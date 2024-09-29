@@ -19,7 +19,7 @@ AudioAmplifier::AudioAmplifier(const QAudioFormat &format, QObject *parent)
     audioBuffer.reset(new QBuffer());
     audioBuffer->setBuffer(new QByteArray());
 
-    // Initialize timer for pushing data
+    // Initialize timer for probing end of stream
     dataPushTimer.reset(new QTimer(this));
     connect(dataPushTimer.data(), &QTimer::timeout, this, &AudioAmplifier::checkBufferState);
 }
@@ -156,8 +156,6 @@ void AudioAmplifier::applyAmplification() {
         qWarning() << "Amplified audio data is empty!";
     }
 }
-
-
 
 bool AudioAmplifier::isPlaying() const {
     return audioSink->state() == QAudio::ActiveState; // Check if audio is currently playing

@@ -35,7 +35,7 @@ void AudioAmplifier::start() {
         applyAmplification();
 
         // Validate initial buffer size
-        if (amplifiedAudioData.size() < 1024) { 
+        if (amplifiedAudioData.size() < 512) { 
             qWarning() << "Amplified buffer audio size is too small:" << amplifiedAudioData.size();
             return; 
         }
@@ -53,7 +53,7 @@ void AudioAmplifier::start() {
         audioBuffer->seek(playbackPosition);
 
         audioSink->start(audioBuffer.data()); // playback
-        dataPushTimer->start(1); // Probe buffer state paranoia style
+        dataPushTimer->start(250); // Probe buffer state paranoia style
 
         qDebug() << "Start amplified audio playback.";
     } else {
@@ -64,9 +64,17 @@ void AudioAmplifier::start() {
 void AudioAmplifier::checkBufferState() {
     if (!audioBuffer->isOpen() || !audioSink || audioSink->isNull()) return;
 
-    qint64 totalDuration = audioBuffer->size() * 1000000 / (audioSink->format().sampleRate() * 
+    // Total duration based on the original audio size
+    qint64 totalDuration = originalAudioData.size() * 1000000 / (audioSink->format().sampleRate() * 
                            audioSink->format().channelCount() * audioSink->format().bytesPerSample());
-    qint64 processedDuration = audioSink->processedUSecs();
+
+    // Convert playbackPosition from bytes to microseconds
+    qint64 playbackPositionUSecs = playbackPosition * 1000000 / (audioSink->format().sampleRate() * 
+                              audioSink->format().channelCount() * audioSink->format().bytesPerSample());
+    
+    // Correct the processed duration to include the playback position (both in microseconds now)
+    qint64 processedDuration = playbackPositionUSecs + audioSink->processedUSecs();
+    
     qint64 threshold = 500000;  // stop 500 ms before the end
 
     // Verify buffer size!
@@ -89,6 +97,7 @@ void AudioAmplifier::checkBufferState() {
         return;
     }
 }
+
 
 void AudioAmplifier::stop() {
     if (audioSink->state() == QAudio::ActiveState) {
@@ -124,6 +133,7 @@ void AudioAmplifier::setAudioData(const QByteArray &data) {
 }
 
 void AudioAmplifier::applyAmplification() {
+    
     amplifiedAudioData.clear();
     amplifiedAudioData.reserve(originalAudioData.size());
 
@@ -186,6 +196,6 @@ void AudioAmplifier::resetAudioComponents() {
 
     audioSink.reset(new QAudioSink(audioFormat, this));
     connect(audioSink.data(), &QAudioSink::stateChanged, this, &AudioAmplifier::handleStateChanged);
-    audioSink->setBufferSize(8192);  // buffer
+    //audioSink->setBufferSize(8192);  // buffer
 
 }

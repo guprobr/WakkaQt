@@ -25,7 +25,7 @@ PreviewDialog::PreviewDialog(QWidget *parent)
     QLabel *volumeBanner = new QLabel("Volume Amplification: press PLAY to resume playback", this);
     volumeLabel = new QLabel("Current Volume: 100%", this); // Initialize the volume label
 
-    startButton = new QPushButton("PLAY", this);
+    startButton = new QPushButton("REWIND", this);
     stopButton = new QPushButton("Render Mix", this);
 
     layout->addWidget(volumeBanner);
@@ -124,24 +124,8 @@ void PreviewDialog::replayAudioPreview() {
         amplifier->stop();
         amplifier->resetAudioComponents();  // Reset the amplifier components
     }
-
-    QString tempAudioFile = QDir::temp().filePath("WakkaQt_extracted_audio.wav");
-    
-    // Check if file exists and is valid
-    QFile audioFile(tempAudioFile);
-    if (audioFile.exists() && audioFile.size() > 0) {
-        audioFile.open(QIODevice::ReadOnly);
-        QByteArray audioData = audioFile.readAll();
-        audioFile.close();
-
-        // Set the audio data to the amplifier
-        amplifier->setAudioData(audioData);
-
-        //amplifier->rewind();
+        amplifier->rewind();
         amplifier->start();
-    } else {
-        qWarning() << "Audio extraction failed or file is empty.";
-    }
 }
 
 void PreviewDialog::stopAudioPreview() {

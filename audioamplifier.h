@@ -25,6 +25,8 @@ public:
     void setAudioData(const QByteArray &data);  
     bool isPlaying() const;  
     void rewind();
+    void seekForward();
+    void seekBackward();
 
     void resetAudioComponents(); 
 

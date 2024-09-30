@@ -29,38 +29,6 @@ AudioAmplifier::~AudioAmplifier() {
     resetAudioComponents();  // Clear all resources
 }
 
-void AudioAmplifier::start() {
-    // Verify if there is original data to amplify
-    if (!originalAudioData.isEmpty()) {
-        applyAmplification();
-
-        // Validate initial buffer size
-        if (amplifiedAudioData.size() < 512) { 
-            qWarning() << "Amplified buffer audio size is too small:" << amplifiedAudioData.size();
-            return; 
-        }
-
-        // Verify if buffer is open, then close before starting
-        if (audioBuffer->isOpen()) {
-            audioBuffer->close();
-        }
-
-        // Configure QBuffer data and open for reading
-        audioBuffer->setData(amplifiedAudioData);
-        audioBuffer->open(QIODevice::ReadOnly);
-
-        // Resume prior position
-        audioBuffer->seek(playbackPosition);
-
-        audioSink->start(audioBuffer.data()); // playback
-        dataPushTimer->start(250); // Probe buffer state paranoia style
-
-        qDebug() << "Start amplified audio playback.";
-    } else {
-        qWarning() << "No audio data.";
-    }
-}
-
 void AudioAmplifier::checkBufferState() {
     if (!audioBuffer->isOpen() || !audioSink || audioSink->isNull()) return;
 
@@ -98,6 +66,38 @@ void AudioAmplifier::checkBufferState() {
     }
 }
 
+void AudioAmplifier::start() {
+    // Verify if there is original data to amplify
+    if (!originalAudioData.isEmpty()) {
+        applyAmplification();
+
+        // Validate initial buffer size
+        if (amplifiedAudioData.size() < 512) { 
+            qWarning() << "Amplified buffer audio size is too small:" << amplifiedAudioData.size();
+            return; 
+        }
+
+        // Verify if buffer is open, then close before starting
+        if (audioBuffer->isOpen()) {
+            audioBuffer->close();
+        }
+
+        // Configure QBuffer data and open for reading
+        audioBuffer->setData(amplifiedAudioData);
+        audioBuffer->open(QIODevice::ReadOnly);
+
+        // Resume prior position
+        audioBuffer->seek(playbackPosition);
+
+        audioSink->start(audioBuffer.data()); // playback
+        dataPushTimer->start(250); // Probe buffer state paranoia style
+        checkBufferState();
+
+        qDebug() << "Start amplified audio playback.";
+    } else {
+        qWarning() << "No audio data.";
+    }
+}
 
 void AudioAmplifier::stop() {
     if (audioSink->state() == QAudio::ActiveState) {
@@ -113,6 +113,24 @@ void AudioAmplifier::stop() {
     }
 
     dataPushTimer->stop();  // Stop the timer when playback stops
+}
+
+void AudioAmplifier::seekForward() {
+    if (audioBuffer->bytesAvailable() > 102400) {
+        stop();
+        resetAudioComponents();
+        playbackPosition += 102400;
+        start();
+    }  
+}
+
+void AudioAmplifier::seekBackward() {
+    if ( audioBuffer->pos() - 102400 > 0 ) {
+        stop();
+        resetAudioComponents();
+        playbackPosition -= 102400;
+        start();
+    }
 }
 
 void AudioAmplifier::setVolumeFactor(double factor) {

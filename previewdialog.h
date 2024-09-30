@@ -32,6 +32,8 @@ private:
     QDial *volumeDial;
     QPushButton *startButton;
     QPushButton *stopButton;
+    QPushButton *seekForwardButton;
+    QPushButton *seekBackwardButton;
     QLabel *volumeLabel;           
     QTimer *volumeChangeTimer;
     QString audioFilePath;

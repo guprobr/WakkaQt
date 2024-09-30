@@ -46,18 +46,20 @@ private slots:
     
 private:
 
-    QColor alternateColor;
+    QColor highlightColor;
     QString setRez = "1920x540"; // its a vstack, same width, half the height
 
     QGraphicsScene *scene;
     QGraphicsView *previewView;
     QGraphicsVideoItem *previewItem;
     QGraphicsRectItem *progressSong = nullptr;
+    QGraphicsRectItem *progressSongFull = nullptr;
     QGraphicsTextItem *durationTextItem;
     QGraphicsPixmapItem *wakkaLogoItem;
 
-    bool isRecording;
     QTimer *playbackTimer;
+
+    bool isRecording;
     QScopedPointer<QTimer> recordingCheckTimer; 
     qint64 playbackEventTime = 0;
     qint64 recordingEventTime = 0;
@@ -125,6 +127,8 @@ private:
     void updateDeviceLabel(const QAudioDevice &device);
     void disconnectAllSignals();
     void closeEvent(QCloseEvent *event) override;
+
+    bool eventFilter(QObject *object, QEvent *event) override;
     
 };
 

@@ -14,6 +14,7 @@ PreviewDialog::PreviewDialog(QWidget *parent)
 
     // Setup UI
     QVBoxLayout *layout = new QVBoxLayout(this);
+    QHBoxLayout *controls = new QHBoxLayout(this);
 
     volumeDial = new QDial(this);  // Change from QSlider to QDial
     volumeDial->setRange(0, 300);   // 0% to 300% amplification
@@ -25,11 +26,16 @@ PreviewDialog::PreviewDialog(QWidget *parent)
     volumeLabel = new QLabel("Current Volume: 100%", this);
     startButton = new QPushButton("REWIND", this);
     stopButton = new QPushButton("Render Mix", this);
+    seekForwardButton = new QPushButton(">>", this);
+    seekBackwardButton = new QPushButton("<<", this);
+    controls->addWidget(seekBackwardButton);
+    controls->addWidget(seekForwardButton);
 
     layout->addWidget(volumeBanner);
     layout->addWidget(volumeDial);
     layout->addWidget(volumeLabel);
     layout->addWidget(startButton);
+    layout->addLayout(controls);
     layout->addWidget(stopButton);
 
     setLayout(layout);
@@ -47,6 +53,8 @@ PreviewDialog::PreviewDialog(QWidget *parent)
     // Connect UI elements
     connect(startButton, &QPushButton::clicked, this, &PreviewDialog::replayAudioPreview);
     connect(stopButton, &QPushButton::clicked, this, &PreviewDialog::stopAudioPreview);
+    connect(seekBackwardButton, &QPushButton::clicked, amplifier, &AudioAmplifier::seekBackward);
+    connect(seekForwardButton, &QPushButton::clicked, amplifier, &AudioAmplifier::seekForward);
     connect(volumeDial, &QDial::valueChanged, this, &PreviewDialog::onDialValueChanged);
 
     // Initialize the volume change timer

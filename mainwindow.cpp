@@ -419,6 +419,8 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
         progressSongFull->setToolTip("Cannot seek while recording!");
 
         connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, [=](qint64 currentDuration) {
+
+
             
             if ( player && player->position() > 0 ) 
             { 
@@ -432,7 +434,14 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
                 qDebug() << "Offset between playback start and recording start: " << offset << " ms";
                 logTextEdit->append(QString("Offset between playback start and recording start: %1 ms").arg(offset));
 
-                disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, nullptr); 
+                disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, nullptr);
+
+                if ( player->position() > mediaRecorder->duration() ) {
+                    qWarning() << "Something is wrong with mediaRecorder. Aborting recording session. SORRY";
+                    logTextEdit->append("detected unstable mediaRecorder. PLEASE TRY AGAIN SORRY");
+                    handleRecordingError();
+                    QMessageBox::warning(this, "unstable mediaRecorder!", "Recording cancelled to prevent further errors..");
+                }
             }
 
         });
@@ -624,7 +633,7 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
     // Get the main layout and add the progress label
     QVBoxLayout *layout = qobject_cast<QVBoxLayout*>(centralWidget()->layout());
     layout->insertWidget(0, progressLabel, 0, Qt::AlignCenter);
-    layout->insertWidget(0, progressBar, 25, Qt::AlignCenter);
+    layout->insertWidget(0, progressBar, 0, Qt::AlignCenter);
 
     QFileInfo outfileInfo(outputFilePath);
     QFileInfo videofileInfo(videoFilePath);
@@ -643,24 +652,27 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
     // we Configure autotalent plugin here:
     QString talent = "lv2=http\\\\://gareus.org/oss/lv2/fat1,";
 
-    arguments << "-y" // Overwrite output file if it exists
+    arguments << "-y"               // Overwrite output file if it exists
           << "-fflags" << "+genpts"
           << "-i" << webcamFilePath // recorded vocals
-          << "-i" << videoFilePath // playback file
-          << "-filter_complex" // masterization and vocal enhancement of recorded audio
-          << QString("[0:a]aformat=channel_layouts=stereo,atrim=%1,afftdn=nf=-20:nr=10:nt=w,speechnorm,acompressor=threshold=0.5:ratio=4,highpass=f=200,%2 \
-                      aecho=0.7:0.7:84:0.21,treble=g=12,volume=%3[vocals]; \
-                      [1:a][vocals]amix=inputs=2:normalize=0[wakkamix];%4" 
-                      ).arg(millisecondsToSecondsString(offset))
-                      .arg(talent)
-                      .arg(vocalVolume)
-                      .arg(videorama);
+          << "-i" << videoFilePath  // playback file
+          << "-filter_complex"      // masterization and vocal enhancement of recorded audio
+          << QString("[0:a]aformat=channel_layouts=stereo,atrim=%1, \
+                        afftdn=nf=-20:nr=10:nt=w,speechnorm,acompressor=threshold=0.5:ratio=4,highpass=f=200,%2 \
+                        aecho=0.7:0.7:84:0.21,treble=g=12,volume=%3[vocals]; \
+                        [1:a][vocals]amix=inputs=2:normalize=0[wakkamix];%4" 
+                        ).arg(millisecondsToSecondsString(offset))
+                        .arg(talent)
+                        .arg(vocalVolume)
+                        .arg(videorama);
 
     // Map audio output
-    arguments << "-ac" << "2" // Force stereo
-            << "-dither_method" << "none" // dithering off
-            << "-map" << "[wakkamix]"      // ensure audio goes on the pack
-            << outputFilePath;
+    arguments   << "-ac" << "2"                 // Force stereo
+                << "-async" << "1"
+                << "-vsync" << "2"
+                << "-dither_method" << "none"   // dithering off
+                << "-map" << "[wakkamix]"      // ensure audio goes on the pack
+                << outputFilePath;
 
     
     // Connect signals to display output and errors

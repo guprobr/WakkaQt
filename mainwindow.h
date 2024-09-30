@@ -60,7 +60,6 @@ private:
     QTimer *playbackTimer;
 
     bool isRecording;
-    QScopedPointer<QTimer> recordingCheckTimer; 
     qint64 playbackEventTime = 0;
     qint64 recordingEventTime = 0;
     qint64 offset = 0;
@@ -106,7 +105,7 @@ private:
 
     void chooseVideo();
     void updatePlaybackDuration();
-    void checkRecordingStart();
+
     void startRecording();
     void stopRecording();
     void handleRecordingError();

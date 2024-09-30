@@ -89,7 +89,7 @@ void AudioAmplifier::start() {
         audioBuffer->seek(playbackPosition);
 
         audioSink->start(audioBuffer.data()); // playback
-        dataPushTimer->start(250); // Probe buffer state paranoia style
+        dataPushTimer->start(25); // Probe buffer state paranoia style
         checkBufferState();
 
         qDebug() << "Start amplified audio playback.";

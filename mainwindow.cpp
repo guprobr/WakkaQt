@@ -249,11 +249,6 @@ void MainWindow::resetAudioComponents(bool isStarting) {
         camera.reset();
     }
 
-    if ( recordingCheckTimer ) {
-        recordingCheckTimer->stop();
-        recordingCheckTimer.reset();
-    }
-
     // Reinitialize components
     configureMediaComponents();
 }
@@ -342,7 +337,8 @@ void MainWindow::chooseVideo()
         videoWidget->show();
 
         resetAudioComponents(false);
-        player->setSource(QUrl::fromLocalFile(currentVideoFile)); 
+        if ( player )
+            player->setSource(QUrl::fromLocalFile(currentVideoFile)); 
         currentVideoName = QFileInfo(currentVideoFile).baseName();        
         addProgressBarToScene(scene, getMediaDuration(currentVideoFile));
         logTextEdit->append("Playback preview. Press SING to start recording.");
@@ -370,7 +366,7 @@ try {
         
         isRecording = true;
         
-        if (mediaRecorder ) {
+        if (mediaRecorder && camera) {
 
             qWarning() << "Configuring mediaCaptureSession..";
             mediaCaptureSession->setCamera(camera.data());
@@ -417,15 +413,29 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
 
         previewCheckbox->setEnabled(false);
 
-        player->setSource(QUrl::fromLocalFile(currentVideoFile));
+        if ( player )
+            player->setSource(QUrl::fromLocalFile(currentVideoFile));
         addProgressBarToScene(scene, getMediaDuration(currentVideoFile));        
         progressSongFull->setToolTip("Cannot seek while recording!");
 
-        if (!recordingCheckTimer) {
-                recordingCheckTimer.reset(new QTimer(this));
-                connect(recordingCheckTimer.data(), &QTimer::timeout, this, &MainWindow::checkRecordingStart);
-                recordingCheckTimer->start(1);
-        }  // start violently probing for confirmed recorded data written
+        connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, [=](qint64 currentDuration) {
+            
+            if ( player && player->position() > 0 ) 
+            { 
+                playbackEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK PLAYBACK TIMESTAMP 
+
+                qDebug() << "partial mediaRecorder Duration:" << mediaRecorder->duration();
+                qDebug() << "mediaPlayer position:" << player->position();
+
+                offset = (playbackEventTime - recordingEventTime);
+                
+                qDebug() << "Offset between playback start and recording start: " << offset << " ms";
+                logTextEdit->append(QString("Offset between playback start and recording start: %1 ms").arg(offset));
+
+                disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, nullptr); 
+            }
+
+        });
 
     }
 
@@ -433,7 +443,8 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
     if (state == QMediaRecorder::StoppedState) {
         qDebug() << "Recording stopped.";
         
-        player->stop();
+        if ( player )
+            player->stop();
         playbackTimer->stop();
 
         videoWidget->hide();
@@ -459,35 +470,6 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
     }
 }
 
-void MainWindow::checkRecordingStart() {
-
-    if (mediaRecorder->duration() > 0) 
-    { 
-        if ( player->position() > 0 ) 
-        { 
-            playbackEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK PLAYBACK TIMESTAMP 
-            // stop probing
-            recordingCheckTimer->stop();
-            recordingCheckTimer.reset();
-
-            qDebug() << "partial mediaRecorder Duration:" << mediaRecorder->duration();
-            qDebug() << "mediaPlayer position:" << player->position();
-
-            offset = (playbackEventTime - recordingEventTime) + mediaRecorder->duration();
-            
-            qDebug() << "Offset between playback start and recording start: " << offset << " ms";
-            logTextEdit->append(QString("Offset between playback start and recording start: %1 ms").arg(offset));
-        }
-        
-        /*if ( mediaRecorder->duration() > 500 ) {
-            qWarning() << "Something is wrong with mediaRecorder. Aborting recording session. SORRY";
-            logTextEdit->append("detected unstable mediaRecorder. PLEASE TRY AGAIN SORRY");
-            handleRecordingError();
-            QMessageBox::warning(this, "Sorry, let's try again", "Detected QtMediaRecorder unstable: Recording aborted to prevent further failure while singing or resulting in an empty file.");
-        }*/
-    }
-}
-
 // recording FINISH button
 void MainWindow::stopRecording() {
     try {
@@ -498,8 +480,10 @@ void MainWindow::stopRecording() {
             return;
         }
 
-        camera->stop();
-        mediaRecorder->stop();
+        if ( camera )
+            camera->stop();
+        if ( mediaRecorder )
+            mediaRecorder->stop();
 
         recordingIndicator->hide();
         previewItem->hide();
@@ -522,7 +506,8 @@ void MainWindow::handleRecorderError(QMediaRecorder::Error error) {
     try {
         if (mediaRecorder ) {
             qDebug() << "Stopping media due to error...";
-            player->stop();
+            if ( player )
+                player->stop();
             playbackTimer->stop();
             mediaRecorder->stop();
         }
@@ -540,7 +525,9 @@ void MainWindow::handleRecordingError() {
     isRecording = false;
 
     qDebug() << "Cleaning up..";
-    camera->stop();
+    if ( camera )
+        camera->stop();
+
     recordingIndicator->hide();
     previewItem->hide();
     wakkaLogoItem->show();
@@ -562,8 +549,8 @@ void MainWindow::handleRecordingError() {
 // render //
 void MainWindow::renderAgain()
 {
-    
-    player->stop();
+    if ( player )
+        player->stop();
     playbackTimer->stop();
     resetAudioComponents(false);
 
@@ -643,7 +630,7 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
     QFileInfo videofileInfo(videoFilePath);
     QString videorama = "";
 
-    if ( (outputFilePath.endsWith(".mp4") || outputFilePath.endsWith(".avi") || outputFilePath.endsWith(".mkv")) 
+    if ( camera->isAvailable() && (outputFilePath.endsWith(".mp4") || outputFilePath.endsWith(".avi") || outputFilePath.endsWith(".mkv")) 
     && !( (videoFilePath.endsWith("mp3")) || (videoFilePath.endsWith("wav")) || (videoFilePath.endsWith("flac"))) ) {
         // Combine both recorded and playback videos
         videorama = QString("[0:v]trim=%1,scale=%2[webcam]; \
@@ -737,7 +724,8 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
 
         qDebug() << "Setting media source to" << outputFilePath;
         currentVideoFile = outputFilePath;
-        player->setSource(QUrl::fromLocalFile(currentVideoFile));
+        if ( player )
+            player->setSource(QUrl::fromLocalFile(currentVideoFile));
         addProgressBarToScene(scene, getMediaDuration(currentVideoFile));
 
         qDebug() << "trimmed rec offset: " << offset << " ms";
@@ -911,15 +899,18 @@ bool MainWindow::eventFilter(QObject *object, QEvent *event) {
                 if (progress > 1) progress = 1;
 
                 // Set the new position based on the click
-                qint64 newPosition = static_cast<qint64>(progress * player->duration());
+                if ( player ) {
+                    qint64 newPosition = static_cast<qint64>(progress * player->duration());
 
-                player->pause();                    // pause for smooth seeking
-                player->setAudioOutput(nullptr);    // avoid breaking sound when seeking (Qt6.4 bug?)
-                player->setPosition(newPosition);  // Seek the media player to the clicked position
-                player->setAudioOutput(audioOutput.data());
-                player->play();
+                    player->pause();                    // pause for smooth seeking
+                    player->setAudioOutput(nullptr);    // avoid breaking sound when seeking (Qt6.4 bug?)
+                    player->setPosition(newPosition);  // Seek the media player to the clicked position
+                    player->setAudioOutput(audioOutput.data());
+                    player->play();
 
-                return true;  // Event handled
+                    return true;  // Event handled
+
+                } else return false;
             }
         }
     }
@@ -960,7 +951,8 @@ void MainWindow::fetchVideo() {
             videoWidget->show();
             
             currentVideoFile = videoFilePath;  // Store the video playback file path
-            player->setSource(QUrl::fromLocalFile(currentVideoFile)); 
+            if ( player )
+                player->setSource(QUrl::fromLocalFile(currentVideoFile)); 
             currentVideoName = QFileInfo(currentVideoFile).baseName();
             addProgressBarToScene(scene, getMediaDuration(currentVideoFile));
 
@@ -1032,8 +1024,6 @@ MainWindow::~MainWindow() {
         delete soundLevelWidget;
     if ( progressSong )
         delete progressSong;
-    if ( recordingCheckTimer )
-        recordingCheckTimer.reset();
 }
 
 // Function to disconnect all signals
@@ -1043,13 +1033,11 @@ void MainWindow::disconnectAllSignals() {
     if (mediaRecorder) {
         disconnect(mediaRecorder.data(), &QMediaRecorder::recorderStateChanged, this, &MainWindow::onRecorderStateChanged);
         disconnect(mediaRecorder.data(), &QMediaRecorder::errorOccurred, this, &MainWindow::handleRecorderError);
+        disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, nullptr); 
     }
 
     if (player) {
         disconnect(player.data(), &QMediaPlayer::mediaStatusChanged, this, &MainWindow::onPlayerMediaStatusChanged);
-    }
-    if (recordingCheckTimer) {
-        disconnect(recordingCheckTimer.data(), &QTimer::timeout, this, &MainWindow::checkRecordingStart);
     }
 
 }

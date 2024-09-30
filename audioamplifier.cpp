@@ -26,7 +26,6 @@ AudioAmplifier::AudioAmplifier(const QAudioFormat &format, QObject *parent)
 
 AudioAmplifier::~AudioAmplifier() {
     stop();  // Ensure audio stops and resources are cleaned up
-    resetAudioComponents();  // Clear all resources
 }
 
 void AudioAmplifier::checkBufferState() {

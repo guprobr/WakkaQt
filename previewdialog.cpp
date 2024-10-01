@@ -17,17 +17,24 @@ PreviewDialog::PreviewDialog(QWidget *parent)
     QHBoxLayout *controls = new QHBoxLayout(this);
 
     volumeDial = new QDial(this);  // Change from QSlider to QDial
-    volumeDial->setRange(0, 300);   // 0% to 300% amplification
+    volumeDial->setRange(0, 500);   // 0% to 500% amplification
     volumeDial->setValue(100);       // Default 100% volume (no amplification)
     volumeDial->setNotchesVisible(true); // Show notches for better precision
+    volumeDial->setToolTip("Adjust and preview by moving the knob. Values above 100\% amplifies performance, while values below diminishes volume level.");
 
     // Initialize UI elements
-    QLabel *volumeBanner = new QLabel("Volume Amplification", this);
-    volumeLabel = new QLabel("Current Volume: 100%", this);
+    QLabel *volumeBanner = new QLabel("Volume Amplification: preview your performance and adjust volume if needed", this);
+    volumeBanner->setToolTip("This is a low-quality preview. Final render will sound much better.");
+    volumeLabel = new QLabel("Current Volume: 100\%", this);
+    volumeLabel->setToolTip("This is an approximation of what the final render will sound.");
     startButton = new QPushButton("REWIND", this);
+    startButton->setToolTip("Restart performance preview");
     stopButton = new QPushButton("Render Mix", this);
+    stopButton->setToolTip("Accept changes and begin rendering with FFmpeg");
     seekForwardButton = new QPushButton(">>", this);
+    seekForwardButton->setToolTip("Seek forward");
     seekBackwardButton = new QPushButton("<<", this);
+    seekBackwardButton->setToolTip("Seek backwards");
     controls->addWidget(seekBackwardButton);
     controls->addWidget(seekForwardButton);
 
@@ -38,7 +45,7 @@ PreviewDialog::PreviewDialog(QWidget *parent)
     layout->addLayout(controls);
     layout->addWidget(stopButton);
 
-    setLayout(layout);
+    //setLayout(layout);
     setFixedSize(800, 240);
 
     // Setup audio format
@@ -136,7 +143,7 @@ void PreviewDialog::replayAudioPreview() {
 
 void PreviewDialog::stopAudioPreview() {
     amplifier->stop();
-    qWarning() << "Volume adj factor:" << volume;
+    qWarning() << "Set Volume factor to:" << volume;
     accept();
 }
 
@@ -157,5 +164,5 @@ void PreviewDialog::updateVolume() {
     amplifier->setVolumeFactor(volume);
 
     // Update the volume label to inform the user
-    volumeLabel->setText(QString("Current Volume: %1%").arg(pendingVolumeValue));
+    volumeLabel->setText(QString("Current Volume: %1\%").arg(pendingVolumeValue));
 }

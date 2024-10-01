@@ -58,7 +58,7 @@ MainWindow::MainWindow(QWidget *parent)
     if (placeholderPixmap.isNull()) {
         qWarning() << "Failed to load placeholder image!";
     } else {
-        placeholderLabel->setPixmap(placeholderPixmap.scaled(320, 240, Qt::KeepAspectRatio));
+        placeholderLabel->setPixmap(placeholderPixmap.scaled(720, 720, Qt::KeepAspectRatio));
     }
     placeholderLabel->setAlignment(Qt::AlignCenter);
     placeholderLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
@@ -80,12 +80,14 @@ MainWindow::MainWindow(QWidget *parent)
     // Create the webcam video previewItem and set it in the center
     previewItem = new QGraphicsVideoItem;
     previewItem->setSize(QSizeF(160, 120)); // size for the webcam video preview
+    previewItem->setToolTip("Camera preview (if available)");
     
     wakkaLogoItem = new QGraphicsPixmapItem(placeholderPixmap.scaled(160, 120, Qt::KeepAspectRatio, Qt::SmoothTransformation));
     qreal previewX = (viewWidth - previewItem->boundingRect().width()) / 2;
     qreal previewY = (viewHeight - previewItem->boundingRect().height()) / 2; 
     previewItem->setPos(previewX, previewY);
     wakkaLogoItem->setPos(previewX, previewY);
+    wakkaLogoItem->setToolTip("About: WakkaQt was made with Qt6 by Gustavo L Conte");
     
     scene->addItem(previewItem);
     scene->addItem(wakkaLogoItem);
@@ -125,6 +127,7 @@ MainWindow::MainWindow(QWidget *parent)
     soundLevelWidget = new SndWidget(this);
     soundLevelWidget->setMinimumSize(200, 32);
     soundLevelWidget->setMaximumSize(1920, 32);
+    soundLevelWidget->setToolTip("Sound input visualization widget");
 
     // Selected device
     deviceLabel = new QLabel("Selected Device: None", this);
@@ -134,8 +137,12 @@ MainWindow::MainWindow(QWidget *parent)
 
     // YT downloader
     urlInput = new QLineEdit(this);
+    urlInput->setPlaceholderText("https://www.youtube.com/?v=ABCCDFGETC");
+    urlInput->setToolTip("Paste a URL here to fetch your karaoke playback video");
     fetchButton = new QPushButton("FETCH", this);
+    fetchButton->setToolTip("Click here to begin yt-dlp: video streaming service downloader");
     downloadStatusLabel = new QLabel("Download YouTube URL", this);
+    downloadStatusLabel->setToolTip("Several streaming services URL besides YouTube may work here");
     QHBoxLayout *fetchLayout = new QHBoxLayout;
     fetchLayout->addWidget(urlInput);
     fetchLayout->addWidget(fetchButton);
@@ -427,7 +434,7 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
                 qWarning() << "mediaRecorder Duration:" << mediaRecorder->duration();
                 qWarning() << "mediaPlayer position:" << player->position();
 
-                offset = (playbackEventTime - recordingEventTime) + player->position();
+                offset = (playbackEventTime - recordingEventTime) + (mediaRecorder->duration() - player->position());
                 
                 qWarning() << "Offset: " << offset << " ms";
                 logTextEdit->append(QString("Offset between playback start and recording start: %1 ms").arg(offset));
@@ -487,9 +494,12 @@ void MainWindow::stopRecording() {
             return;
         }
 
-        if ( camera )
+        if ( camera->isActive() )
             camera->stop();
-        if ( mediaRecorder )
+        
+        mediaCaptureSession->setCamera(nullptr); // safeguard just in case the user was dumb enough to unplug the camera while recording
+
+        if ( mediaRecorder->isAvailable() )
             mediaRecorder->stop();
 
         recordingIndicator->hide();
@@ -734,10 +744,10 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
         videoWidget->show();
 
         qDebug() << "Setting media source to" << outputFilePath;
-        currentVideoFile = outputFilePath;
+        //currentVideoFile = outputFilePath; // uncomment this for out special Recursive Aracna View mode: its awesome
         if ( player )
-            player->setSource(QUrl::fromLocalFile(currentVideoFile));
-        addProgressBarToScene(scene, getMediaDuration(currentVideoFile));
+            player->setSource(QUrl::fromLocalFile(outputFilePath));
+        addProgressBarToScene(scene, getMediaDuration(outputFilePath));
 
         qWarning() << "trimmed rec offset: " << offset << " ms";
         logTextEdit->append(QString("trimmed recording Offset: %1 ms").arg(offset));

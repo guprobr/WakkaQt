@@ -380,8 +380,9 @@ try {
             mediaCaptureSession->setAudioInput(audioInput.data());
             mediaCaptureSession->setRecorder(mediaRecorder.data());
             camera->start();
-            recordingEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK RECORDING TIMESTAMP
+            
             mediaRecorder->record();
+            recordingEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK RECORDING TIMESTAMP
                 
         }
 

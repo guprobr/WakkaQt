@@ -58,7 +58,7 @@ MainWindow::MainWindow(QWidget *parent)
     if (placeholderPixmap.isNull()) {
         qWarning() << "Failed to load placeholder image!";
     } else {
-        placeholderLabel->setPixmap(placeholderPixmap.scaled(768, 768, Qt::IgnoreAspectRatio));
+        placeholderLabel->setPixmap(placeholderPixmap.scaled(320, 240, Qt::KeepAspectRatio));
     }
     placeholderLabel->setAlignment(Qt::AlignCenter);
     placeholderLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
@@ -881,6 +881,8 @@ void MainWindow::addProgressBarToScene(QGraphicsScene *scene, qint64 duration) {
     scene->removeEventFilter(this); // remove prior eventfilter
     if ( !isRecording ) // do not seek when recording!
         scene->installEventFilter(this); // Handle mouse press events, making the progress bar seekable
+
+    durationTextItem->setToolTip(currentVideoName);
 }
 
 bool MainWindow::eventFilter(QObject *object, QEvent *event) {

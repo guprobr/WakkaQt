@@ -583,7 +583,7 @@ void MainWindow::renderAgain()
             QMessageBox::Yes | QMessageBox::No, 
             QMessageBox::No
         );
-        setRez = (response == QMessageBox::Yes) ? "1920x540" : "480x270";
+        setRez = (response == QMessageBox::Yes) ? "1920x540" : "640x240";
         qDebug() << "Will vstack each video with resolution:" << setRez;
 
         // Show the preview dialog
@@ -639,15 +639,16 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
     QFileInfo videofileInfo(videoFilePath);
     QString videorama = "";
 
-    if ( camera->isAvailable() && (outputFilePath.endsWith(".mp4") || outputFilePath.endsWith(".avi") || outputFilePath.endsWith(".mkv")) 
-    && !( (videoFilePath.endsWith("mp3")) || (videoFilePath.endsWith("wav")) || (videoFilePath.endsWith("flac"))) ) {
-        // Combine both recorded and playback videos
-        videorama = QString("[0:v]trim=%1,scale=%2[webcam]; \
-                            [1:v]scale=%2[video]; \
-                            [video][webcam]vstack;")
-                            .arg(millisecondsToSecondsString(offset))
-                            .arg(userRez);
-    }
+    if ( camera->isAvailable() )
+        if ((outputFilePath.endsWith(".mp4", Qt::CaseInsensitive) || outputFilePath.endsWith(".avi", Qt::CaseInsensitive) || outputFilePath.endsWith(".mkv", Qt::CaseInsensitive)) 
+        && !( (videoFilePath.endsWith("mp3", Qt::CaseInsensitive)) || (videoFilePath.endsWith("wav", Qt::CaseInsensitive)) || (videoFilePath.endsWith("flac", Qt::CaseInsensitive))) ) {
+            // Combine both recorded and playback videos
+            videorama = QString("[0:v]trim=%1,scale=%2[webcam]; \
+                                [1:v]scale=%2[video]; \
+                                [video][webcam]vstack;")
+                                .arg(millisecondsToSecondsString(offset))
+                                .arg(userRez);
+        }
 
     // we Configure autotalent plugin here:
     QString talent = "lv2=http\\\\://gareus.org/oss/lv2/fat1,";

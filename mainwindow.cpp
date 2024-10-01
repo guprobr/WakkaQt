@@ -421,11 +421,6 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
 
         previewCheckbox->setEnabled(false);
 
-        if ( player )
-            player->setSource(QUrl::fromLocalFile(currentVideoFile));
-        addProgressBarToScene(scene, getMediaDuration(currentVideoFile));        
-        progressSongFull->setToolTip("Will not seek while recording!");
-
         connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, [=](qint64 currentDuration) {
             
             if ( player && player->position() > 0 ) 
@@ -451,6 +446,11 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
             }
 
         });
+
+        if ( player )
+            player->setSource(QUrl::fromLocalFile(currentVideoFile));
+        addProgressBarToScene(scene, getMediaDuration(currentVideoFile));        
+        progressSongFull->setToolTip("Will not seek while recording!");
 
     }
 

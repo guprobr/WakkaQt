@@ -18,6 +18,14 @@ find_package(Qt6 REQUIRED COMPONENTS
     MultimediaWidgets
 )
 
+# Check if the system is Linux
+if(UNIX AND NOT APPLE)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(GLIB2 REQUIRED glib-2.0)
+    include_directories(${GLIB2_INCLUDE_DIRS})
+    link_directories(${GLIB2_LIBRARY_DIRS})
+endif()
+
 # Add the resource file
 qt_add_resources(resources resources.qrc)
 message(STATUS "Resources added: ${resources}")
@@ -43,6 +51,7 @@ target_link_libraries(${PROJECT_NAME}
     Qt6::Widgets
     Qt6::Multimedia
     Qt6::MultimediaWidgets
+    ${GLIB2_LIBRARIES}
     ${MINGW_RUNTIME_LIB}
 )
 
@@ -50,3 +59,8 @@ target_link_libraries(${PROJECT_NAME}
 target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
+
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DQT_NO_DEBUG_OUTPUT")
+endif()
+message (STATUS "Build type: ${CMAKE_BUILD_TYPE}")

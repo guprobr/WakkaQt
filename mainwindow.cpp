@@ -408,7 +408,7 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
             mediaCaptureSession->setVideoOutput(previewItem);
             wakkaLogoItem->hide();
             previewItem->show();
-            qDebug() << "Camera preview enabled.";
+            qWarning() << "Camera preview enabled.";
         }
 
         previewCheckbox->setEnabled(false);
@@ -416,22 +416,20 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
         if ( player )
             player->setSource(QUrl::fromLocalFile(currentVideoFile));
         addProgressBarToScene(scene, getMediaDuration(currentVideoFile));        
-        progressSongFull->setToolTip("Cannot seek while recording!");
+        progressSongFull->setToolTip("Will not seek while recording!");
 
         connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, [=](qint64 currentDuration) {
-
-
             
             if ( player && player->position() > 0 ) 
             { 
                 playbackEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK PLAYBACK TIMESTAMP 
 
-                qDebug() << "partial mediaRecorder Duration:" << mediaRecorder->duration();
-                qDebug() << "mediaPlayer position:" << player->position();
+                qWarning() << "mediaRecorder Duration:" << mediaRecorder->duration();
+                qWarning() << "mediaPlayer position:" << player->position();
 
-                offset = (playbackEventTime - recordingEventTime);
+                offset = (playbackEventTime - recordingEventTime) + player->position();
                 
-                qDebug() << "Offset between playback start and recording start: " << offset << " ms";
+                qWarning() << "Offset: " << offset << " ms";
                 logTextEdit->append(QString("Offset between playback start and recording start: %1 ms").arg(offset));
 
                 disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, nullptr);
@@ -450,7 +448,7 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
 
     // when "Finished recording"
     if (state == QMediaRecorder::StoppedState) {
-        qDebug() << "Recording stopped.";
+        qWarning() << "Recording stopped.";
         
         if ( player )
             player->stop();
@@ -461,11 +459,11 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
 
         QFile file(webcamRecorded);
         if (file.size() > 0) {
-            qDebug() << "Recording saved successfully";
+            qWarning() << "Recording saved successfully";
             renderAgain();
         } else {
         // damn it we tought we were recording but we did not record anything!
-            qDebug() << "*FAILURE* File size is zero.";
+            qWarning() << "*FAILURE* File size is zero.";
             logTextEdit->append("Recording ERROR. File size is zero.");
 
             chooseVideoButton->setEnabled(true);
@@ -500,7 +498,7 @@ void MainWindow::stopRecording() {
         
         isRecording = false;
         singButton->setText("♪ SING ♪");
-        progressSongFull->setToolTip("Click to seek");
+        progressSongFull->setToolTip("Nothing to seek");
 
     } catch (const std::exception &e) {
         logTextEdit->append("Error during stopRecording: " + QString::fromStdString(e.what()));
@@ -514,7 +512,7 @@ void MainWindow::handleRecorderError(QMediaRecorder::Error error) {
 
     try {
         if (mediaRecorder ) {
-            qDebug() << "Stopping media due to error...";
+            qWarning() << "Stopping media due to error...";
             if ( player )
                 player->stop();
             playbackTimer->stop();
@@ -549,7 +547,7 @@ void MainWindow::handleRecordingError() {
     fetchButton->setEnabled(true);
     chooseInputButton->setEnabled(true);
 
-    progressSongFull->setToolTip("Click to seek");
+    progressSongFull->setToolTip("Nothing to seek");
 
     resetAudioComponents(false);
 
@@ -654,9 +652,9 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
     QString talent = "lv2=http\\\\://gareus.org/oss/lv2/fat1,";
 
     arguments << "-y"               // Overwrite output file if it exists
-          << "-fflags" << "+genpts"
-          << "-i" << webcamFilePath // recorded vocals
-          << "-i" << videoFilePath  // playback file
+          << "-fflags" << "+genpts" // ensure FFmpeg handle proper timestamps
+          << "-i" << webcamFilePath // recorded vocals INPUT
+          << "-i" << videoFilePath  // playback file INPUT
           << "-filter_complex"      // masterization and vocal enhancement of recorded audio
           << QString("[0:a]aformat=channel_layouts=stereo,atrim=%1, \
                         afftdn=nf=-20:nr=10:nt=w,speechnorm,acompressor=threshold=0.5:ratio=4,highpass=f=200,%2 \
@@ -669,11 +667,11 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
 
     // Map audio output
     arguments   << "-ac" << "2"                 // Force stereo
-                << "-async" << "1"
-                << "-vsync" << "2"
+                << "-async" << "1"              // force audio sync in output
+                << "-vsync" << "2"              // force video sync in output
                 << "-dither_method" << "none"   // dithering off
                 << "-map" << "[wakkamix]"      // ensure audio goes on the pack
-                << outputFilePath;
+                << outputFilePath;              // OUTPUT mix
 
     
     // Connect signals to display output and errors
@@ -701,7 +699,7 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
     });
 
     connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), [this, process, outputFilePath, progressLabel](int exitCode, QProcess::ExitStatus exitStatus) {
-        qDebug() << "FFmpeg finished with exit code" << exitCode << "and status" << (exitStatus == QProcess::NormalExit ? "NormalExit" : "CrashExit");
+        qWarning() << "FFmpeg finished with exit code" << exitCode << "and status" << (exitStatus == QProcess::NormalExit ? "NormalExit" : "CrashExit");
         
         progressLabel->hide();
         delete this->progressBar;
@@ -722,7 +720,7 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
 
         QFile file(outputFilePath);
         if (!file.exists()) {
-            qDebug() << "Output path does not exist: " << outputFilePath;
+            qWarning() << "Output path does not exist: " << outputFilePath;
             QMessageBox::warning(this, "FFMpeg ?", "Aborted playback. Strange error: output file does not exist.");
             return;
         }
@@ -741,7 +739,7 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
             player->setSource(QUrl::fromLocalFile(currentVideoFile));
         addProgressBarToScene(scene, getMediaDuration(currentVideoFile));
 
-        qDebug() << "trimmed rec offset: " << offset << " ms";
+        qWarning() << "trimmed rec offset: " << offset << " ms";
         logTextEdit->append(QString("trimmed recording Offset: %1 ms").arg(offset));
         this->logTextEdit->append("Playing mix!");
 
@@ -751,7 +749,7 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
     process->start("ffmpeg", arguments);
 
     if (!process->waitForStarted()) {
-        qDebug() << "Failed to start FFmpeg process.";
+        qWarning() << "Failed to start FFmpeg process.";
         progressLabel->setText("Failed to start FFmpeg");
         logTextEdit->append("Failed to start FFmpeg process.");
         process->deleteLater();
@@ -804,7 +802,7 @@ void MainWindow::updateProgress(const QString& output, QProgressBar* progressBar
         // Update the progress bar
         progressBar->setValue(progressValue);
     } else {
-        qWarning() << "No match for time regex:" << output;
+        qDebug() << "No match for time regex:" << output;
     }
 }
 
@@ -1003,7 +1001,7 @@ void MainWindow::fetchVideo() {
 
 void MainWindow::onPreviewCheckboxToggled(bool enable) {
     if (enable) {
-        qDebug() << "Camera preview will be enabled next recording.";
+        qWarning() << "Camera preview will be enabled next recording.";
         logTextEdit->append("Camera preview will be enabled next recording.");
     } else {
         // Hide the camera preview

@@ -56,7 +56,7 @@ void AudioAmplifier::checkBufferState() {
 
     // When close to the end, restart playback
     if (processedDuration >= totalDuration - threshold) {
-        qDebug() << "Buffer near the end. Restarting playback.";
+        qWarning() << "Buffer near the end. Restarting playback.";
         stop();
         resetAudioComponents();
         rewind();
@@ -182,7 +182,7 @@ void AudioAmplifier::rewind() {
     if (audioBuffer->isOpen()) {
         audioBuffer->seek(0);  // Seek the buffer to the start
     } else {
-        qWarning() << "Audio buffer is not open. Cannot rewind.";
+        qDebug() << "Audio buffer is not open. Cannot rewind.";
     }
     playbackPosition = 0;  // Reset playback position
 }
@@ -211,6 +211,6 @@ void AudioAmplifier::resetAudioComponents() {
 
     audioSink.reset(new QAudioSink(audioFormat, this));
     connect(audioSink.data(), &QAudioSink::stateChanged, this, &AudioAmplifier::handleStateChanged);
-    //audioSink->setBufferSize(8192);  // buffer
+    audioSink->setBufferSize(8192);  // buffer
 
 }

@@ -14,7 +14,7 @@ PreviewDialog::PreviewDialog(QWidget *parent)
 
     // Setup UI
     QVBoxLayout *layout = new QVBoxLayout(this);
-    QHBoxLayout *controls = new QHBoxLayout(this);
+    QHBoxLayout *controls = new QHBoxLayout();
 
     volumeDial = new QDial(this);  // Change from QSlider to QDial
     volumeDial->setRange(0, 500);   // 0% to 500% amplification

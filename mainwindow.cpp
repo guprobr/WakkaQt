@@ -2,6 +2,8 @@
 #include "sndwidget.h"
 #include "previewdialog.h"
 
+#include <QMenu>
+#include <QMenuBar>
 #include <QFileInfo>
 #include <QRegularExpression>
 #include <QStringList>
@@ -44,6 +46,22 @@ MainWindow::MainWindow(QWidget *parent)
     // acquire app palette
     QPalette palette = this->palette();
     highlightColor = palette.color(QPalette::Highlight);
+
+    QMenuBar *menuBar = new QMenuBar(this);
+    QMenu *helpMenu = new QMenu("About", this);
+    QAction *aboutQtAction = new QAction("About Qt", this);
+    QAction *aboutWakkaQtAction = new QAction("About WakkaQt", this);
+    helpMenu->addAction(aboutQtAction);
+    helpMenu->addAction(aboutWakkaQtAction);
+    menuBar->addMenu(helpMenu);
+    setMenuBar(menuBar);
+
+    connect(aboutQtAction, &QAction::triggered, this, []() {
+        QMessageBox::aboutQt(nullptr, "About Qt");
+    });
+    connect(aboutWakkaQtAction, &QAction::triggered, this, []() {
+        QMessageBox::about(nullptr, "About WakkaQt", "WakkaQt is a karaoke application built with C++ and Qt6,\n designed to record vocals over a video/audio track and mix them into a rendered file. \nThis app features webcam recording, YouTube video downloading, real-time sound visualization, and post-recording video rendering with FFmpeg. It automatically does some masterization on the vocal tracks. It also uses an AutoTuner LV2 plugin for smoothing the results, X42 by Robin Gareus, with slight pitch shift/correction and formant preservation.\n\n ©2024 The author is Gustavo L Conte https://gu.pro.br");
+    });
 
     // Create video widget
     videoWidget = new QVideoWidget(this);
@@ -456,7 +474,7 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
                     qWarning() << "Something is wrong with mediaRecorder. Aborting recording session. SORRY";
                     logTextEdit->append("detected unstable mediaRecorder. PLEASE TRY AGAIN SORRY");
                     handleRecordingError();
-                    QMessageBox::warning(this, "unstable mediaRecorder!", "Recording cancelled to prevent further errors..");
+                    QMessageBox::critical(this, "unstable mediaRecorder!", "Recording cancelled to prevent further errors..");
                 }
             }
 
@@ -490,7 +508,7 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
             singButton->setEnabled(false);
             
             resetAudioComponents(false);
-            QMessageBox::warning(this, "SORRY: mediaRecorder ERROR", "File size is zero.");
+            QMessageBox::critical(this, "SORRY: mediaRecorder ERROR", "File size is zero.");
         }
     }
 }
@@ -501,7 +519,7 @@ void MainWindow::stopRecording() {
         if (!isRecording) {
             qWarning() << "Not recording.";
             logTextEdit->append("Tried to stop Recording, but we are not recording. ERROR.");
-            QMessageBox::warning(this, "ERROR.", "Tried to stop Recording, but we are not recording. ERROR.");
+            QMessageBox::critical(this, "ERROR.", "Tried to stop Recording, but we are not recording. ERROR.");
             return;
         }
 
@@ -544,7 +562,7 @@ void MainWindow::handleRecorderError(QMediaRecorder::Error error) {
     }
 
     handleRecordingError();
-    QMessageBox::warning(this, "Recording Error", "An error occurred while recording: " + mediaRecorder->errorString());
+    QMessageBox::critical(this, "Recording Error", "An error occurred while recording: " + mediaRecorder->errorString());
 }
 
 void MainWindow::handleRecordingError() {
@@ -618,14 +636,14 @@ void MainWindow::renderAgain()
             fetchButton->setEnabled(true);
             chooseInputButton->setEnabled(true);
             singButton->setEnabled(false);
-            QMessageBox::warning(this, "Rendering Aborted!", "adjustment cancelled..");             
+            QMessageBox::warning(this, "Performance Aborted!", "Volume adjustment dialog cancelled..");             
         }
     } else {
         chooseVideoButton->setEnabled(true);
         fetchButton->setEnabled(true);
         chooseInputButton->setEnabled(true);
         singButton->setEnabled(false);
-        QMessageBox::warning(this, "Rendering aborted!", "Rendering was cancelled..");
+        QMessageBox::warning(this, "Performance aborted!", "Rendering was cancelled..");
     }
 }
 
@@ -731,18 +749,18 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
             chooseVideoButton->setEnabled(true);
             fetchButton->setEnabled(true);
             renderAgainButton->setVisible(true);
-            QMessageBox::warning(this, "FFMpeg crashed :(", "Aborting.. Verify if FFMpeg is correctly installed and in the PATH to be executed. Verify logs for FFMpeg error. This program requires a LV2 plugin callex X42 by Gareus.");
+            QMessageBox::critical(this, "FFmpeg crashed :(", "Aborting.. Verify if FFmpeg is correctly installed and in the PATH to be executed. Verify logs for FFmpeg error. This program requires a LV2 plugin callex X42 by Gareus.");
             return;
         }
         else {
-            QMessageBox::warning(this, "Rendering Done!", "Prepare to preview performance. You can press RenderAgain button to adjust volume again or select a different filename, file type or resolution.");
+            QMessageBox::information(this, "Rendering Done!", "Prepare to preview performance. You can press RenderAgain button to adjust volume again or select a different filename, file type or resolution.");
             this->logTextEdit->append("FFmpeg finished.");
         }
 
         QFile file(outputFilePath);
         if (!file.exists()) {
             qWarning() << "Output path does not exist: " << outputFilePath;
-            QMessageBox::warning(this, "FFMpeg ?", "Aborted playback. Strange error: output file does not exist.");
+            QMessageBox::critical(this, "Check FFmpeg ?", "Aborted playback. Strange error: output file does not exist.");
             return;
         }
 
@@ -911,6 +929,7 @@ bool MainWindow::eventFilter(QObject *object, QEvent *event) {
         // Cast the event to QGraphicsSceneMouseEvent
         QGraphicsSceneMouseEvent *mouseEvent = dynamic_cast<QGraphicsSceneMouseEvent *>(event);
         if (mouseEvent) {
+            
             QPointF clickPos = mouseEvent->scenePos();  // Get the mouse click position in scene coordinates
 
             // Get progress bar position and dimensions

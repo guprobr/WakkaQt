@@ -251,6 +251,8 @@ MainWindow::MainWindow(QWidget *parent)
     playbackTimer = new QTimer(this);
     connect(playbackTimer, &QTimer::timeout, this, &MainWindow::updatePlaybackDuration);
 
+    scene->installEventFilter(this);
+
     resetAudioComponents(true);
 }
 

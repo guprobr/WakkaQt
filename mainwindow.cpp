@@ -455,8 +455,10 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status)
     if (status == QMediaPlayer::BufferedMedia ) 
         playbackTimer->start(1000); // the playback cronometer
 
-    if (status == QMediaPlayer::LoadedMedia )
+    if (status == QMediaPlayer::LoadedMedia ) {
         player->play(); // play when media is loaded!
+        playbackEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK TIMESTAMP
+    }
 
 }
 
@@ -484,7 +486,6 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
             
             if ( player && player->source().isEmpty()) {
 
-                recordingEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK RECORDING TIMESTAMP
                 player->setSource(QUrl::fromLocalFile(currentVideoFile));
                 addProgressBarToScene(scene, getMediaDuration(currentVideoFile));        
                 progressSongFull->setToolTip("Will not seek while recording!");
@@ -493,12 +494,12 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
             
             if ( player && player->position() > 0 ) 
             { 
-                playbackEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK PLAYBACK TIMESTAMP 
+                recordingEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK TIMESTAMP 
 
                 qWarning() << "mediaRecorder Duration:" << mediaRecorder->duration();
                 qWarning() << "mediaPlayer position:" << player->position();
 
-                offset = (mediaRecorder->duration() + (playbackEventTime - recordingEventTime) - player->position());
+                offset = (mediaRecorder->duration() + (recordingEventTime - playbackEventTime) - player->position());
 
                 qWarning() << "eventTime: " << (playbackEventTime - recordingEventTime) << " ms";
                 qWarning() << "Offset: " << offset << " ms";

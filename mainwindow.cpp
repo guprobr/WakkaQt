@@ -923,21 +923,23 @@ bool MainWindow::eventFilter(QObject *object, QEvent *event) {
                 if (progress < 0) progress = 0;
                 if (progress > 1) progress = 1;
 
-                // Set the new position based on the click
-                if ( player ) {
-                    qint64 newPosition = static_cast<qint64>(progress * player->duration());
+               // Set the new position based on the click
+                qint64 newPosition = static_cast<qint64>(progress * player->duration());
 
-                    player->setAudioOutput(nullptr);    // avoid breaking sound when seeking (Qt6.4 bug?)
-                    // must pause after removing audio output or else it does not work on Windows
-                    player->pause();                    // pause for smooth seeking
-                    player->setPosition(newPosition);  // Seek the media player to the clicked position
-                    
-                    player->setAudioOutput(audioOutput.data());
-                    player->play();
+        
+#ifdef __linux__
+                player->pause(); // Pause for smooth seeking
+                player->setAudioOutput(nullptr);  // Avoid breaking sound when seeking (Qt6.4 or gStreamer bug? on Linux)
+#endif
+                player->setPosition(newPosition); // Seek the media player to the clicked position
+#ifdef __linux__
+                player->setAudioOutput(audioOutput.data()); // gimme back my sound mon
+                player->play();
+#endif
+
 
                     return true;  // Event handled
 
-                } else return false;
             }
         }
     }

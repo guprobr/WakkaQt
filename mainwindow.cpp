@@ -437,11 +437,12 @@ try {
             mediaCaptureSession->setCamera(camera.data());
             mediaCaptureSession->setAudioInput(audioInput.data());
             mediaCaptureSession->setRecorder(mediaRecorder.data());
-            recordingEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK RECORDING TIMESTAMP
+            
             camera->start();
+            recordingEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK RECORDING TIMESTAMP
             mediaRecorder->record();
             
-                
+                            
         }
 
     } catch (const std::exception &e) {
@@ -479,13 +480,13 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
 
         previewCheckbox->setEnabled(false);
 
-        connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, [=](qint64 currentDuration) {
-
-            if ( player && player->source().isEmpty() ) {
+        if ( player ) {
                 player->setSource(QUrl::fromLocalFile(currentVideoFile));
                 addProgressBarToScene(scene, getMediaDuration(currentVideoFile));        
                 progressSongFull->setToolTip("Will not seek while recording!");
             }
+
+        connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, [=](qint64 currentDuration) {
             
             if ( player && player->position() > 0 ) 
             { 

@@ -928,12 +928,11 @@ bool MainWindow::eventFilter(QObject *object, QEvent *event) {
                     qint64 newPosition = static_cast<qint64>(progress * player->duration());
 
                     player->setAudioOutput(nullptr);    // avoid breaking sound when seeking (Qt6.4 bug?)
-
-                    player->setPosition(newPosition);  // Seek the media player to the clicked position
+                    // must pause after removing audio output or else it does not work on Windows
                     player->pause();                    // pause for smooth seeking
-
+                    player->setPosition(newPosition);  // Seek the media player to the clicked position
+                    
                     player->setAudioOutput(audioOutput.data());
-
                     player->play();
 
                     return true;  // Event handled

@@ -438,9 +438,9 @@ try {
             mediaCaptureSession->setAudioInput(audioInput.data());
             mediaCaptureSession->setRecorder(mediaRecorder.data());
             camera->start();
-            
-            mediaRecorder->record();
             recordingEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK RECORDING TIMESTAMP
+            mediaRecorder->record();
+            
                 
         }
 
@@ -494,7 +494,7 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
                 qWarning() << "mediaRecorder Duration:" << mediaRecorder->duration();
                 qWarning() << "mediaPlayer position:" << player->position();
 
-                offset = (playbackEventTime - recordingEventTime) + player->position();
+                offset = (playbackEventTime - recordingEventTime);
                 
                 qWarning() << "Offset: " << offset << " ms";
                 logTextEdit->append(QString("Offset between playback start and recording start: %1 ms").arg(offset));

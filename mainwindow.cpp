@@ -368,6 +368,11 @@ void MainWindow::chooseInputDevice()
                 break;
             }
         }
+    } else {
+        qWarning() << "Default device selected because no device was chosen!";
+        selectedDevice = QMediaDevices::defaultAudioInput();
+        updateDeviceLabel(selectedDevice);
+        soundLevelWidget->setInputDevice(selectedDevice);
     }
 }
 
@@ -489,7 +494,7 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
                 qWarning() << "mediaRecorder Duration:" << mediaRecorder->duration();
                 qWarning() << "mediaPlayer position:" << player->position();
 
-                offset = (playbackEventTime - recordingEventTime);
+                offset = (playbackEventTime - recordingEventTime) + player->position();
                 
                 qWarning() << "Offset: " << offset << " ms";
                 logTextEdit->append(QString("Offset between playback start and recording start: %1 ms").arg(offset));

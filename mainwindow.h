@@ -2,6 +2,7 @@
 #define MAINWINDOW_H
 
 #include "sndwidget.h"
+#include "videodisplaywidget.h"
 
 #include <QMainWindow>
 #include <QScopedPointer>
@@ -39,6 +40,7 @@ public:
 
 private slots:
     //void onAudioInputsChanged();
+    void onVideoFrameReceived(const QVideoFrame &frame);
     void onRecorderStateChanged(QMediaRecorder::RecorderState state);
     void onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status);
     void handleRecorderError(QMediaRecorder::Error error);
@@ -70,7 +72,9 @@ private:
     QProgressBar *progressBar;
     int totalDuration;
 
-    QVideoWidget *videoWidget;    
+    QVideoWidget *videoWidget;
+    VideoDisplayWidget *customVideoWidget;
+
     QScopedPointer<QMediaPlayer> player;
     QScopedPointer<QAudioOutput> audioOutput;
     QScopedPointer<QAudioInput> audioInput;
@@ -78,6 +82,7 @@ private:
     QScopedPointer<QMediaRecorder> mediaRecorder;
     QScopedPointer<QMediaCaptureSession> mediaCaptureSession;
     QScopedPointer<QCamera> camera;
+    QScopedPointer<QVideoSink> videoSink;
     
     QPushButton *singButton;
     QPushButton *chooseVideoButton;
@@ -124,6 +129,8 @@ private:
     void configureMediaComponents();
     void chooseInputDevice();
     void updateDeviceLabel(const QAudioDevice &device);
+    void proxyVideoFrame(QVideoFrame &frame);
+
     void disconnectAllSignals();
     void closeEvent(QCloseEvent *event) override;
 

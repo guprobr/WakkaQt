@@ -1,2 +1,8 @@
 .vscode/
 build/
+*.tar
+*.gz
+*.xz
+*.zip
+*.swp
+debian/

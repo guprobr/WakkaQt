@@ -30,6 +30,8 @@
 #include <QAudioInput>
 
 #include <QVideoWidget>
+#include <QVideoFrame>
+#include <QVideoSink>
 #include <QGraphicsScene>
 #include <QGraphicsView>
 #include <QGraphicsVideoItem>
@@ -110,11 +112,21 @@ MainWindow::MainWindow(QWidget *parent)
     placeholderLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     placeholderLabel->setScaledContents(true);
 
+    // Initialize the custom video widget
+    customVideoWidget = new VideoDisplayWidget(this);
+    // Set the geometry or use a layout to manage it
+    customVideoWidget->setMinimumSize(200, 200); // Set position and size
+    customVideoWidget->setMaximumSize(320, 320);
+    QHBoxLayout *webcamPreviewLayout = new QHBoxLayout();
+    webcamPreviewLayout->addStretch();
+    webcamPreviewLayout->addWidget(customVideoWidget, 0, Qt::AlignCenter);
+    webcamPreviewLayout->addStretch();
+
     // Create the scene and view
     scene = new QGraphicsScene(this);
     previewView = new QGraphicsView(scene, this);
-    previewView->setMinimumSize(640, 140);
-    previewView->setMaximumSize(1920, 140);
+    previewView->setMinimumSize(640, 64);
+    previewView->setMaximumSize(1920, 64);
     previewView->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     previewView->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     previewView->setAlignment(Qt::AlignCenter);
@@ -123,23 +135,6 @@ MainWindow::MainWindow(QWidget *parent)
     qreal viewWidth = previewView->width();
     qreal viewHeight = previewView->height();
 
-    // Create the webcam video previewItem and set it in the center
-    previewItem = new QGraphicsVideoItem;
-    previewItem->setSize(QSizeF(100, 100)); // size for the webcam video preview
-    previewItem->setToolTip("Camera preview (click to enlarge)");
-    
-    wakkaLogoItem = new QGraphicsPixmapItem(placeholderPixmap.scaled(100, 100, Qt::IgnoreAspectRatio));
-    qreal previewX = (viewWidth - previewItem->boundingRect().width()) / 2;
-    qreal previewY = (viewHeight - previewItem->boundingRect().height()) / 2; 
-    wakkaLogoItem->setToolTip("About: WakkaQt was made with Qt6 by Gustavo L Conte");
-    
-    wakkaLogoItem->setPos(previewX, previewY);
-    previewItem->setPos(previewX, previewY);
-    scene->addItem(previewItem);
-    scene->addItem(wakkaLogoItem);
-    previewItem->hide();
-    wakkaLogoItem->show();
-    
     // Create durationTextItem
     durationTextItem = new QGraphicsTextItem;
     durationTextItem->setDefaultTextColor(palette.color(QPalette::Text));
@@ -216,6 +211,7 @@ MainWindow::MainWindow(QWidget *parent)
     QWidget *containerWidget = new QWidget(this);
     QVBoxLayout *layout = new QVBoxLayout(containerWidget);
     layout->addLayout(indicatorLayout);
+    layout->addLayout(webcamPreviewLayout);
     layout->addWidget(previewView);
     layout->addWidget(soundLevelWidget);
     layout->addWidget(placeholderLabel);  
@@ -234,6 +230,7 @@ MainWindow::MainWindow(QWidget *parent)
     // Widget visibility
     soundLevelWidget->setVisible(true);
     recordingIndicator->hide();
+    customVideoWidget->hide();
     singButton->setEnabled(false);
     renderAgainButton->setVisible(false);
     exitButton->setVisible(false);
@@ -345,11 +342,47 @@ void MainWindow::configureMediaComponents()
     mediaRecorder->setOutputLocation(QUrl::fromLocalFile(webcamRecorded));
     mediaRecorder->setQuality(QMediaRecorder::VeryHighQuality);
 
-    previewCheckbox->setEnabled(true);
+    videoSink.reset(new QVideoSink(this));
+    mediaCaptureSession->setVideoOutput(videoSink.data());
+    qWarning() << "Configuring mediaCaptureSession..";
+    mediaCaptureSession->setCamera(camera.data());
+    mediaCaptureSession->setAudioInput(audioInput.data());
+    mediaCaptureSession->setRecorder(mediaRecorder.data());
+
+    connect(videoSink.data(), &QVideoSink::videoFrameChanged, this, &MainWindow::onVideoFrameReceived);
+
 
     qDebug() << "Reconfigured media components";
 
 }
+
+void MainWindow::onVideoFrameReceived(const QVideoFrame &frame) {
+    // Forward the video frame to another widget or process the frame
+    if (frame.isValid()) {
+        // Create a mutable copy of the frame
+        QVideoFrame mutableFrame = frame;
+        proxyVideoFrame(mutableFrame); // Pass the mutable copy
+    }
+}
+
+void MainWindow::proxyVideoFrame(QVideoFrame &frame) {
+    if (!frame.isMapped()) {
+        // Map the frame for reading
+        if (!frame.map(QVideoFrame::ReadOnly)) {
+            return;
+        }
+    }
+
+    // Convert the frame to a QImage
+    QImage img = frame.toImage();
+    if (!img.isNull()) {
+        // Paint the QImage to the second video widget
+        customVideoWidget->setImage(img);
+    }
+
+    frame.unmap();
+}
+
 
 void MainWindow::chooseInputDevice()
 {
@@ -437,15 +470,9 @@ try {
         
         if (mediaRecorder && camera) {
 
-            qWarning() << "Configuring mediaCaptureSession..";
-            mediaCaptureSession->setCamera(camera.data());
-            mediaCaptureSession->setAudioInput(audioInput.data());
-            mediaCaptureSession->setRecorder(mediaRecorder.data());
-            
             camera->start();
             mediaRecorder->record();
-            
-                            
+                                       
         }
 
     } catch (const std::exception &e) {
@@ -475,18 +502,7 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
         singButton->setText("Finish!");
         singButton->setEnabled(true); // Click to finish recording
 
-        // turn on the webcam preview?
-        if (previewCheckbox->isChecked()) {
-            mediaCaptureSession->setVideoOutput(previewItem);
-            wakkaLogoItem->hide();
-            previewItem->show();
-            qWarning() << "Camera preview enabled.";
-        }
-
-        previewCheckbox->setEnabled(false);
-
         connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, [=](qint64 currentDuration) {
-
             
             if ( player && player->source().isEmpty()) {
 
@@ -565,15 +581,13 @@ void MainWindow::stopRecording() {
         if ( camera->isActive() )
             camera->stop();
         
-        mediaCaptureSession->setCamera(nullptr); // safeguard just in case the user was dumb enough to unplug the camera while recording
-
         if ( mediaRecorder->isAvailable() )
             mediaRecorder->stop();
 
         recordingIndicator->hide();
-        previewItem->hide();
-        wakkaLogoItem->show();
-        
+        customVideoWidget->hide();
+        previewCheckbox->setChecked(false);
+
         isRecording = false;
         singButton->setText("♪ SING ♪");
         progressSongFull->setToolTip("Nothing to seek");
@@ -614,8 +628,8 @@ void MainWindow::handleRecordingError() {
         camera->stop();
 
     recordingIndicator->hide();
-    previewItem->hide();
-    wakkaLogoItem->show();
+    customVideoWidget->hide();
+    previewCheckbox->setChecked(false);
     videoWidget->hide();
     placeholderLabel->show();
 
@@ -642,6 +656,7 @@ void MainWindow::renderAgain()
     renderAgainButton->setVisible(false);
     chooseVideoButton->setEnabled(false);
     fetchButton->setEnabled(false);
+    progressSongFull->setToolTip("Nothing to seek");
 
     // choose where to save rendered file
     outputFilePath = QFileDialog::getSaveFileName(this, "Mix destination (default .MP4)", "", "Video or Audio Files (*.mp4 *.mkv *.avi *.mp3 *.flac *.wav)");
@@ -1084,13 +1099,15 @@ void MainWindow::fetchVideo() {
 
 void MainWindow::onPreviewCheckboxToggled(bool enable) {
     if (enable) {
-        qWarning() << "Camera preview will be enabled next recording.";
-        logTextEdit->append("Camera preview will be enabled next recording.");
+        qWarning() << "Camera preview will be enabled.";
+        logTextEdit->append("Camera preview will be enabled.");
+        customVideoWidget->show();
+        if ( camera->isAvailable() && !camera->isActive() )
+            camera->start();
     } else {
         // Hide the camera preview
         //mediaCaptureSession->setVideoOutput(nullptr);
-        previewItem->hide(); 
-        wakkaLogoItem->show(); 
+        customVideoWidget->hide();
         qDebug() << "Camera preview hidden.";
     }
 }
@@ -1147,3 +1164,4 @@ void MainWindow::closeEvent(QCloseEvent *event)
     // Now allow the window to close
     event->accept(); // Call the base class implementation
 }
+

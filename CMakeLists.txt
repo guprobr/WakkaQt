@@ -41,6 +41,7 @@ add_executable(${PROJECT_NAME}
     sndwidget.h
     previewdialog.h
     audioamplifier.h
+    videodisplaywidget.h
     ${resources}
 )
 

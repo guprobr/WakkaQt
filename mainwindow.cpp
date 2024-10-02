@@ -498,7 +498,7 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
                 qWarning() << "mediaRecorder Duration:" << mediaRecorder->duration();
                 qWarning() << "mediaPlayer position:" << player->position();
 
-                offset = (mediaRecorder->duration() + (playbackEventTime - recordingEventTime));
+                offset = (mediaRecorder->duration() + (playbackEventTime - recordingEventTime) - player->position());
 
                 qWarning() << "eventTime: " << (playbackEventTime - recordingEventTime) << " ms";
                 qWarning() << "Offset: " << offset << " ms";

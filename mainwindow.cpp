@@ -929,8 +929,10 @@ bool MainWindow::eventFilter(QObject *object, QEvent *event) {
 
                     player->pause();                    // pause for smooth seeking
                     player->setAudioOutput(nullptr);    // avoid breaking sound when seeking (Qt6.4 bug?)
+                    player->setVideoOutput(nullptr);    // avoids breaking seeking on some Windows machines
                     player->setPosition(newPosition);  // Seek the media player to the clicked position
                     player->setAudioOutput(audioOutput.data());
+                    player->setVideoOutput(videoWidget);
                     player->play();
 
                     return true;  // Event handled

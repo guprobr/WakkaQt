@@ -64,3 +64,17 @@ if(CMAKE_BUILD_TYPE STREQUAL "Release")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DQT_NO_DEBUG_OUTPUT")
 endif()
 message (STATUS "Build type: ${CMAKE_BUILD_TYPE}")
+
+if(UNIX AND NOT APPLE)  
+    install(TARGETS ${PROJECT_NAME}
+        RUNTIME DESTINATION /usr/bin                 # Linux: install to /usr/bin
+    )
+elseif(WIN32) 
+    install(TARGETS ${PROJECT_NAME}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_PREFIX}/bin  # Windows: install to bin under CMAKE_INSTALL_PREFIX
+    )
+elseif(APPLE)  
+    install(TARGETS ${PROJECT_NAME}
+        BUNDLE DESTINATION /Applications             # macOS: install to /Applications (for app bundles)
+    )
+endif()

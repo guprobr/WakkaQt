@@ -52,6 +52,8 @@ MainWindow::MainWindow(QWidget *parent)
     QMenu *helpMenu = new QMenu("About", this);
     QAction *aboutQtAction = new QAction("About Qt", this);
     QAction *aboutWakkaQtAction = new QAction("About WakkaQt", this);
+    menuBar->setFont(QFont("Arial", 8));
+    helpMenu->setFont(QFont("Arial", 8));
     helpMenu->addAction(aboutQtAction);
     helpMenu->addAction(aboutWakkaQtAction);
     menuBar->addMenu(helpMenu);
@@ -91,18 +93,18 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Create video widget
     videoWidget = new QVideoWidget(this);
-    videoWidget->setMinimumSize(320, 240);
+    videoWidget->setMinimumSize(160, 120);
     videoWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     videoWidget->hide();
     
     // Create a QLabel to display the placeholder image
     placeholderLabel = new QLabel(this);
-    placeholderLabel->setMinimumSize(320, 240);
+    placeholderLabel->setMinimumSize(160, 120);
     QPixmap placeholderPixmap(":/images/logo.jpg");
     if (placeholderPixmap.isNull()) {
         qWarning() << "Failed to load placeholder image!";
     } else {
-        placeholderLabel->setPixmap(placeholderPixmap.scaled(720, 720, Qt::KeepAspectRatio));
+        placeholderLabel->setPixmap(placeholderPixmap.scaled(320, 320, Qt::KeepAspectRatio));
     }
     placeholderLabel->setAlignment(Qt::AlignCenter);
     placeholderLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
@@ -111,8 +113,8 @@ MainWindow::MainWindow(QWidget *parent)
     // Create the scene and view
     scene = new QGraphicsScene(this);
     previewView = new QGraphicsView(scene, this);
-    previewView->setMinimumSize(640, 200);
-    previewView->setMaximumSize(1920, 200);
+    previewView->setMinimumSize(640, 140);
+    previewView->setMaximumSize(1920, 140);
     previewView->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     previewView->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     previewView->setAlignment(Qt::AlignCenter);
@@ -123,16 +125,16 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Create the webcam video previewItem and set it in the center
     previewItem = new QGraphicsVideoItem;
-    previewItem->setSize(QSizeF(160, 120)); // size for the webcam video preview
-    previewItem->setToolTip("Camera preview (if available)");
+    previewItem->setSize(QSizeF(100, 100)); // size for the webcam video preview
+    previewItem->setToolTip("Camera preview (click to enlarge)");
     
-    wakkaLogoItem = new QGraphicsPixmapItem(placeholderPixmap.scaled(160, 120, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    wakkaLogoItem = new QGraphicsPixmapItem(placeholderPixmap.scaled(100, 100, Qt::IgnoreAspectRatio));
     qreal previewX = (viewWidth - previewItem->boundingRect().width()) / 2;
     qreal previewY = (viewHeight - previewItem->boundingRect().height()) / 2; 
-    previewItem->setPos(previewX, previewY);
-    wakkaLogoItem->setPos(previewX, previewY);
     wakkaLogoItem->setToolTip("About: WakkaQt was made with Qt6 by Gustavo L Conte");
     
+    wakkaLogoItem->setPos(previewX, previewY);
+    previewItem->setPos(previewX, previewY);
     scene->addItem(previewItem);
     scene->addItem(wakkaLogoItem);
     previewItem->hide();
@@ -196,7 +198,7 @@ MainWindow::MainWindow(QWidget *parent)
     logTextEdit = new QTextEdit(this);
     logTextEdit->setReadOnly(true);
     logTextEdit->append(Wakka_welcome);
-    logTextEdit->setFixedHeight(100);
+    logTextEdit->setFixedHeight(50);
     logTextEdit->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     // Move cursor to the end of the text when text is appended
     connect(logTextEdit, &QTextEdit::textChanged, this, [=]() {
@@ -248,6 +250,8 @@ MainWindow::MainWindow(QWidget *parent)
 
     playbackTimer = new QTimer(this);
     connect(playbackTimer, &QTimer::timeout, this, &MainWindow::updatePlaybackDuration);
+
+    scene->installEventFilter(this); // Handle mouse press events, making the progress bar seekable
 
     resetAudioComponents(true);
 }
@@ -493,21 +497,20 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
             }
             
             if ( player && player->position() > 0 ) 
-            { 
+            {
+                disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, nullptr); 
                 recordingEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK TIMESTAMP 
                 
                 offset = (mediaRecorder->duration() + (recordingEventTime - playbackEventTime) - player->position());
                 qWarning() << "LATENCY OFFSET CALCULATION";
-                qWarning() << "mediaRecorder Duration + " << mediaRecorder->duration();
-                qWarning() << "eventTime - " << (playbackEventTime - recordingEventTime) << " ms";
-                qWarning() << "mediaPlayer position = " << player->position();
+                qWarning() << "mediaRecorder Duration " << mediaRecorder->duration() << " + ";
+                qWarning() << "eventTime " << (recordingEventTime - playbackEventTime ) << " - ";
+                qWarning() << "mediaPlayer position " << player->position() << " = ";
                 qWarning() << "Calculated Offset: " << offset << " ms";
                 logTextEdit->append(QString("Calculated Offset: %1 ms").arg(offset));
 
-                disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, nullptr);
-
-                if ( player->position() > mediaRecorder->duration() ) {
-                    qWarning() << "Something is wrong with mediaRecorder. Aborting recording session. SORRY";
+                if ( player->position() > mediaRecorder->duration() ||  mediaRecorder->duration() > ( (recordingEventTime - playbackEventTime) * 3 )) {
+                    qWarning() << "Something is very wrong with mediaRecorder. Aborting recording session. SORRY";
                     logTextEdit->append("detected unstable mediaRecorder. PLEASE TRY AGAIN SORRY");
                     handleRecordingError();
                     QMessageBox::critical(this, "unstable mediaRecorder!", "Recording cancelled to prevent further errors..");
@@ -951,10 +954,6 @@ void MainWindow::addProgressBarToScene(QGraphicsScene *scene, qint64 duration) {
         progressSong->setRect(0, 6, 640 * progress, 20);
     });
 
-    scene->removeEventFilter(this); // remove prior eventfilter
-    if ( !isRecording ) // do not seek when recording!
-        scene->installEventFilter(this); // Handle mouse press events, making the progress bar seekable
-
     durationTextItem->setToolTip(currentVideoName);
 }
 
@@ -974,36 +973,40 @@ bool MainWindow::eventFilter(QObject *object, QEvent *event) {
             qreal progressBarWidth = 640;
             qreal progressBarHeight = progressSong->rect().height();
 
-        // SEEKABLE SONG PROGRESS BAR
-            // Check if the click was within the progress bar's area (both x and y boundaries)
-            if (clickPos.y() >= progressBarY && clickPos.y() <= progressBarY + progressBarHeight &&
-                clickPos.x() >= progressBarX && clickPos.x() <= progressBarX + progressBarWidth) {
-                
-                // Calculate the relative progress based on the click position
-                qreal clickPosition = clickPos.x() - progressBarX;  // Offset click position by the progress bar's X position
-                qreal progress = clickPosition / progressBarWidth;
+            if ( !isRecording ) {
+                // SEEKABLE SONG PROGRESS BAR
+                // Check if the click was within the progress bar's area (both x and y boundaries)
+                if (clickPos.y() >= progressBarY && clickPos.y() <= progressBarY + progressBarHeight &&
+                    clickPos.x() >= progressBarX && clickPos.x() <= progressBarX + progressBarWidth) {
+                    
+                    // Calculate the relative progress based on the click position
+                    qreal clickPosition = clickPos.x() - progressBarX;  // Offset click position by the progress bar's X position
+                    qreal progress = clickPosition / progressBarWidth;
 
-                // Ensure the progress is within valid range [0, 1]
-                if (progress < 0) progress = 0;
-                if (progress > 1) progress = 1;
+                    // Ensure the progress is within valid range [0, 1]
+                    if (progress < 0) progress = 0;
+                    if (progress > 1) progress = 1;
 
-               // Set the new position based on the click
-                qint64 newPosition = static_cast<qint64>(progress * player->duration());
+                // Set the new position based on the click
+                    qint64 newPosition = static_cast<qint64>(progress * player->duration());
 
-        
+            
 #ifdef __linux__
-                player->pause(); // Pause for smooth seeking
-                player->setAudioOutput(nullptr);  // Avoid breaking sound when seeking (Qt6.4 or gStreamer bug? on Linux)
-#endif
-                player->setPosition(newPosition); // Seek the media player to the clicked position
-#ifdef __linux__
-                player->setAudioOutput(audioOutput.data()); // gimme back my sound mon
-                player->play();
+                    player->pause(); // Pause for smooth seeking
+                    player->setAudioOutput(nullptr);  // Avoid breaking sound when seeking (Qt6.4 or gStreamer bug? on Linux)
 #endif
 
+                    player->setPosition(newPosition); // Seek the media player to the clicked position
 
-                    return true;  // Event handled
+#ifdef __linux__
+                    player->setAudioOutput(audioOutput.data()); // gimme back my sound mon
+                    player->play();
+#endif
 
+
+                        return true;  // Event handled
+
+                }
             }
         }
     }
@@ -1126,7 +1129,7 @@ void MainWindow::disconnectAllSignals() {
     if (mediaRecorder) {
         disconnect(mediaRecorder.data(), &QMediaRecorder::recorderStateChanged, this, &MainWindow::onRecorderStateChanged);
         disconnect(mediaRecorder.data(), &QMediaRecorder::errorOccurred, this, &MainWindow::handleRecorderError);
-        disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, nullptr); 
+        disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, nullptr);
     }
 
     if (player) {

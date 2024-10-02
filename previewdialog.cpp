@@ -17,20 +17,20 @@ PreviewDialog::PreviewDialog(QWidget *parent)
     QHBoxLayout *controls = new QHBoxLayout();
 
     volumeDial = new QDial(this);  // Change from QSlider to QDial
-    volumeDial->setRange(0, 500);   // 0% to 500% amplification
+    volumeDial->setRange(0, 1000);   // 0% to 1000% amplification
     volumeDial->setValue(100);       // Default 100% volume (no amplification)
     volumeDial->setNotchesVisible(true); // Show notches for better precision
-    volumeDial->setToolTip("Adjust and preview by moving the knob. Values above 100\% amplifies performance, while values below diminishes volume level.");
+    volumeDial->setToolTip("Adjust the knob to amplify or lower volume level");
 
     // Initialize UI elements
-    QLabel *volumeBanner = new QLabel("Volume Amplification: preview your performance and adjust volume if needed", this);
-    volumeBanner->setToolTip("This is a low-quality preview. Final render will sound much better.");
+    QLabel *volumeBanner = new QLabel("Volume Amplification: This is a low-quality preview. Final render will sound much better.", this);
+    volumeBanner->setToolTip("While you review your performance you can adjust the volume of the final output.");
     volumeLabel = new QLabel("Current Volume: 100\%", this);
     volumeLabel->setToolTip("This is an approximation of what the final render will sound.");
     startButton = new QPushButton("REWIND", this);
-    startButton->setToolTip("Restart performance preview");
+    startButton->setToolTip("Restart recording preview");
     stopButton = new QPushButton("Render Mix", this);
-    stopButton->setToolTip("Accept changes and begin rendering with FFmpeg");
+    stopButton->setToolTip("Apply changes and begin rendering");
     seekForwardButton = new QPushButton(">>", this);
     seekForwardButton->setToolTip("Seek forward");
     seekBackwardButton = new QPushButton("<<", this);

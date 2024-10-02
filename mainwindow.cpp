@@ -4,6 +4,7 @@
 
 #include <QMenu>
 #include <QMenuBar>
+#include <QIcon>
 #include <QFileInfo>
 #include <QRegularExpression>
 #include <QStringList>
@@ -59,8 +60,33 @@ MainWindow::MainWindow(QWidget *parent)
     connect(aboutQtAction, &QAction::triggered, this, []() {
         QMessageBox::aboutQt(nullptr, "About Qt");
     });
-    connect(aboutWakkaQtAction, &QAction::triggered, this, []() {
-        QMessageBox::about(nullptr, "About WakkaQt", "WakkaQt is a karaoke application built with C++ and Qt6,\n designed to record vocals over a video/audio track and mix them into a rendered file. \nThis app features webcam recording, YouTube video downloading, real-time sound visualization, and post-recording video rendering with FFmpeg. It automatically does some masterization on the vocal tracks. It also uses an AutoTuner LV2 plugin for smoothing the results, X42 by Robin Gareus, with slight pitch shift/correction and formant preservation.\n\n ©2024 The author is Gustavo L Conte https://gu.pro.br");
+
+    connect(aboutWakkaQtAction, &QAction::triggered, this, [Wakka_welcome]() {
+        
+        QMessageBox aboutBox;
+        aboutBox.setWindowTitle("About WakkaQt");
+
+        QPixmap logoPixmap(":/images/logo.jpg");
+        aboutBox.setIconPixmap(logoPixmap.scaled(100, 100, Qt::KeepAspectRatio));
+
+        QString aboutText = R"(
+            <p>WakkaQt is a karaoke application built with C++ and Qt6, designed to record vocals over a video/audio track and mix them into a rendered file.</p>
+            <p>This app features webcam recording, YouTube video downloading, real-time sound visualization, and post-recording video rendering with FFmpeg. It automatically does some mastering on the vocal tracks. It also uses an AutoTuner LV2 plugin for smoothing the results, X42 by Robin Gareus, with slight pitch shift/correction and formant preservation.</p>
+            <p>©2024 The author is Gustavo L Conte. Visit the author's website: <a href="https://gu.pro.br">https://gu.pro.br</a></p>
+            <p>WakkaQt is open source and the code is available <a href="https://github.com/guprobr/WakkaQt">on GitHub</a>.</p>
+            <p>%1</p>
+        )";
+
+        aboutBox.setTextFormat(Qt::RichText);  
+        aboutBox.setText(aboutText.arg(Wakka_welcome));  // Insert Wakka_welcome message
+
+        // Enable clickable links
+        QLabel *label = aboutBox.findChild<QLabel *>("qt_msgbox_label");
+        if (label) {
+            label->setOpenExternalLinks(true);
+        }
+        // Display!
+        aboutBox.exec();
     });
 
     // Create video widget

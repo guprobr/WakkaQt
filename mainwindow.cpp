@@ -356,6 +356,15 @@ void MainWindow::chooseVideo()
 // START RECORDING //
 void MainWindow::startRecording() {
 try {
+        if (currentVideoFile.isEmpty()) {
+            QMessageBox::warning(this, "No playback set", "No playback loaded! Maybe you tried to load a playback and cancelled the dialog? Please load a playback to sing.");
+            singButton->setEnabled(false);
+            chooseVideoButton->setEnabled(true);
+            fetchButton->setEnabled(true);
+            chooseInputButton->setEnabled(true);
+            return;
+
+        }
         if (isRecording) {
             qWarning() << "Stop recording.";
             logTextEdit->append("Stop recording...");

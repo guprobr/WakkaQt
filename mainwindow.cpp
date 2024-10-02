@@ -422,6 +422,12 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
         previewCheckbox->setEnabled(false);
 
         connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, [=](qint64 currentDuration) {
+
+            if ( player && player->source().isEmpty() ) {
+                player->setSource(QUrl::fromLocalFile(currentVideoFile));
+                addProgressBarToScene(scene, getMediaDuration(currentVideoFile));        
+                progressSongFull->setToolTip("Will not seek while recording!");
+            }
             
             if ( player && player->position() > 0 ) 
             { 
@@ -430,7 +436,7 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
                 qWarning() << "mediaRecorder Duration:" << mediaRecorder->duration();
                 qWarning() << "mediaPlayer position:" << player->position();
 
-                offset = (playbackEventTime - recordingEventTime) + (mediaRecorder->duration() - player->position());
+                offset = (playbackEventTime - recordingEventTime);
                 
                 qWarning() << "Offset: " << offset << " ms";
                 logTextEdit->append(QString("Offset between playback start and recording start: %1 ms").arg(offset));
@@ -446,11 +452,6 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
             }
 
         });
-
-        if ( player )
-            player->setSource(QUrl::fromLocalFile(currentVideoFile));
-        addProgressBarToScene(scene, getMediaDuration(currentVideoFile));        
-        progressSongFull->setToolTip("Will not seek while recording!");
 
     }
 

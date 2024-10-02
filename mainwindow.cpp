@@ -495,15 +495,14 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
             if ( player && player->position() > 0 ) 
             { 
                 recordingEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK TIMESTAMP 
-
-                qWarning() << "mediaRecorder Duration:" << mediaRecorder->duration();
-                qWarning() << "mediaPlayer position:" << player->position();
-
+                
                 offset = (mediaRecorder->duration() + (recordingEventTime - playbackEventTime) - player->position());
-
-                qWarning() << "eventTime: " << (playbackEventTime - recordingEventTime) << " ms";
-                qWarning() << "Offset: " << offset << " ms";
-                logTextEdit->append(QString("Offset between playback start and recording start: %1 ms").arg(offset));
+                qWarning() << "LATENCY OFFSET CALCULATION";
+                qWarning() << "mediaRecorder Duration + " << mediaRecorder->duration();
+                qWarning() << "eventTime - " << (playbackEventTime - recordingEventTime) << " ms";
+                qWarning() << "mediaPlayer position = " << player->position();
+                qWarning() << "Calculated Offset: " << offset << " ms";
+                logTextEdit->append(QString("Calculated Offset: %1 ms").arg(offset));
 
                 disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, nullptr);
 

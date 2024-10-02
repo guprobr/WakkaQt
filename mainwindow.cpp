@@ -251,8 +251,6 @@ MainWindow::MainWindow(QWidget *parent)
     playbackTimer = new QTimer(this);
     connect(playbackTimer, &QTimer::timeout, this, &MainWindow::updatePlaybackDuration);
 
-    scene->installEventFilter(this); // Handle mouse press events, making the progress bar seekable
-
     resetAudioComponents(true);
 }
 
@@ -967,45 +965,45 @@ bool MainWindow::eventFilter(QObject *object, QEvent *event) {
             
             QPointF clickPos = mouseEvent->scenePos();  // Get the mouse click position in scene coordinates
 
-            // Get progress bar position and dimensions
-            qreal progressBarX = progressSong->pos().x();
-            qreal progressBarY = progressSong->pos().y();
-            qreal progressBarWidth = 640;
-            qreal progressBarHeight = progressSong->rect().height();
+            if ( progressSong ) {
+                if ( !isRecording ) {
+                    // Get progress bar position and dimensions
+                    qreal progressBarX = progressSong->pos().x();
+                    qreal progressBarY = progressSong->pos().y();
+                    qreal progressBarWidth = 640;
+                    qreal progressBarHeight = progressSong->rect().height();
+                    // SEEKABLE SONG PROGRESS BAR
+                    // Check if the click was within the progress bar's area (both x and y boundaries)
+                    if (clickPos.y() >= progressBarY && clickPos.y() <= progressBarY + progressBarHeight &&
+                        clickPos.x() >= progressBarX && clickPos.x() <= progressBarX + progressBarWidth) {
+                        
+                        // Calculate the relative progress based on the click position
+                        qreal clickPosition = clickPos.x() - progressBarX;  // Offset click position by the progress bar's X position
+                        qreal progress = clickPosition / progressBarWidth;
 
-            if ( !isRecording ) {
-                // SEEKABLE SONG PROGRESS BAR
-                // Check if the click was within the progress bar's area (both x and y boundaries)
-                if (clickPos.y() >= progressBarY && clickPos.y() <= progressBarY + progressBarHeight &&
-                    clickPos.x() >= progressBarX && clickPos.x() <= progressBarX + progressBarWidth) {
-                    
-                    // Calculate the relative progress based on the click position
-                    qreal clickPosition = clickPos.x() - progressBarX;  // Offset click position by the progress bar's X position
-                    qreal progress = clickPosition / progressBarWidth;
+                        // Ensure the progress is within valid range [0, 1]
+                        if (progress < 0) progress = 0;
+                        if (progress > 1) progress = 1;
 
-                    // Ensure the progress is within valid range [0, 1]
-                    if (progress < 0) progress = 0;
-                    if (progress > 1) progress = 1;
+                    // Set the new position based on the click
+                        qint64 newPosition = static_cast<qint64>(progress * player->duration());
 
-                // Set the new position based on the click
-                    qint64 newPosition = static_cast<qint64>(progress * player->duration());
-
-            
+                
 #ifdef __linux__
-                    player->pause(); // Pause for smooth seeking
-                    player->setAudioOutput(nullptr);  // Avoid breaking sound when seeking (Qt6.4 or gStreamer bug? on Linux)
+                        player->pause(); // Pause for smooth seeking
+                        player->setAudioOutput(nullptr);  // Avoid breaking sound when seeking (Qt6.4 or gStreamer bug? on Linux)
 #endif
 
-                    player->setPosition(newPosition); // Seek the media player to the clicked position
+                        player->setPosition(newPosition); // Seek the media player to the clicked position
 
 #ifdef __linux__
-                    player->setAudioOutput(audioOutput.data()); // gimme back my sound mon
-                    player->play();
+                        player->setAudioOutput(audioOutput.data()); // gimme back my sound mon
+                        player->play();
 #endif
 
 
-                        return true;  // Event handled
-
+                            return true;  // Event handled
+                    }
                 }
             }
         }

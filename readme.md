@@ -1,5 +1,7 @@
-This software is currently in **Alpha stage** for developers to test. 
-Help requested: for Windows and MacOS tests. **Windows x86_64 zip bundle with binaries will be available soon.**
+- This software is currently in **Alpha stage** for developers to test. 
+- Help requested: for Windows and MacOS tests. 
+
+**Windows x86_64 zip bundle available at the end of this readme**, please follow instructions (mostly unpack, double click CONFIG.bat and then run WakkaQt.exe)
 
 *WARNING*:  Latest ubuntu "realtime" kernel 6.8 seems unstable; "low-latency" and the usual "generic" seems fine.
 
@@ -76,13 +78,14 @@ To build and run this application, ensure you have the following:
 - **`mainwindow.cpp` / `mainwindow.h`:** Core application logic, including UI setup and media control.
 - **`sndwidget.cpp` / `sndwidget.h`:** Custom widget for displaying sound levels.
 - **`previewdialog.cpp` / `previewdialog.h`:** Preview dialog for reviewing and adjusting vocal levels before rendering.
+- **`audioamplifier.cpp` / `audioamplifier.h`:** Class to manipulate samples of preview volume adjustment.
 - **`resources.qrc`:** Resource file for including images like the app logo.
 
 ## FFmpeg Integration
 
 The application uses FFmpeg to mix the recorded webcam video and vocals with the karaoke video. It applies various audio filters like normalization, echo, and compression to enhance vocal quality.
 
-Ensure that FFmpeg is correctly installed and added to your system's `PATH` for the app to work as expected. Except on windows, because:
+Ensure that FFmpeg is correctly installed, compiled with LV2 plugin support, and added to your system's `PATH` for the app to work as expected. **Same for yt-dlp**. Except on windows, because:
 
 ## About Windows bundle ZIP
 
@@ -90,6 +93,7 @@ Ensure that FFmpeg is correctly installed and added to your system's `PATH` for 
   - **yt-dlp** is already there too, for your convenience.
   - After extracting the ZIP, please double-click to **run as _normal_ user the CONFIG.BAT script**. It will set up environment variables and copy the LV2 plugin to the correct directory. It will ask admin permissions for that. PS: run as _normal user_, admin permissions will be _asked later_;
   - NOTE: **antivirus software degrade this software a lot**, and **VPNs might make streaming services to block** the fetching of the video file when running *yt-dlp*.
+  - You can download the windows x64 ZIP [Here on my website](https://gu.pro.br/WakkaQt-mswinX64.zip)
 
 ## Contributing
 

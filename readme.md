@@ -1,3 +1,6 @@
+
+![wakkalogo](https://github.com/user-attachments/assets/0dc389ce-0678-4eaf-a888-04ba306ff2b4)
+
 - This software is currently in **Alpha stage** for developers to test. 
 - Help requested: for Windows and MacOS tests. 
 

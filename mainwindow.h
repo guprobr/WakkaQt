@@ -84,6 +84,9 @@ private:
     QScopedPointer<QCamera> camera;
     QScopedPointer<QVideoSink> videoSink;
     
+    QAction *loadPlaybackAction;
+    QAction *chooseInputAction;
+
     QPushButton *singButton;
     QPushButton *chooseVideoButton;
     QPushButton *chooseInputButton;

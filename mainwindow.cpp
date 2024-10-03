@@ -52,12 +52,21 @@ MainWindow::MainWindow(QWidget *parent)
 
     QMenuBar *menuBar = new QMenuBar(this);
     QMenu *helpMenu = new QMenu("About", this);
+    QMenu *fileMenu = new QMenu("File", this);
     QAction *aboutQtAction = new QAction("About Qt", this);
     QAction *aboutWakkaQtAction = new QAction("About WakkaQt", this);
+    loadPlaybackAction = new QAction("Load playback", this);
+    chooseInputAction = new QAction("Configure Audio Input", this);
+    QAction *exitAction = new QAction("Exit", this);
     menuBar->setFont(QFont("Arial", 8));
-    helpMenu->setFont(QFont("Arial", 8));
+    
     helpMenu->addAction(aboutQtAction);
     helpMenu->addAction(aboutWakkaQtAction);
+    fileMenu->addAction(loadPlaybackAction);
+    fileMenu->addAction(chooseInputAction);
+    fileMenu->addAction(exitAction);
+    
+    menuBar->addMenu(fileMenu);
     menuBar->addMenu(helpMenu);
     setMenuBar(menuBar);
 
@@ -95,13 +104,13 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Create video widget
     videoWidget = new QVideoWidget(this);
-    videoWidget->setMinimumSize(160, 120);
+    videoWidget->setMinimumSize(320, 200);
     videoWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     videoWidget->hide();
     
     // Create a QLabel to display the placeholder image
     placeholderLabel = new QLabel(this);
-    placeholderLabel->setMinimumSize(160, 120);
+    placeholderLabel->setMinimumSize(320, 200);
     QPixmap placeholderPixmap(":/images/logo.jpg");
     if (placeholderPixmap.isNull()) {
         qWarning() << "Failed to load placeholder image!";
@@ -115,8 +124,8 @@ MainWindow::MainWindow(QWidget *parent)
     // Initialize the custom video widget
     customVideoWidget = new VideoDisplayWidget(this);
     // Set the geometry or use a layout to manage it
-    customVideoWidget->setMinimumSize(200, 200); // Set position and size
-    customVideoWidget->setMaximumSize(320, 320);
+    customVideoWidget->setMinimumSize(320, 200); // Set position and size
+    customVideoWidget->setMaximumSize(640, 480);
     QHBoxLayout *webcamPreviewLayout = new QHBoxLayout();
     webcamPreviewLayout->addStretch();
     webcamPreviewLayout->addWidget(customVideoWidget, 0, Qt::AlignCenter);
@@ -125,8 +134,8 @@ MainWindow::MainWindow(QWidget *parent)
     // Create the scene and view
     scene = new QGraphicsScene(this);
     previewView = new QGraphicsView(scene, this);
-    previewView->setMinimumSize(640, 64);
-    previewView->setMaximumSize(1920, 64);
+    previewView->setMinimumSize(640, 50);
+    previewView->setMaximumSize(1920, 50);
     previewView->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     previewView->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     previewView->setAlignment(Qt::AlignCenter);
@@ -152,6 +161,7 @@ MainWindow::MainWindow(QWidget *parent)
     QPushButton *exitButton = new QPushButton("Exit", this);
     chooseVideoButton = new QPushButton("Load playback from disk", this);
     singButton = new QPushButton("♪ SING ♪", this);
+    singButton->setFont(QFont("Arial", 16));
     chooseInputButton = new QPushButton("Choose Input Device", this);
     renderAgainButton = new QPushButton("RENDER AGAIN", this);
 
@@ -202,9 +212,9 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     // custom cfgs
-    previewCheckbox = new QCheckBox("Enable Webcam Preview");
+    previewCheckbox = new QCheckBox("Cam Preview");
     previewCheckbox->setFont(QFont("Arial", 8));
-    previewCheckbox->setToolTip("Check before recording to enable camera preview");
+    previewCheckbox->setToolTip("Toggle camera preview");
     indicatorLayout->addWidget(previewCheckbox);
 
     // Layout
@@ -228,6 +238,8 @@ MainWindow::MainWindow(QWidget *parent)
     setCentralWidget(containerWidget);
 
     // Widget visibility
+    chooseVideoButton->setVisible(false);
+    chooseInputButton->setVisible(false);
     soundLevelWidget->setVisible(true);
     recordingIndicator->hide();
     customVideoWidget->hide();
@@ -239,9 +251,12 @@ MainWindow::MainWindow(QWidget *parent)
     // Connections
     connect(exitButton, &QPushButton::clicked, this, &QMainWindow::close);
     connect(chooseVideoButton, &QPushButton::clicked, this, &MainWindow::chooseVideo);
+    connect(chooseInputButton, &QPushButton::clicked, this, &MainWindow::chooseInputDevice);
+    connect(exitAction, &QAction::triggered, this, &QMainWindow::close);
+    connect(loadPlaybackAction, &QAction::triggered, this, &MainWindow::chooseVideo);
+    connect(chooseInputAction, &QAction::triggered, this, &MainWindow::chooseInputDevice);
     connect(singButton, &QPushButton::clicked, this, &MainWindow::startRecording);
     connect(fetchButton, &QPushButton::clicked, this, &MainWindow::fetchVideo);
-    connect(chooseInputButton, &QPushButton::clicked, this, &MainWindow::chooseInputDevice);
     connect(renderAgainButton, &QPushButton::clicked, this, &MainWindow::renderAgain);
     connect(previewCheckbox, &QCheckBox::toggled, this, &MainWindow::onPreviewCheckboxToggled);
 
@@ -446,8 +461,10 @@ try {
             QMessageBox::warning(this, "No playback set", "No playback loaded! Maybe you tried to load a playback and cancelled the dialog? Please load a playback to sing.");
             singButton->setEnabled(false);
             chooseVideoButton->setEnabled(true);
+            loadPlaybackAction->setEnabled(true);
             fetchButton->setEnabled(true);
             chooseInputButton->setEnabled(true);
+            chooseInputAction->setEnabled(true);
             return;
 
         }
@@ -460,8 +477,10 @@ try {
 
         singButton->setEnabled(false);
         chooseVideoButton->setEnabled(false);
+        loadPlaybackAction->setEnabled(false);
         fetchButton->setEnabled(false);
         chooseInputButton->setEnabled(false);
+        chooseInputAction->setEnabled(false);
 
         chooseInputDevice();
         resetAudioComponents(false);
@@ -558,8 +577,10 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
             logTextEdit->append("Recording ERROR. File size is zero.");
 
             chooseVideoButton->setEnabled(true);
+            loadPlaybackAction->setEnabled(true);
             fetchButton->setEnabled(true);
             chooseInputButton->setEnabled(true);
+            chooseInputAction->setEnabled(true);
             singButton->setEnabled(false);
             
             resetAudioComponents(false);
@@ -636,8 +657,10 @@ void MainWindow::handleRecordingError() {
     singButton->setEnabled(false);
     singButton->setText("SING");
     chooseVideoButton->setEnabled(true);
+    loadPlaybackAction->setEnabled(true);
     fetchButton->setEnabled(true);
     chooseInputButton->setEnabled(true);
+    chooseInputAction->setEnabled(true);
 
     progressSongFull->setToolTip("Nothing to seek");
 
@@ -655,6 +678,7 @@ void MainWindow::renderAgain()
 
     renderAgainButton->setVisible(false);
     chooseVideoButton->setEnabled(false);
+    loadPlaybackAction->setEnabled(false);
     fetchButton->setEnabled(false);
     progressSongFull->setToolTip("Nothing to seek");
 
@@ -687,15 +711,19 @@ void MainWindow::renderAgain()
 
         } else {
             chooseVideoButton->setEnabled(true);
+            loadPlaybackAction->setEnabled(true);
             fetchButton->setEnabled(true);
             chooseInputButton->setEnabled(true);
+            chooseInputAction->setEnabled(true);
             singButton->setEnabled(false);
             QMessageBox::warning(this, "Performance Aborted!", "Volume adjustment dialog cancelled..");             
         }
     } else {
         chooseVideoButton->setEnabled(true);
+        loadPlaybackAction->setEnabled(true);
         fetchButton->setEnabled(true);
         chooseInputButton->setEnabled(true);
+        chooseInputAction->setEnabled(true);
         singButton->setEnabled(false);
         QMessageBox::warning(this, "Performance aborted!", "Rendering was cancelled..");
     }
@@ -707,6 +735,7 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
     placeholderLabel->show();
     singButton->setEnabled(false); 
     chooseInputButton->setEnabled(true);
+    chooseInputAction->setEnabled(true);
 
     int totalDuration = getMediaDuration(videoFilePath);  // Get the total duration
     progressBar = new QProgressBar(this);
@@ -801,6 +830,7 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
         if ( exitStatus == QProcess::CrashExit) {
             this->logTextEdit->append("FFmpeg crashed!!");
             chooseVideoButton->setEnabled(true);
+            loadPlaybackAction->setEnabled(true);
             fetchButton->setEnabled(true);
             renderAgainButton->setVisible(true);
             QMessageBox::critical(this, "FFmpeg crashed :(", "Aborting.. Verify if FFmpeg is correctly installed and in the PATH to be executed. Verify logs for FFmpeg error. This program requires a LV2 plugin callex X42 by Gareus.");
@@ -821,6 +851,7 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
         // And now, for something completely different: play the rendered performance! :D
 
         chooseVideoButton->setEnabled(true);
+        loadPlaybackAction->setEnabled(true);
         fetchButton->setEnabled(true);
         renderAgainButton->setVisible(true);
         placeholderLabel->hide();
@@ -947,10 +978,10 @@ void MainWindow::addProgressBarToScene(QGraphicsScene *scene, qint64 duration) {
         progressSongFull = nullptr;
     }
     // Song progress Bar
-    progressSongFull = new QGraphicsRectItem(0, 6, 640, 20);
+    progressSongFull = new QGraphicsRectItem(0, 0, 640, 20);
     progressSongFull->setToolTip("Click to seek");
     scene->addItem(progressSongFull);
-    progressSongFull->setPos(0, 6);
+    progressSongFull->setPos(0, 0);
 
     if (progressSong) {
         scene->removeItem(progressSong);
@@ -958,15 +989,15 @@ void MainWindow::addProgressBarToScene(QGraphicsScene *scene, qint64 duration) {
         progressSong = nullptr;
     }
     // Song progress Bar
-    progressSong = new QGraphicsRectItem(0, 6, 0, 20);
+    progressSong = new QGraphicsRectItem(0, 0, 0, 20);
     progressSong->setBrush(QBrush(highlightColor));
     scene->addItem(progressSong);
-    progressSong->setPos(0, 6);
+    progressSong->setPos(0, 0);
 
     // Update progress bar as media plays
     connect(player.data(), &QMediaPlayer::positionChanged, this, [=](qint64 currentPosition) {
         qreal progress = qreal(currentPosition) / (duration * 1000);
-        progressSong->setRect(0, 6, 640 * progress, 20);
+        progressSong->setRect(0, 0, 640 * progress, 20);
     });
 
     durationTextItem->setToolTip(currentVideoName);

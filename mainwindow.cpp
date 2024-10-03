@@ -6,6 +6,9 @@
 #include <QMenuBar>
 #include <QIcon>
 #include <QFileInfo>
+#include <QList>
+#include <QListWidget>
+#include <QListWidgetItem>
 #include <QRegularExpression>
 #include <QStringList>
 #include <QProcess>
@@ -43,6 +46,7 @@
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , isRecording(false)
+    , videoDialog(nullptr)
 {
     QString Wakka_welcome = "Welcome to WakkaQt " + Wakka_versione;
 
@@ -121,14 +125,14 @@ MainWindow::MainWindow(QWidget *parent)
     placeholderLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     placeholderLabel->setScaledContents(true);
 
-    // Initialize the custom video widget
-    customVideoWidget = new VideoDisplayWidget(this);
-    // Set the geometry or use a layout to manage it
-    customVideoWidget->setMinimumSize(320, 200); // Set position and size
-    customVideoWidget->setMaximumSize(640, 480);
+    // Create the main VideoDisplayWidget
+    mainPreviewWidget = new VideoDisplayWidget(this);
+    mainPreviewWidget->setMinimumSize(320, 200);
+    mainPreviewWidget->setMaximumSize(640, 480);
+    mainPreviewWidget->setToolTip("Click to open large preview");
     QHBoxLayout *webcamPreviewLayout = new QHBoxLayout();
     webcamPreviewLayout->addStretch();
-    webcamPreviewLayout->addWidget(customVideoWidget, 0, Qt::AlignCenter);
+    webcamPreviewLayout->addWidget(mainPreviewWidget, 0, Qt::AlignCenter);
     webcamPreviewLayout->addStretch();
 
     // Create the scene and view
@@ -147,8 +151,8 @@ MainWindow::MainWindow(QWidget *parent)
     // Create durationTextItem
     durationTextItem = new QGraphicsTextItem;
     durationTextItem->setDefaultTextColor(palette.color(QPalette::Text));
-    durationTextItem->setFont(QFont("Verdana", 10));
-    qreal textWidth = viewWidth * 0.85;
+    durationTextItem->setFont(QFont("Verdana", 8));
+    qreal textWidth = viewWidth * 0.95;
     durationTextItem->setTextWidth(textWidth);
     qreal textX = (viewWidth - textWidth) / 2;
     qreal textY = viewHeight - durationTextItem->boundingRect().height();
@@ -180,12 +184,10 @@ MainWindow::MainWindow(QWidget *parent)
     soundLevelWidget->setMaximumSize(1920, 32);
     soundLevelWidget->setToolTip("Sound input visualization widget");
 
-    // Selected device
+    // Initialize a working input device!
     deviceLabel = new QLabel("Selected Device: None", this);
-    selectedDevice = QMediaDevices::defaultAudioInput();
-    updateDeviceLabel(selectedDevice);
-    soundLevelWidget->setInputDevice(selectedDevice);
-
+    deviceLabel->setToolTip("Changing the default source input in the system cfg will not reflect the information here");
+    
     // YT downloader
     urlInput = new QLineEdit(this);
     urlInput->setPlaceholderText("https://www.youtube.com/?v=ABCCDFGETC");
@@ -242,11 +244,11 @@ MainWindow::MainWindow(QWidget *parent)
     chooseInputButton->setVisible(false);
     soundLevelWidget->setVisible(true);
     recordingIndicator->hide();
-    customVideoWidget->hide();
+    mainPreviewWidget->hide();
     singButton->setEnabled(false);
     renderAgainButton->setVisible(false);
     exitButton->setVisible(false);
-    deviceLabel->setVisible(false);
+    deviceLabel->setVisible(true);
 
     // Connections
     connect(exitButton, &QPushButton::clicked, this, &QMainWindow::close);
@@ -259,12 +261,15 @@ MainWindow::MainWindow(QWidget *parent)
     connect(fetchButton, &QPushButton::clicked, this, &MainWindow::fetchVideo);
     connect(renderAgainButton, &QPushButton::clicked, this, &MainWindow::renderAgain);
     connect(previewCheckbox, &QCheckBox::toggled, this, &MainWindow::onPreviewCheckboxToggled);
+    connect(mainPreviewWidget, &VideoDisplayWidget::clicked, this, &MainWindow::addVideoDisplayWidgetInDialog);
+
 
     playbackTimer = new QTimer(this);
     connect(playbackTimer, &QTimer::timeout, this, &MainWindow::updatePlaybackDuration);
 
     scene->installEventFilter(this);
 
+    chooseInputDevice();
     resetAudioComponents(true);
 }
 
@@ -371,62 +376,94 @@ void MainWindow::configureMediaComponents()
 
 }
 
-void MainWindow::onVideoFrameReceived(const QVideoFrame &frame) {
-    // Forward the video frame to another widget or process the frame
-    if (frame.isValid()) {
-        // Create a mutable copy of the frame
-        QVideoFrame mutableFrame = frame;
-        proxyVideoFrame(mutableFrame); // Pass the mutable copy
-    }
-}
+void MainWindow::chooseInputDevice() {
+    // Find all available audio input devices
+    QList<QAudioDevice> audioInputs = QMediaDevices::audioInputs();
 
-void MainWindow::proxyVideoFrame(QVideoFrame &frame) {
-    if (!frame.isMapped()) {
-        // Map the frame for reading
-        if (!frame.map(QVideoFrame::ReadOnly)) {
-            return;
-        }
+    // If no devices found, warn the user and return
+    if (audioInputs.isEmpty()) {
+        QMessageBox::warning(this, "No Input Device", "No audio input devices found.");
+        return;
     }
 
-    // Convert the frame to a QImage
-    QImage img = frame.toImage();
-    if (!img.isNull()) {
-        // Paint the QImage to the second video widget
-        customVideoWidget->setImage(img);
+    // Create a dialog to show the list of devices
+    QDialog *deviceDialog = new QDialog(this);
+    deviceDialog->setWindowTitle("Select Input Device");
+    deviceDialog->setFixedSize(300, 300);
+
+    // Create a layout for the dialog
+    QVBoxLayout *layout = new QVBoxLayout(deviceDialog);
+
+    // Create a list widget to display audio devices
+    QListWidget *deviceList = new QListWidget(deviceDialog);
+    for (const QAudioDevice &device : audioInputs) {
+        // Add devices to the list widget
+        deviceList->addItem(device.description());
     }
+    layout->addWidget(deviceList);
 
-    frame.unmap();
-}
+    // Create a button to confirm the selection
+    QPushButton *selectButton = new QPushButton("Select", deviceDialog);
+    layout->addWidget(selectButton);
 
+connect(selectButton, &QPushButton::clicked, this, [this, deviceList, deviceDialog]() {
+        // Get the selected item
+        QListWidgetItem *selectedItem = deviceList->currentItem();
+        if (selectedItem) {
+            // Find the corresponding device
+            QString selectedDeviceDesc = selectedItem->text();
+            QList<QAudioDevice> audioInputs = QMediaDevices::audioInputs();
+            selectedDevice = QAudioDevice(); // Reset selected device
 
-void MainWindow::chooseInputDevice()
-{
-    QList<QAudioDevice> devices = QMediaDevices::audioInputs();
-
-    QStringList deviceNames;
-    for (const QAudioDevice &device : devices) {
-        deviceNames << device.description();
-    }
-
-    bool ok;
-    QString selectedDeviceName = QInputDialog::getItem(this, "Select Input Device", "Input Device:", deviceNames, 0, false, &ok);
-
-    if (ok && !selectedDeviceName.isEmpty()) {
-        for (const QAudioDevice &device : devices) {
-            if (device.description() == selectedDeviceName) {
-                selectedDevice = device; // Store the selected device
-                updateDeviceLabel(selectedDevice);
-                soundLevelWidget->setInputDevice(selectedDevice);
-                break;
+            for (const QAudioDevice &device : audioInputs) {
+                if (device.description() == selectedDeviceDesc) {
+                    selectedDevice = device;
+                    break;
+                }
             }
+
+            // Close the dialog
+            deviceDialog->accept();
+
+            // Check if the selected device is valid
+            if (selectedDevice.isNull()) {
+                deviceLabel->setText("Selected Device: None");
+                QMessageBox::warning(this, "Device Error", "The selected audio input device is invalid.");
+            } else {
+                
+
+                // Set a supported audio format (adjust as needed)
+                QAudioFormat format;
+                format.setSampleRate(44100);
+                format.setChannelCount(2);
+                format.setSampleFormat(QAudioFormat::Int16);
+
+                // Create an audio source to check if the device is working
+                QScopedPointer<QAudioSource> audioSource(new QAudioSource(selectedDevice, format));
+
+                if (!audioSource->start()) {
+                    QMessageBox::warning(this, "Device Error", "Failed to start audio source: " + audioSource->error());
+                    // Check specific error codes for more information
+                    if (audioSource->error() == QAudio::IOError) {
+                        QMessageBox::warning(this, "IO Error", "I/O error occurred while starting audio source.");
+                    } else if (audioSource->error() != QAudio::NoError) {
+                        QMessageBox::warning(this, "Error", "error on input device.");
+                    }
+                } else {
+                    // Device is working, proceed
+                    soundLevelWidget->setInputDevice(selectedDevice);
+                    updateDeviceLabel(selectedDevice);
+                }
+            }
+        } else {
+            QMessageBox::warning(this, "No Selection", "Please select a device before proceeding.");
         }
-    } else {
-        qWarning() << "Default device selected because no device was chosen!";
-        selectedDevice = QMediaDevices::defaultAudioInput();
-        updateDeviceLabel(selectedDevice);
-        soundLevelWidget->setInputDevice(selectedDevice);
-    }
+    });
+
+    deviceDialog->exec(); // Show the dialog modally, mommy
 }
+
+
 
 void MainWindow::updateDeviceLabel(const QAudioDevice &device) {
     if (deviceLabel) {
@@ -606,7 +643,7 @@ void MainWindow::stopRecording() {
             mediaRecorder->stop();
 
         recordingIndicator->hide();
-        customVideoWidget->hide();
+        mainPreviewWidget->hide();
         previewCheckbox->setChecked(false);
 
         isRecording = false;
@@ -649,7 +686,7 @@ void MainWindow::handleRecordingError() {
         camera->stop();
 
     recordingIndicator->hide();
-    customVideoWidget->hide();
+    mainPreviewWidget->hide();
     previewCheckbox->setChecked(false);
     videoWidget->hide();
     placeholderLabel->show();
@@ -1132,18 +1169,86 @@ void MainWindow::onPreviewCheckboxToggled(bool enable) {
     if (enable) {
         qWarning() << "Camera preview will be enabled.";
         logTextEdit->append("Camera preview will be enabled.");
-        customVideoWidget->show();
+        mainPreviewWidget->show();
         if ( camera->isAvailable() && !camera->isActive() )
             camera->start();
     } else {
-        // Hide the camera preview
-        //mediaCaptureSession->setVideoOutput(nullptr);
-        customVideoWidget->hide();
+        mainPreviewWidget->hide();
         qDebug() << "Camera preview hidden.";
     }
 }
 
+void MainWindow::onVideoFrameReceived(const QVideoFrame &frame) {
+    // Forward the video frame to all widgets
+    if (frame.isValid()) {
+        // Create a mutable copy
+        QVideoFrame mutableFrame = frame;
+        proxyVideoFrame(mutableFrame); // Pass the mutable copy (maybe expensive, but safer)
+    }
+}
+
+void MainWindow::proxyVideoFrame(QVideoFrame &frame) {
+    if (!frame.isMapped()) {
+        // Map the frame for reading
+        if (!frame.map(QVideoFrame::ReadOnly)) {
+            return;
+        }
+    }
+
+    // Convert the frame to a QImage
+    QImage img = frame.toImage();
+    if (!img.isNull()) {
+        // Update the main VideoDisplayWidget
+        if (mainPreviewWidget) {
+            mainPreviewWidget->setImage(img);
+        }
+
+        // Update each VideoDisplayWidget in the list
+        for (VideoDisplayWidget* widget : previewWidgets) {
+            widget->setImage(img);
+        }
+    }
+
+    frame.unmap();
+}
+
+void MainWindow::addVideoDisplayWidgetInDialog() {
+    // is already open?
+    if (videoDialog && videoDialog->isVisible() ) {
+        // bring it to the front, captain
+        videoDialog->raise();
+        videoDialog->activateWindow();
+        return;
+    }
+
+    videoDialog = new QDialog(this);
+    videoDialog->setWindowTitle("Webcam Preview");
+    videoDialog->setFixedSize(1024, 768); 
+    VideoDisplayWidget *newWidget = new VideoDisplayWidget(videoDialog);
+    newWidget->setMinimumSize(1024, 768);
+    
+    // Add to the list
+    previewWidgets.append(newWidget);
+
+    QVBoxLayout *layout = new QVBoxLayout(videoDialog);
+    layout->addWidget(newWidget);
+    videoDialog->setLayout(layout);
+
+    // signal to cleanup
+    connect(videoDialog, &QDialog::finished, this, [this]() {
+        // prevent memory leaks
+        videoDialog = nullptr;
+    });
+
+    // Show me show me show me
+    videoDialog->show();
+}
+
 MainWindow::~MainWindow() {
+    
+    qDeleteAll(previewWidgets);
+    previewWidgets.clear();
+
     if (isRecording) {
         stopRecording();
     }

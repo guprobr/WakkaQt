@@ -38,15 +38,23 @@ public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
+    void onVideoFrameReceived(const QVideoFrame &frame);
+    void proxyVideoFrame(QVideoFrame &frame);
+    void addVideoDisplayWidgetInDialog(); // Method to add a VideoDisplayWidget in a dialog
+
 private slots:
     //void onAudioInputsChanged();
-    void onVideoFrameReceived(const QVideoFrame &frame);
+    //void onVideoFrameReceived(const QVideoFrame &frame);
     void onRecorderStateChanged(QMediaRecorder::RecorderState state);
     void onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status);
     void handleRecorderError(QMediaRecorder::Error error);
     void onPreviewCheckboxToggled(bool checked);
     
 private:
+
+    QList<VideoDisplayWidget*> previewWidgets;
+    VideoDisplayWidget *mainPreviewWidget;
+    QDialog *videoDialog; // Pointer to the currently webcam preview dialog
 
     QColor highlightColor;
     QString setRez = "1920x540"; // its a vstack, same width, half the height
@@ -73,8 +81,7 @@ private:
     int totalDuration;
 
     QVideoWidget *videoWidget;
-    VideoDisplayWidget *customVideoWidget;
-
+    
     QScopedPointer<QMediaPlayer> player;
     QScopedPointer<QAudioOutput> audioOutput;
     QScopedPointer<QAudioInput> audioInput;
@@ -132,7 +139,6 @@ private:
     void configureMediaComponents();
     void chooseInputDevice();
     void updateDeviceLabel(const QAudioDevice &device);
-    void proxyVideoFrame(QVideoFrame &frame);
 
     void disconnectAllSignals();
     void closeEvent(QCloseEvent *event) override;

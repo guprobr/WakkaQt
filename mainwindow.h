@@ -34,7 +34,7 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    QString Wakka_versione = "v0.77a";
+    QString Wakka_versione = "v0.84a";
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
@@ -44,7 +44,6 @@ public:
 
 private slots:
     //void onAudioInputsChanged();
-    //void onVideoFrameReceived(const QVideoFrame &frame);
     void onRecorderStateChanged(QMediaRecorder::RecorderState state);
     void onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status);
     void handleRecorderError(QMediaRecorder::Error error);

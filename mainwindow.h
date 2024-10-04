@@ -134,7 +134,7 @@ private:
     void mixAndRender(const QString &videoFile, const QString &webcamFile, const QString &outputFile, double vocalVolume, QString userRez);
     void renderAgain();
 
-    void resetAudioComponents(bool isStarting);
+    void resetMediaComponents(bool isStarting);
     void configureMediaComponents();
     void chooseInputDevice();
     void updateDeviceLabel(const QAudioDevice &device);

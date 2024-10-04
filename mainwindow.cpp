@@ -272,12 +272,12 @@ MainWindow::MainWindow(QWidget *parent)
     scene->installEventFilter(this);
 
     chooseInputDevice();
-    resetAudioComponents(true);
+    resetMediaComponents(true);
 }
 
 
-void MainWindow::resetAudioComponents(bool isStarting) {
-    qDebug() << "Resetting audio components";
+void MainWindow::resetMediaComponents(bool isStarting) {
+    qDebug() << "Resetting media components";
 
     if (!isStarting)
         disconnectAllSignals(); // Ensure all signals are disconnected
@@ -389,9 +389,9 @@ void MainWindow::chooseInputDevice() {
     }
 
     // Create a dialog to show the list of devices
-    QDialog *deviceDialog = new QDialog(this);
+    QDialog *deviceDialog = new QDialog();
     deviceDialog->setWindowTitle("Select Input Device");
-    deviceDialog->setFixedSize(300, 300);
+    deviceDialog->setFixedSize(300, 200);
 
     // Create a layout for the dialog
     QVBoxLayout *layout = new QVBoxLayout(deviceDialog);
@@ -408,7 +408,7 @@ void MainWindow::chooseInputDevice() {
     QPushButton *selectButton = new QPushButton("Select", deviceDialog);
     layout->addWidget(selectButton);
 
-connect(selectButton, &QPushButton::clicked, this, [this, deviceList, deviceDialog]() {
+    connect(selectButton, &QPushButton::clicked, this, [this, deviceList, deviceDialog]() {
         // Get the selected item
         QListWidgetItem *selectedItem = deviceList->currentItem();
         if (selectedItem) {
@@ -433,7 +433,6 @@ connect(selectButton, &QPushButton::clicked, this, [this, deviceList, deviceDial
                 QMessageBox::warning(this, "Device Error", "The selected audio input device is invalid.");
             } else {
                 
-
                 // Set a supported audio format (adjust as needed)
                 QAudioFormat format;
                 format.setSampleRate(44100);
@@ -469,8 +468,6 @@ connect(selectButton, &QPushButton::clicked, this, [this, deviceList, deviceDial
     deviceDialog->exec(); // Show the dialog modally, mommy
 }
 
-
-
 void MainWindow::updateDeviceLabel(const QAudioDevice &device) {
     if (deviceLabel) {
         deviceLabel->setText(QString("Input Device: %1").arg(device.description()));
@@ -487,7 +484,7 @@ void MainWindow::chooseVideo()
         placeholderLabel->hide();
         videoWidget->show();
 
-        resetAudioComponents(false);
+        resetMediaComponents(false);
         if ( player )
             player->setSource(QUrl::fromLocalFile(currentVideoFile)); 
         currentVideoName = QFileInfo(currentVideoFile).baseName();        
@@ -526,7 +523,7 @@ try {
         chooseInputAction->setEnabled(false);
 
         chooseInputDevice();
-        resetAudioComponents(false);
+        resetMediaComponents(false);
         
         isRecording = true;
         
@@ -626,7 +623,7 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
             chooseInputAction->setEnabled(true);
             singButton->setEnabled(false);
             
-            resetAudioComponents(false);
+            resetMediaComponents(false);
             QMessageBox::critical(this, "SORRY: mediaRecorder ERROR", "File size is zero.");
         }
     }
@@ -707,7 +704,7 @@ void MainWindow::handleRecordingError() {
 
     progressSongFull->setToolTip("Nothing to seek");
 
-    resetAudioComponents(false);
+    resetMediaComponents(false);
 
 }
 
@@ -717,7 +714,7 @@ void MainWindow::renderAgain()
     if ( player )
         player->stop();
     playbackTimer->stop();
-    resetAudioComponents(false);
+    resetMediaComponents(false);
 
     renderAgainButton->setVisible(false);
     chooseVideoButton->setEnabled(false);

@@ -127,8 +127,9 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Create the main VideoDisplayWidget
     mainPreviewWidget = new VideoDisplayWidget(this);
-    mainPreviewWidget->setMinimumSize(320, 200);
+    mainPreviewWidget->setMinimumSize(200, 100);
     mainPreviewWidget->setMaximumSize(640, 480);
+    mainPreviewWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     mainPreviewWidget->setToolTip("Click to open large preview");
     QHBoxLayout *webcamPreviewLayout = new QHBoxLayout();
     webcamPreviewLayout->addStretch();
@@ -165,7 +166,7 @@ MainWindow::MainWindow(QWidget *parent)
     QPushButton *exitButton = new QPushButton("Exit", this);
     chooseVideoButton = new QPushButton("Load playback from disk", this);
     singButton = new QPushButton("♪ SING ♪", this);
-    singButton->setFont(QFont("Arial", 16));
+    singButton->setFont(QFont("Arial", 20));
     chooseInputButton = new QPushButton("Choose Input Device", this);
     renderAgainButton = new QPushButton("RENDER AGAIN", this);
 
@@ -186,6 +187,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Initialize a working input device!
     deviceLabel = new QLabel("Selected Device: None", this);
+    deviceLabel->setFont(QFont("Verdana", 8));
     deviceLabel->setToolTip("Changing the default source input in the system cfg will not reflect the information here");
     
     // YT downloader
@@ -451,9 +453,13 @@ connect(selectButton, &QPushButton::clicked, this, [this, deviceList, deviceDial
                     }
                 } else {
                     // Device is working, proceed
+                    if ( audioInput ) {
+                        audioInput.reset();
+                    }
                     soundLevelWidget->setInputDevice(selectedDevice);
                     updateDeviceLabel(selectedDevice);
                 }
+                audioSource->stop();
             }
         } else {
             QMessageBox::warning(this, "No Selection", "Please select a device before proceeding.");

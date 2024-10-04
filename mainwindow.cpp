@@ -778,6 +778,11 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
     chooseInputAction->setEnabled(true);
 
     int totalDuration = getMediaDuration(videoFilePath);  // Get the total duration
+    int recordingDuration = getMediaDuration(webcamFilePath);  // Get the total duration
+    int stopDuration = ( totalDuration - recordingDuration );
+    if ( stopDuration < 0 )
+        stopDuration = 0;
+
     progressBar = new QProgressBar(this);
     progressBar->setMinimumSize(640, 25);
     progressBar->setRange(0, 100);
@@ -800,15 +805,24 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
     QString videorama = "";
 
     if ( camera->isAvailable() )
-        if ((outputFilePath.endsWith(".mp4", Qt::CaseInsensitive) || outputFilePath.endsWith(".avi", Qt::CaseInsensitive) || outputFilePath.endsWith(".mkv", Qt::CaseInsensitive)) 
-        && !( (videoFilePath.endsWith("mp3", Qt::CaseInsensitive)) || (videoFilePath.endsWith("wav", Qt::CaseInsensitive)) || (videoFilePath.endsWith("flac", Qt::CaseInsensitive))) ) {
-            // Combine both recorded and playback videos
-            videorama = QString("[0:v]trim=%1,scale=%2[webcam]; \
-                                [1:v]scale=%2[video]; \
-                                [video][webcam]vstack;")
-                                .arg(millisecondsToSecondsString(offset))
-                                .arg(userRez);
-        }
+        if ((outputFilePath.endsWith(".mp4", Qt::CaseInsensitive) || outputFilePath.endsWith(".avi", Qt::CaseInsensitive) || outputFilePath.endsWith(".mkv", Qt::CaseInsensitive))) 
+            if ( !( (videoFilePath.endsWith("mp3", Qt::CaseInsensitive)) || (videoFilePath.endsWith("wav", Qt::CaseInsensitive)) || (videoFilePath.endsWith("flac", Qt::CaseInsensitive))) ) {
+                // Combine both recorded and playback videos
+                videorama = QString("[0:v]trim=%1,scale=%2[webcam]; \
+                                    [1:v]scale=%2[video]; \
+                                    [video][webcam]vstack[videorama];")
+                                    .arg(millisecondsToSecondsString(offset))
+                                    .arg(userRez);
+                                    
+            } else {
+                QStringList partsRez = userRez.split("x");
+                QString fullRez = QString("%1x%2").arg(partsRez[0].toInt()).arg(partsRez[1].toInt() * 2);
+                // No video playback, work only with webcam video
+                videorama = QString("[0:v]trim=%1,scale=%2,tpad=stop_mode=clone:stop_duration=%3[videorama];")
+                                    .arg(millisecondsToSecondsString(offset))
+                                    .arg(fullRez)
+                                    .arg(stopDuration);
+            }
 
     // we Configure autotalent plugin here:
     QString talent = "lv2=http\\\\://gareus.org/oss/lv2/fat1,";
@@ -832,8 +846,11 @@ void MainWindow::mixAndRender(const QString &webcamFilePath, const QString &vide
                 << "-async" << "1"              // force audio sync in output
                 << "-vsync" << "2"              // force video sync in output
                 << "-dither_method" << "none"   // dithering off
-                << "-map" << "[wakkamix]"      // ensure audio goes on the pack
-                << outputFilePath;              // OUTPUT mix
+                << "-map" << "[wakkamix]";      // ensure audio goes on the pack
+    if ( !videorama.isEmpty() )
+        arguments << "-map" << "[videorama]";
+
+    arguments << outputFilePath;              // OUTPUT mix
 
     
     // Connect signals to display output and errors

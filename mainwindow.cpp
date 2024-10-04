@@ -366,7 +366,7 @@ void MainWindow::configureMediaComponents()
 
     videoSink.reset(new QVideoSink(this));
     mediaCaptureSession->setVideoOutput(videoSink.data());
-    qWarning() << "Configuring mediaCaptureSession..";
+    qDebug() << "Configuring mediaCaptureSession..";
     mediaCaptureSession->setCamera(camera.data());
     mediaCaptureSession->setAudioInput(audioInput.data());
     mediaCaptureSession->setRecorder(mediaRecorder.data());
@@ -381,6 +381,7 @@ void MainWindow::configureMediaComponents()
 void MainWindow::chooseInputDevice() {
     // Find all available audio input devices
     QList<QAudioDevice> audioInputs = QMediaDevices::audioInputs();
+    updateDeviceLabel(QMediaDevices::defaultAudioInput());
 
     // If no devices found, warn the user and return
     if (audioInputs.isEmpty()) {
@@ -399,8 +400,11 @@ void MainWindow::chooseInputDevice() {
     // Create a list widget to display audio devices
     QListWidget *deviceList = new QListWidget(deviceDialog);
     for (const QAudioDevice &device : audioInputs) {
-        // Add devices to the list widget
-        deviceList->addItem(device.description());
+        // Create a new item for the list
+        QListWidgetItem *item = new QListWidgetItem(device.description());
+        // Store the unique ID as user data
+        item->setData(Qt::UserRole, device.id());
+        deviceList->addItem(item);
     }
     layout->addWidget(deviceList);
 
@@ -408,17 +412,18 @@ void MainWindow::chooseInputDevice() {
     QPushButton *selectButton = new QPushButton("Select", deviceDialog);
     layout->addWidget(selectButton);
 
+    // Connect the select button to handle selection
     connect(selectButton, &QPushButton::clicked, this, [this, deviceList, deviceDialog]() {
         // Get the selected item
         QListWidgetItem *selectedItem = deviceList->currentItem();
         if (selectedItem) {
-            // Find the corresponding device
-            QString selectedDeviceDesc = selectedItem->text();
+            // Find the corresponding device using its unique ID
+            QString selectedDeviceId = selectedItem->data(Qt::UserRole).toString();
             QList<QAudioDevice> audioInputs = QMediaDevices::audioInputs();
             selectedDevice = QAudioDevice(); // Reset selected device
 
             for (const QAudioDevice &device : audioInputs) {
-                if (device.description() == selectedDeviceDesc) {
+                if (device.id() == selectedDeviceId) {
                     selectedDevice = device;
                     break;
                 }
@@ -429,7 +434,6 @@ void MainWindow::chooseInputDevice() {
 
             // Check if the selected device is valid
             if (selectedDevice.isNull()) {
-                deviceLabel->setText("Selected Device: None");
                 QMessageBox::warning(this, "Device Error", "The selected audio input device is invalid.");
             } else {
                 
@@ -448,11 +452,11 @@ void MainWindow::chooseInputDevice() {
                     if (audioSource->error() == QAudio::IOError) {
                         QMessageBox::warning(this, "IO Error", "I/O error occurred while starting audio source.");
                     } else if (audioSource->error() != QAudio::NoError) {
-                        QMessageBox::warning(this, "Error", "error on input device.");
+                        QMessageBox::warning(this, "Error", "Error on input device.");
                     }
                 } else {
                     // Device is working, proceed
-                    if ( audioInput ) {
+                    if (audioInput) {
                         audioInput.reset();
                     }
                     soundLevelWidget->setInputDevice(selectedDevice);
@@ -465,7 +469,12 @@ void MainWindow::chooseInputDevice() {
         }
     });
 
-    deviceDialog->exec(); // Show the dialog modally, mommy
+    // Execute the dialog and check if it was cancelled
+    if (deviceDialog->exec() == QDialog::Rejected) {
+        QMessageBox::information(this, "Cancelled", "Device selection was cancelled.");
+    }
+
+    delete deviceDialog; // Clean up the dialog after it is closed
 }
 
 void MainWindow::updateDeviceLabel(const QAudioDevice &device) {
@@ -476,8 +485,10 @@ void MainWindow::updateDeviceLabel(const QAudioDevice &device) {
 
 void MainWindow::chooseVideo()
 {
-    currentVideoFile = QFileDialog::getOpenFileName(this, "Open Playback File", QString(), "Video or Audio (*.mp4 *.mkv *.webm *.avi *.mov *.mp3 *.wav *.flac)");
-    if (!currentVideoFile.isEmpty()) {
+    QString loadVideoFile = QFileDialog::getOpenFileName(this, "Open Playback File", QString(), "Video or Audio (*.mp4 *.mkv *.webm *.avi *.mov *.mp3 *.wav *.flac)");
+    if (!loadVideoFile.isEmpty()) {
+
+        currentVideoFile = loadVideoFile;
 
         singButton->setEnabled(true);
         renderAgainButton->setVisible(false);
@@ -660,7 +671,14 @@ void MainWindow::stopRecording() {
 }
 
 void MainWindow::handleRecorderError(QMediaRecorder::Error error) {
-    qWarning() << "Recorder error:" << error << mediaRecorder->errorString();
+
+    qWarning() << "Detected a mediaRecorder error:" << error << mediaRecorder->errorString();
+
+    if ( !isRecording ) {
+        qWarning() << ":O But we are not recording!!";
+        return;
+    }
+
     logTextEdit->append("Recording Error: " + mediaRecorder->errorString());
 
     try {
@@ -1143,13 +1161,13 @@ void MainWindow::fetchVideo() {
         process->deleteLater();
 
         // Open the choose video dialog in the directory chosen to save video
-        QString videoFilePath = QFileDialog::getOpenFileName(this, "Choose the downloaded playback or any another", directory, "Videos (*.mp4 *.mkv *.avi)");
-        if (!videoFilePath.isEmpty()) {
+        QString fetchVideoPath = QFileDialog::getOpenFileName(this, "Choose the downloaded playback or any another", directory, "Videos (*.mp4 *.mkv *.avi)");
+        if (!fetchVideoPath.isEmpty()) {
 
             placeholderLabel->hide();
             videoWidget->show();
             
-            currentVideoFile = videoFilePath;  // Store the video playback file path
+            currentVideoFile = fetchVideoPath;  // Store the video playback file path
             if ( player )
                 player->setSource(QUrl::fromLocalFile(currentVideoFile)); 
             currentVideoName = QFileInfo(currentVideoFile).baseName();

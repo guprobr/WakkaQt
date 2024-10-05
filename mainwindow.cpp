@@ -691,6 +691,7 @@ void MainWindow::handleRecorderError(QMediaRecorder::Error error) {
             playbackTimer->stop();
             mediaRecorder->stop();
         }
+        
     } catch (const std::exception &e) {
         logTextEdit->append("Error during stopRecording (while handling error): " + QString::fromStdString(e.what()));
     }
@@ -707,6 +708,8 @@ void MainWindow::handleRecordingError() {
     qDebug() << "Cleaning up..";
     if ( camera )
         camera->stop();
+    if ( audioRecorder->isRecording() )
+        audioRecorder->stopRecording();
 
     recordingIndicator->hide();
     mainPreviewWidget->hide();

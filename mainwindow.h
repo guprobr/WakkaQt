@@ -3,6 +3,7 @@
 
 #include "sndwidget.h"
 #include "videodisplaywidget.h"
+#include "audiorecorder.h"
 
 #include <QMainWindow>
 #include <QScopedPointer>
@@ -25,7 +26,6 @@
 #include <QMediaCaptureSession>
 #include <QCamera>
 
-#include <QAudioInput>
 #include <QAudioSink>
 #include <QBuffer>
 
@@ -34,7 +34,7 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    QString Wakka_versione = "v0.84a";
+    QString Wakka_versione = "v0.88a";
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
@@ -69,7 +69,7 @@ private:
     QTimer *playbackTimer;
 
     bool isRecording;
-    qint64 playbackEventTime = 0;
+    qint64 startEventTime = 0;
     qint64 recordingEventTime = 0;
     qint64 offset = 0;
 
@@ -83,7 +83,7 @@ private:
     
     QScopedPointer<QMediaPlayer> player;
     QScopedPointer<QAudioOutput> audioOutput;
-    QScopedPointer<QAudioInput> audioInput;
+    QScopedPointer<AudioRecorder> audioRecorder;
     QScopedPointer<QMediaFormat> format;
     QScopedPointer<QMediaRecorder> mediaRecorder;
     QScopedPointer<QMediaCaptureSession> mediaCaptureSession;
@@ -112,7 +112,8 @@ private:
     
     QString currentVideoFile;
     QString currentVideoName;
-    QString webcamRecorded; 
+    QString webcamRecorded;
+    QString audioRecorded; 
     QString outputFilePath; 
 
     SndWidget *soundLevelWidget;
@@ -131,7 +132,7 @@ private:
     void addProgressBarToScene(QGraphicsScene *scene, qint64 duration);
     void updateProgress(const QString& output, QProgressBar* progressBar, int totalDuration);
     
-    void mixAndRender(const QString &videoFile, const QString &webcamFile, const QString &outputFile, double vocalVolume, QString userRez);
+    void mixAndRender(double vocalVolume);
     void renderAgain();
 
     void resetMediaComponents(bool isStarting);

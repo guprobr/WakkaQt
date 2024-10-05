@@ -14,19 +14,15 @@ SndWidget::SndWidget(QWidget *parent)
       audioBuffer(new QBuffer(this)) {
 
     // Initialize the buffer
-    waveformBuffer.resize(1024, 0.0f);
+    waveformBuffer.resize(4096, 0.0f);
 
     // Set up the default audio format
     format.setSampleRate(44100);
     format.setChannelCount(1);
     format.setSampleFormat(QAudioFormat::Int16);
 
-    // Set to the default input device
-    //QAudioDevice device = QMediaDevices::defaultAudioInput();
-    //setInputDevice(device);
-
     connect(timer, &QTimer::timeout, this, &SndWidget::updateWaveform);
-    timer->start(111); // Update every 111 milliseconds
+    timer->start(55); // Update every 55 milliseconds
 }
 
 SndWidget::~SndWidget() {

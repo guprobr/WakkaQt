@@ -37,10 +37,12 @@ add_executable(${PROJECT_NAME}
     sndwidget.cpp
     previewdialog.cpp
     audioamplifier.cpp
+    audiorecorder.cpp
     mainwindow.h
     sndwidget.h
     previewdialog.h
     audioamplifier.h
+    audiorecorder.h
     videodisplaywidget.h
     ${resources}
 )

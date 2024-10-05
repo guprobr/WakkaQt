@@ -211,6 +211,6 @@ void AudioAmplifier::resetAudioComponents() {
 
     audioSink.reset(new QAudioSink(audioFormat, this));
     connect(audioSink.data(), &QAudioSink::stateChanged, this, &AudioAmplifier::handleStateChanged);
-    audioSink->setBufferSize(8192); 
+    //audioSink->setBufferSize(8192); 
 
 }

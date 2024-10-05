@@ -30,6 +30,7 @@ AudioRecorder::AudioRecorder(QAudioDevice selectedDevice, QObject* parent)
 
     m_selectedDevice = selectedDevice;
     m_audioSource = new QAudioSource(m_selectedDevice, m_audioFormat, this);
+    m_audioSource->setVolume(1.0f);
 
 }
 
@@ -164,13 +165,13 @@ QString AudioRecorder::sampleFormatToString(QAudioFormat::SampleFormat format) {
         case QAudioFormat::Unknown:
             return "Unknown";
         case QAudioFormat::UInt8:
-            return "UInt8";
+            return "8bit";
         case QAudioFormat::Int16:
-            return "Int16";
+            return "16bit";
         case QAudioFormat::Int32:
-            return "Int32";
+            return "24bit";
         case QAudioFormat::Float:
-            return "Float";
+            return "Float 32bit";
         default:
             return "Unknown";
     }

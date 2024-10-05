@@ -96,6 +96,7 @@ MainWindow::MainWindow(QWidget *parent)
 
         aboutBox.setTextFormat(Qt::RichText);  
         aboutBox.setText(aboutText.arg(Wakka_welcome));  // Insert Wakka_welcome message
+        aboutBox.setFont(QFont("Arial", 10));
 
         // Enable clickable links
         QLabel *label = aboutBox.findChild<QLabel *>("qt_msgbox_label");
@@ -127,9 +128,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Create the main VideoDisplayWidget
     mainPreviewWidget = new VideoDisplayWidget(this);
-    mainPreviewWidget->setMinimumSize(200, 100);
-    mainPreviewWidget->setMaximumSize(640, 480);
-    mainPreviewWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    mainPreviewWidget->setFixedSize(264, 128);
     mainPreviewWidget->setToolTip("Click to open large preview");
     QHBoxLayout *webcamPreviewLayout = new QHBoxLayout();
     webcamPreviewLayout->addStretch();
@@ -193,10 +192,13 @@ MainWindow::MainWindow(QWidget *parent)
     // YT downloader
     urlInput = new QLineEdit(this);
     urlInput->setPlaceholderText("https://www.youtube.com/?v=ABCCDFGETC");
+    urlInput->setFont(QFont("Arial", 10));
     urlInput->setToolTip("Paste a URL here to fetch your karaoke playback video");
     fetchButton = new QPushButton("FETCH", this);
+    fetchButton->setFont(QFont("Arial", 10));
     fetchButton->setToolTip("Click here to begin yt-dlp: video streaming service downloader");
     downloadStatusLabel = new QLabel("Download YouTube URL", this);
+    downloadStatusLabel->setFont(QFont("Arial", 8));
     downloadStatusLabel->setToolTip("Several streaming services URL besides YouTube may work here");
     QHBoxLayout *fetchLayout = new QHBoxLayout;
     fetchLayout->addWidget(urlInput);
@@ -208,6 +210,7 @@ MainWindow::MainWindow(QWidget *parent)
     logTextEdit->setReadOnly(true);
     logTextEdit->append(Wakka_welcome);
     logTextEdit->setFixedHeight(50);
+    logTextEdit->setFont(QFont("Arial", 8));
     logTextEdit->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     // Move cursor to the end of the text when text is appended
     connect(logTextEdit, &QTextEdit::textChanged, this, [=]() {
@@ -487,19 +490,20 @@ void MainWindow::chooseVideo()
     QString loadVideoFile = QFileDialog::getOpenFileName(this, "Open Playback File", QString(), "Video or Audio (*.mp4 *.mkv *.webm *.avi *.mov *.mp3 *.wav *.flac)");
     if (!loadVideoFile.isEmpty()) {
 
-        currentVideoFile = loadVideoFile;
+        resetMediaComponents(false);
 
         singButton->setEnabled(true);
         renderAgainButton->setVisible(false);
         placeholderLabel->hide();
         videoWidget->show();
 
-        resetMediaComponents(false);
-        if ( player )
+        currentVideoFile = loadVideoFile;
+        if ( player ) {
             player->setSource(QUrl::fromLocalFile(currentVideoFile)); 
-        currentVideoName = QFileInfo(currentVideoFile).baseName();        
-        addProgressBarToScene(scene, getMediaDuration(currentVideoFile));
-        logTextEdit->append("Playback preview. Press SING to start recording.");
+            currentVideoName = QFileInfo(currentVideoFile).baseName();        
+            addProgressBarToScene(scene, getMediaDuration(currentVideoFile));
+            logTextEdit->append("Playback preview. Press SING to start recording.");
+        }
     }
 }
 
@@ -794,7 +798,7 @@ void MainWindow::mixAndRender(double vocalVolume) {
     chooseInputAction->setEnabled(true);
 
     int totalDuration = getMediaDuration(currentVideoFile);  // Get the total duration
-    int recordingDuration = getMediaDuration(webcamRecorded);  // Get the total duration
+    int recordingDuration = getMediaDuration(webcamRecorded);  // Get the recording duration
     int stopDuration = ( totalDuration - recordingDuration );
     if ( stopDuration < 0 )
         stopDuration = 0;
@@ -931,13 +935,15 @@ void MainWindow::mixAndRender(double vocalVolume) {
 
         qDebug() << "Setting media source to" << outputFilePath;
         //currentVideoFile = outputFilePath; // uncomment this for our special Recursive Aracna View mode: its awesome
-        if ( player )
+        if ( player ) {
             player->setSource(QUrl::fromLocalFile(outputFilePath));
-        addProgressBarToScene(scene, getMediaDuration(outputFilePath));
+            addProgressBarToScene(scene, getMediaDuration(outputFilePath));
 
-        qWarning() << "trimmed rec offset: " << offset << " ms";
-        logTextEdit->append(QString("trimmed recording Offset: %1 ms").arg(offset));
-        this->logTextEdit->append("Playing mix!");
+            qWarning() << "trimmed rec offset: " << offset << " ms";
+            this->logTextEdit->append(QString("trimmed recording Offset: %1 ms").arg(offset));
+
+            this->logTextEdit->append("Playing mix!");
+        }
 
     });
 
@@ -1165,14 +1171,15 @@ void MainWindow::fetchVideo() {
             videoWidget->show();
             
             currentVideoFile = fetchVideoPath;  // Store the video playback file path
-            if ( player )
+            if ( player ) {
                 player->setSource(QUrl::fromLocalFile(currentVideoFile)); 
-            currentVideoName = QFileInfo(currentVideoFile).baseName();
-            addProgressBarToScene(scene, getMediaDuration(currentVideoFile));
+                currentVideoName = QFileInfo(currentVideoFile).baseName();
+                addProgressBarToScene(scene, getMediaDuration(currentVideoFile));
 
-            downloadStatusLabel->setText("Download YouTube URL");
-            singButton->setEnabled(true); 
-            logTextEdit->append("Previewing playback. Press SING to start recording.");
+                downloadStatusLabel->setText("Download YouTube URL");
+                singButton->setEnabled(true); 
+                logTextEdit->append("Previewing playback. Press SING to start recording.");
+            }
             
         }
     });

@@ -138,7 +138,7 @@ private:
     void resetMediaComponents(bool isStarting);
     void configureMediaComponents();
     void chooseInputDevice();
-    void updateDeviceLabel(const QAudioDevice &device);
+    void updateDeviceLabel(const QString &deviceLabelText);
 
     void disconnectAllSignals();
     void closeEvent(QCloseEvent *event) override;

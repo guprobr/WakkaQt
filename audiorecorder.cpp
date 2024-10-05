@@ -15,11 +15,10 @@ AudioRecorder::AudioRecorder(QAudioDevice selectedDevice, QObject* parent)
     qDebug() << "Channels:" << m_audioFormat.channelCount();
     qDebug() << "Sample size:" << m_audioFormat.bytesPerSample();
 
-    if (!m_audioFormat.sampleRate()) {
-        qDebug() << "Preferred format is bogus.";
+    if (!m_audioFormat.sampleRate()) { // a sort of bug in preferredFormat() returns zero on some high-fidelity audio interfaces
         m_audioFormat.setSampleRate(192000);
         m_audioFormat.setChannelCount(1);
-        m_audioFormat.setSampleFormat(QAudioFormat::SampleFormat::Int16);
+        m_audioFormat.setSampleFormat(QAudioFormat::SampleFormat::Int32);
     }
     
     if ( !selectedDevice.isFormatSupported(m_audioFormat) ) {
@@ -32,10 +31,19 @@ AudioRecorder::AudioRecorder(QAudioDevice selectedDevice, QObject* parent)
     m_selectedDevice = selectedDevice;
     m_audioSource = new QAudioSource(m_selectedDevice, m_audioFormat, this);
 
-    qWarning() << "AudioRecorder device: " << selectedDevice.description() 
-                << " " << m_audioSource->format().sampleRate() << " Hz "  
-                << m_audioSource->format().sampleFormat() << " " 
-                << m_audioSource->format().channelCount() << " ch";}
+}
+
+void AudioRecorder::initialize() {
+
+    // Lets update the device label :)
+    QString audioRecorderDevice = m_selectedDevice.description()                + 
+            " " + QString::number(m_audioSource->format().sampleRate()) + "Hz"  +
+            " " + sampleFormatToString(m_audioSource->format().sampleFormat())  +
+            " " + QString::number(m_audioSource->format().channelCount())   + "ch";
+
+    emit deviceLabelChanged(audioRecorderDevice);
+
+}
 
 AudioRecorder::~AudioRecorder()
 {
@@ -149,4 +157,21 @@ void AudioRecorder::writeWavHeader(QFile &file, const QAudioFormat &format, qint
     file.write(pcmData); // Write audio data after the header
 
     qDebug() << "WAV header and audio data written.";
+}
+
+QString AudioRecorder::sampleFormatToString(QAudioFormat::SampleFormat format) {
+    switch (format) {
+        case QAudioFormat::Unknown:
+            return "Unknown";
+        case QAudioFormat::UInt8:
+            return "UInt8";
+        case QAudioFormat::Int16:
+            return "Int16";
+        case QAudioFormat::Int32:
+            return "Int32";
+        case QAudioFormat::Float:
+            return "Float";
+        default:
+            return "Unknown";
+    }
 }

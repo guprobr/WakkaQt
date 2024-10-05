@@ -335,22 +335,24 @@ void MainWindow::configureMediaComponents()
     webcamRecorded = QDir::temp().filePath("WakkaQt_tmp_recording.mp4");
     audioRecorded = QDir::temp().filePath("WakkaQt_tmp_recording.wav");
 
-
     // Reinitialize components
-    videoSink.reset(new QVideoSink(this));
     audioRecorder.reset(new AudioRecorder(selectedDevice, this));
-    format.reset(new QMediaFormat);
-    mediaRecorder.reset(new QMediaRecorder(this));
-    mediaCaptureSession.reset(new QMediaCaptureSession(this));
+    connect(audioRecorder.data(), &AudioRecorder::deviceLabelChanged, this, &MainWindow::updateDeviceLabel);
+    audioRecorder->initialize();
+
     player.reset(new QMediaPlayer(this));
     audioOutput.reset(new QAudioOutput(this));
+    videoSink.reset(new QVideoSink(this));
+    
+    format.reset(new QMediaFormat);
     camera.reset(new QCamera(this));
+    mediaRecorder.reset(new QMediaRecorder(this));
+    mediaCaptureSession.reset(new QMediaCaptureSession(this));
 
     // Setup video player
     player->setVideoOutput(videoWidget);
     player->setAudioOutput(audioOutput.data());
     
-    updateDeviceLabel(selectedDevice);
     soundLevelWidget->setInputDevice(selectedDevice);
     
     format->setFileFormat(QMediaFormat::FileFormat::MPEG4);
@@ -377,10 +379,11 @@ void MainWindow::configureMediaComponents()
 }
 
 void MainWindow::chooseInputDevice() {
+
+    selectedDevice = QMediaDevices::defaultAudioInput(); // default to the default!
     // Find all available audio input devices
     QList<QAudioDevice> audioInputs = QMediaDevices::audioInputs();
-    updateDeviceLabel(QMediaDevices::defaultAudioInput());
-
+    
     // If no devices found, warn the user and return
     if (audioInputs.isEmpty()) {
         QMessageBox::warning(this, "No Input Device", "No audio input devices found.");
@@ -452,10 +455,6 @@ void MainWindow::chooseInputDevice() {
                     } else if (audioSource->error() != QAudio::NoError) {
                         QMessageBox::warning(this, "Error", "Error on input device.");
                     }
-                } else {
-                    audioRecorder.reset(new AudioRecorder(selectedDevice, this));
-                    soundLevelWidget->setInputDevice(selectedDevice);
-                    updateDeviceLabel(selectedDevice);
                 }
                 audioSource->stop();
             }
@@ -469,12 +468,17 @@ void MainWindow::chooseInputDevice() {
         QMessageBox::information(this, "Cancelled", "Device selection was cancelled.");
     }
 
+    audioRecorder.reset(new AudioRecorder(selectedDevice, this));
+    connect(audioRecorder.data(), &AudioRecorder::deviceLabelChanged, this, &MainWindow::updateDeviceLabel);
+    audioRecorder->initialize();
+    soundLevelWidget->setInputDevice(selectedDevice);
+
     delete deviceDialog; // Clean up the dialog after it is closed
 }
 
-void MainWindow::updateDeviceLabel(const QAudioDevice &device) {
+void MainWindow::updateDeviceLabel(const QString &deviceLabelText) {
     if (deviceLabel) {
-        deviceLabel->setText(QString("Input Device: %1").arg(device.description()));
+        deviceLabel->setText(QString("Audio Input Device: %1").arg(deviceLabelText));
     }
 }
 
@@ -1289,6 +1293,8 @@ MainWindow::~MainWindow() {
         player.reset();
     if ( audioOutput )
         audioOutput.reset();
+    if ( videoSink )
+        videoSink.reset();
     if ( mediaRecorder )
         mediaRecorder.reset();
     if ( mediaCaptureSession )
@@ -1307,6 +1313,9 @@ MainWindow::~MainWindow() {
 
 // Function to disconnect all signals
 void MainWindow::disconnectAllSignals() {
+
+    if ( audioRecorder )
+        disconnect(audioRecorder.data(), &AudioRecorder::deviceLabelChanged, this, &MainWindow::updateDeviceLabel);
 
     // Disconnect media signals
     if (mediaRecorder) {

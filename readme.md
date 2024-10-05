@@ -88,21 +88,23 @@ sudo zypper install qt6-qtbase-devel qt6-qtmultimedia-devel glib2-devel ffmpeg y
 
 ## Usage
 
-1. **Load Karaoke Track:** Use the "Load playback from disk" button to load a video or audio file for the karaoke session. It will start a preview of the playback, and enables the SING button so you can start recording.
+1. **Load Karaoke Track:** Use the "Load playback" option on the "File" menu to load a video or audio file for the karaoke session. It will start a preview of the playback, and enables the SING button so you can start recording.
 2. **Select Input Device:** Choose the microphone or audio input device for recording.
 3. **Sing & Record:** Click the "♪ SING ♪" button to start recording. The webcam will be used to record a video, while the audio input will record your voice.
 4. **Stop Recording:** Once finished, click the "Finish!" button to stop the recording.
-5. **Adjust vocals volume** Once finished recording, a dialog appears with a slider for you to amplify or reduce volume of the vocals. It is a very low quality sound, just to adjust volumes. After rendering it will sound much better.
+5. **Adjust vocals volume** Once finished recording, a dialog appears with a knob for you to amplify or reduce volume of the vocals. It is a very low quality sound, just to adjust volumes. After rendering it will sound much better.
 6. **Render the Video:** You can render and preview the mix of vocals and the karaoke track before the final video or audio file.
 7. **Download YouTube Video:** You can enter a YouTube URL to download and use as a karaoke track. Other streaming services URL might work as well.
 8. **Render again:** This button appears after rendering, so you can save a new filename and adjust options again, then render, again :D
 
 ## Project Structure
 
-- **`mainwindow.cpp` / `mainwindow.h`:** Core application logic, including UI setup and media control.
-- **`sndwidget.cpp` / `sndwidget.h`:** Custom widget for displaying sound levels.
+- **`mainwindow.cpp` / `mainwindow.h`:** Core application logic, including UI setup and media control, media downloads and rendering.
+- **`sndwidget.cpp` / `sndwidget.h`:** Custom widget for displaying sound levels from the current audio input source.
 - **`previewdialog.cpp` / `previewdialog.h`:** Preview dialog for reviewing and adjusting vocal levels before rendering.
 - **`audioamplifier.cpp` / `audioamplifier.h`:** Class to manipulate samples of preview volume adjustment.
+- **`audiorecorder.cpp` / `audiorecorder.h`:** Class to enable the configuration of different sample formats, channels and rates while recording sound, since QAudioInput with MediaCaptureSession don't do the job.
+- **`videodisplaywidget.h`:** Class to serve as a proxy of the webcam preview, allowing multiple widgets for the webcam preview at the same time.
 - **`resources.qrc`:** Resource file for including images like the app logo.
 
 ## FFmpeg Integration
@@ -117,6 +119,7 @@ Ensure that FFmpeg is correctly installed, compiled with LV2 plugin support, and
   - **yt-dlp** is already there too, for your convenience.
   - After extracting the ZIP, please double-click to **run as _normal_ user the CONFIG.BAT script**. It will set up environment variables and copy the LV2 plugin to the correct directory. It will ask admin permissions for that. PS: run as _normal user_, admin permissions will be _asked later_;
   - NOTE: **antivirus software degrade this software a lot**, and **VPNs might make streaming services to block** the fetching of the video file when running *yt-dlp*.
+    
   - You can download the windows x64 ZIP [Here on my website](https://gu.pro.br/WakkaQt-mswinX64.zip)
 
 ## Contributing

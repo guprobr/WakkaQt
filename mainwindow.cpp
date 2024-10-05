@@ -824,7 +824,7 @@ void MainWindow::mixAndRender(double vocalVolume) {
         if ((outputFilePath.endsWith(".mp4", Qt::CaseInsensitive) || outputFilePath.endsWith(".avi", Qt::CaseInsensitive) || outputFilePath.endsWith(".mkv", Qt::CaseInsensitive))) 
             if ( !( (currentVideoFile.endsWith("mp3", Qt::CaseInsensitive)) || (currentVideoFile.endsWith("wav", Qt::CaseInsensitive)) || (currentVideoFile.endsWith("flac", Qt::CaseInsensitive))) ) {
                 // Combine both recorded and playback videos
-                videorama = QString("[1:v]trim=%1,scale=%2[webcam]; \
+                videorama = QString("[1:v]trim=%1,setpts=PTS-STARTPTS,scale=%2[webcam]; \
                                     [2:v]scale=%2[video]; \
                                     [video][webcam]vstack[videorama];")
                                     .arg(millisecondsToSecondsString(offset))
@@ -834,7 +834,8 @@ void MainWindow::mixAndRender(double vocalVolume) {
                 QStringList partsRez = setRez.split("x");
                 QString fullRez = QString("%1x%2").arg(partsRez[0].toInt()).arg(partsRez[1].toInt() * 2);
                 // No video playback, work only with webcam video
-                videorama = QString("[1:v]trim=%1,scale=%2,tpad=stop_mode=clone:stop_duration=%3[videorama];")
+                videorama = QString("[1:v]trim=%1,setpts=PTS-STARTPTS, \
+                                    scale=%2,tpad=stop_mode=clone:stop_duration=%3[videorama];")
                                     .arg(millisecondsToSecondsString(offset))
                                     .arg(fullRez)
                                     .arg(stopDuration);
@@ -929,7 +930,7 @@ void MainWindow::mixAndRender(double vocalVolume) {
         videoWidget->show();
 
         qDebug() << "Setting media source to" << outputFilePath;
-        //currentVideoFile = outputFilePath; // uncomment this for out special Recursive Aracna View mode: its awesome
+        //currentVideoFile = outputFilePath; // uncomment this for our special Recursive Aracna View mode: its awesome
         if ( player )
             player->setSource(QUrl::fromLocalFile(outputFilePath));
         addProgressBarToScene(scene, getMediaDuration(outputFilePath));
@@ -1201,8 +1202,7 @@ void MainWindow::fetchVideo() {
 
 void MainWindow::onPreviewCheckboxToggled(bool enable) {
     if (enable) {
-        qWarning() << "Camera preview will be enabled.";
-        logTextEdit->append("Camera preview will be enabled.");
+        qDebug() << "Camera preview will be enabled.";
         mainPreviewWidget->show();
         if ( camera->isAvailable() && !camera->isActive() )
             camera->start();

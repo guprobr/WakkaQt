@@ -855,19 +855,19 @@ void MainWindow::mixAndRender(double vocalVolume) {
         if ((outputFilePath.endsWith(".mp4", Qt::CaseInsensitive) || outputFilePath.endsWith(".avi", Qt::CaseInsensitive) || outputFilePath.endsWith(".mkv", Qt::CaseInsensitive))) 
             if ( !( (currentVideoFile.endsWith("mp3", Qt::CaseInsensitive)) || (currentVideoFile.endsWith("wav", Qt::CaseInsensitive)) || (currentVideoFile.endsWith("flac", Qt::CaseInsensitive))) ) {
                 // Combine both recorded and playback videos
-                videorama = QString("[1:v]trim=%1,setpts=PTS-STARTPTS,scale=%2[webcam]; \
+                videorama = QString("[1:v]trim=%1ms,setpts=PTS-STARTPTS,scale=%2[webcam]; \
                                     [2:v]scale=%2[video]; \
                                     [video][webcam]vstack[videorama];")
-                                    .arg(millisecondsToSecondsString(offset))
+                                    .arg(offset)
                                     .arg(setRez);
                                     
             } else {
                 QStringList partsRez = setRez.split("x");
                 QString fullRez = QString("%1x%2").arg(partsRez[0].toInt()).arg(partsRez[1].toInt() * 2);
                 // No video playback, work only with webcam video
-                videorama = QString("[1:v]trim=%1,setpts=PTS-STARTPTS, \
+                videorama = QString("[1:v]trim=%1ms,setpts=PTS-STARTPTS, \
                                     scale=%2,tpad=stop_mode=clone:stop_duration=%3[videorama];")
-                                    .arg(millisecondsToSecondsString(offset))
+                                    .arg(offset)
                                     .arg(fullRez)
                                     .arg(stopDuration);
             }
@@ -880,11 +880,11 @@ void MainWindow::mixAndRender(double vocalVolume) {
           << "-i" << webcamRecorded // recorded camera INPUT file
           << "-i" << currentVideoFile // playback file INPUT file
           << "-filter_complex"      // masterization and vocal enhancement of recorded audio
-          << QString("[0:a]aformat=channel_layouts=stereo,atrim=%1, \
+          << QString("[0:a]aformat=channel_layouts=stereo,atrim=%1ms,asetpts=PTS-STARTPTS, \
                         afftdn=nf=-20:nr=10:nt=w,speechnorm,acompressor=threshold=0.5:ratio=4,highpass=f=200,%2 \
-                        aecho=0.7:0.7:84:0.21,treble=g=12,volume=%3[vocals]; \
-                        [2:a][vocals]amix=inputs=2:normalize=0[wakkamix];%4" 
-                        ).arg(millisecondsToSecondsString(offset))
+                        aecho=0.6:0.4:69|51:0.21|0.13,treble=g=12,volume=%3[vocals]; \
+                        [2:a][vocals]amix=inputs=2:normalize=0,aresample=async=1[wakkamix];%4" 
+                        ).arg(offset)
                         .arg(talent)
                         .arg(vocalVolume)
                         .arg(videorama);
@@ -892,9 +892,11 @@ void MainWindow::mixAndRender(double vocalVolume) {
     // Map audio output
     arguments   << "-ac" << "2"                 // Force stereo
                 << "-dither_method" << "none"   // dithering off
-                << "-map" << "[wakkamix]";      // ensure audio goes on the pack
-    if ( !videorama.isEmpty() )
-        arguments << "-map" << "[videorama]";
+                << "-map" << "[wakkamix]";      // ensure audio mix goes on the pack
+    if ( !videorama.isEmpty() ) {
+        arguments << "-map" << "[videorama]"    // ensure video mix goes on the pack
+                <<  "-vsync" << "1";
+    }
 
     arguments << outputFilePath;              // OUTPUT mix
 

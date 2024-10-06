@@ -79,8 +79,7 @@ private:
     QProgressBar *progressBar;
     int totalDuration;
 
-    QVideoWidget *videoWidget;
-    
+    QScopedPointer<QVideoWidget> videoWidget;
     QScopedPointer<QMediaPlayer> player;
     QScopedPointer<QAudioOutput> audioOutput;
     QScopedPointer<AudioRecorder> audioRecorder;

@@ -108,7 +108,7 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     // Create video widget
-    videoWidget = new QVideoWidget(this);
+    videoWidget.reset(new QVideoWidget(this));
     videoWidget->setMinimumSize(320, 200);
     videoWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     videoWidget->hide();
@@ -232,7 +232,7 @@ MainWindow::MainWindow(QWidget *parent)
     layout->addWidget(previewView);
     layout->addWidget(soundLevelWidget);
     layout->addWidget(placeholderLabel);  
-    layout->addWidget(videoWidget);       
+    layout->addWidget(videoWidget.data());       
     layout->addWidget(singButton);
     layout->addWidget(chooseVideoButton);
     layout->addWidget(chooseInputButton);
@@ -334,11 +334,35 @@ void MainWindow::resetMediaComponents(bool isStarting) {
 void MainWindow::configureMediaComponents()
 {
     qDebug() << "Reconfiguring media components";
-    
+
+    QVideoWidget *placeholderVideoWidget = new QVideoWidget();
+    // Get the main layout and add the videoWidget
+    QVBoxLayout *layout = qobject_cast<QVBoxLayout*>(centralWidget()->layout());
+    // Replace the former videoWidget with a placeholder
+    layout->replaceWidget(videoWidget.data(), placeholderVideoWidget);
+    if ( videoWidget->isVisible() )
+        placeholderVideoWidget->setVisible(true);
+    else
+        placeholderVideoWidget->setVisible(false);
+    // Create new videoWidget
+    videoWidget.reset(new QVideoWidget(this));
+    videoWidget->setMinimumSize(320, 200);
+    videoWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    if ( placeholderVideoWidget->isVisible() )
+        videoWidget->setVisible(true);
+    else
+        videoWidget->setVisible(false);
+    // put the new videoWidget in the right place
+    layout->replaceWidget(placeholderVideoWidget, videoWidget.data());
+    // we don't need the placeholder anymore, free it
+    delete placeholderVideoWidget;
+    placeholderVideoWidget = nullptr;
+
+    // paths to the tmp files for recording
     webcamRecorded = QDir::temp().filePath("WakkaQt_tmp_recording.mp4");
     audioRecorded = QDir::temp().filePath("WakkaQt_tmp_recording.wav");
 
-    // Reinitialize components
+    // Reinitialize all components
     audioRecorder.reset(new AudioRecorder(selectedDevice, this));
     connect(audioRecorder.data(), &AudioRecorder::deviceLabelChanged, this, &MainWindow::updateDeviceLabel);
     audioRecorder->initialize();
@@ -353,7 +377,7 @@ void MainWindow::configureMediaComponents()
     mediaCaptureSession.reset(new QMediaCaptureSession(this));
 
     // Setup video player
-    player->setVideoOutput(videoWidget);
+    player->setVideoOutput(videoWidget.data());
     player->setAudioOutput(audioOutput.data());
     
     soundLevelWidget->setInputDevice(selectedDevice);
@@ -1314,7 +1338,7 @@ MainWindow::~MainWindow() {
     if ( format )
         format.reset();
     if ( videoWidget )
-        delete videoWidget;
+        videoWidget.reset();
     if ( soundLevelWidget )
         delete soundLevelWidget;
     if ( progressSong )

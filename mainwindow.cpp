@@ -37,7 +37,6 @@
 #include <QVideoSink>
 #include <QGraphicsScene>
 #include <QGraphicsView>
-#include <QGraphicsVideoItem>
 #include <QGraphicsSceneMouseEvent>
 
 #include <QSysInfo> // For platform detection
@@ -46,7 +45,7 @@
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , isRecording(false)
-    , videoDialog(nullptr)
+    , webcamDialog(nullptr)
 {
     QString Wakka_welcome = "Welcome to WakkaQt " + Wakka_versione;
 
@@ -127,12 +126,12 @@ MainWindow::MainWindow(QWidget *parent)
     placeholderLabel->setScaledContents(true);
 
     // Create the main VideoDisplayWidget
-    mainPreviewWidget = new VideoDisplayWidget(this);
-    mainPreviewWidget->setFixedSize(264, 128);
-    mainPreviewWidget->setToolTip("Click to open large preview");
+    webcamPreviewWidget = new VideoDisplayWidget(this);
+    webcamPreviewWidget->setFixedSize(640, 120);
+    webcamPreviewWidget->setToolTip("Click to open large preview");
     QHBoxLayout *webcamPreviewLayout = new QHBoxLayout();
     webcamPreviewLayout->addStretch();
-    webcamPreviewLayout->addWidget(mainPreviewWidget, 0, Qt::AlignCenter);
+    webcamPreviewLayout->addWidget(webcamPreviewWidget, 0, Qt::AlignCenter);
     webcamPreviewLayout->addStretch();
 
     // Create the scene and view
@@ -165,7 +164,7 @@ MainWindow::MainWindow(QWidget *parent)
     QPushButton *exitButton = new QPushButton("Exit", this);
     chooseVideoButton = new QPushButton("Load playback from disk", this);
     singButton = new QPushButton("♪ SING ♪", this);
-    singButton->setFont(QFont("Arial", 20));
+    singButton->setFont(QFont("Arial", 21));
     chooseInputButton = new QPushButton("Choose Input Device", this);
     renderAgainButton = new QPushButton("RENDER AGAIN", this);
 
@@ -180,8 +179,8 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Instantiate SndWidget
     soundLevelWidget = new SndWidget(this);
-    soundLevelWidget->setMinimumSize(200, 32);
-    soundLevelWidget->setMaximumSize(1920, 32);
+    soundLevelWidget->setMinimumSize(200, 48);
+    soundLevelWidget->setMaximumSize(1920, 48);
     soundLevelWidget->setToolTip("Sound input visualization widget");
 
     // Initialize a working input device!
@@ -210,7 +209,7 @@ MainWindow::MainWindow(QWidget *parent)
     logTextEdit->setReadOnly(true);
     logTextEdit->append(Wakka_welcome);
     logTextEdit->setFixedHeight(50);
-    logTextEdit->setFont(QFont("Arial", 8));
+    logTextEdit->setFont(QFont("Arial", 9));
     logTextEdit->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     // Move cursor to the end of the text when text is appended
     connect(logTextEdit, &QTextEdit::textChanged, this, [=]() {
@@ -249,7 +248,7 @@ MainWindow::MainWindow(QWidget *parent)
     chooseInputButton->setVisible(false);
     soundLevelWidget->setVisible(true);
     recordingIndicator->hide();
-    mainPreviewWidget->hide();
+    webcamPreviewWidget->hide();
     singButton->setEnabled(false);
     renderAgainButton->setVisible(false);
     exitButton->setVisible(false);
@@ -266,7 +265,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(fetchButton, &QPushButton::clicked, this, &MainWindow::fetchVideo);
     connect(renderAgainButton, &QPushButton::clicked, this, &MainWindow::renderAgain);
     connect(previewCheckbox, &QCheckBox::toggled, this, &MainWindow::onPreviewCheckboxToggled);
-    connect(mainPreviewWidget, &VideoDisplayWidget::clicked, this, &MainWindow::addVideoDisplayWidgetInDialog);
+    connect(webcamPreviewWidget, &VideoDisplayWidget::clicked, this, &MainWindow::addVideoDisplayWidgetInDialog);
 
 
     playbackTimer = new QTimer(this);
@@ -335,6 +334,7 @@ void MainWindow::configureMediaComponents()
 {
     qDebug() << "Reconfiguring media components";
 
+    // First, RESET the VideoWidget to free memory from previous loaded videos
     QVideoWidget *placeholderVideoWidget = new QVideoWidget();
     // Get the main layout and add the videoWidget
     QVBoxLayout *layout = qobject_cast<QVBoxLayout*>(centralWidget()->layout());
@@ -358,11 +358,11 @@ void MainWindow::configureMediaComponents()
     delete placeholderVideoWidget;
     placeholderVideoWidget = nullptr;
 
-    // paths to the tmp files for recording
+    // PATHS to the tmp files for recording audio and video
     webcamRecorded = QDir::temp().filePath("WakkaQt_tmp_recording.mp4");
     audioRecorded = QDir::temp().filePath("WakkaQt_tmp_recording.wav");
 
-    // Reinitialize all components
+    // Reconfigure ALL components //
     audioRecorder.reset(new AudioRecorder(selectedDevice, this));
     connect(audioRecorder.data(), &AudioRecorder::deviceLabelChanged, this, &MainWindow::updateDeviceLabel);
     audioRecorder->initialize();
@@ -370,22 +370,23 @@ void MainWindow::configureMediaComponents()
     player.reset(new QMediaPlayer(this));
     audioOutput.reset(new QAudioOutput(this));
     videoSink.reset(new QVideoSink(this));
-    
     format.reset(new QMediaFormat);
     camera.reset(new QCamera(this));
     mediaRecorder.reset(new QMediaRecorder(this));
     mediaCaptureSession.reset(new QMediaCaptureSession(this));
 
-    // Setup video player
+    // Setup Media player
     player->setVideoOutput(videoWidget.data());
     player->setAudioOutput(audioOutput.data());
     
+    // Setup SndWidget
     soundLevelWidget->setInputDevice(selectedDevice);
     
     format->setFileFormat(QMediaFormat::FileFormat::MPEG4);
     format->setVideoCodec(QMediaFormat::VideoCodec::H264);
     format->setAudioCodec(QMediaFormat::AudioCodec::AAC);
 
+    // Setup Media recorder
     mediaRecorder->setMediaFormat(*format);
     mediaRecorder->setOutputLocation(QUrl::fromLocalFile(webcamRecorded));
     mediaRecorder->setQuality(QMediaRecorder::VeryHighQuality);
@@ -393,7 +394,7 @@ void MainWindow::configureMediaComponents()
     qDebug() << "Configuring mediaCaptureSession..";
     mediaCaptureSession->setVideoOutput(videoSink.data());
     mediaCaptureSession->setCamera(camera.data());
-    mediaCaptureSession->setAudioInput(nullptr);
+    //mediaCaptureSession->setAudioInput(nullptr);
     mediaCaptureSession->setRecorder(mediaRecorder.data());
 
     connect(mediaRecorder.data(), &QMediaRecorder::recorderStateChanged, this, &MainWindow::onRecorderStateChanged);
@@ -684,7 +685,7 @@ void MainWindow::stopRecording() {
             audioRecorder->stopRecording();
 
         recordingIndicator->hide();
-        mainPreviewWidget->hide();
+        webcamPreviewWidget->hide();
         previewCheckbox->setChecked(false);
 
         isRecording = false;
@@ -700,10 +701,10 @@ void MainWindow::stopRecording() {
 void MainWindow::handleRecorderError(QMediaRecorder::Error error) {
 
     qWarning() << "Detected a mediaRecorder error:" << error << mediaRecorder->errorString();
-    logTextEdit->append("Recording Error: " + mediaRecorder->errorString());
+    logTextEdit->append("Recorder Error: " + mediaRecorder->errorString());
 
     if ( !isRecording ) {
-        qWarning() << ":O But we are not recording!!";
+        qWarning() << "Strange, because we are not recording!!";
         return;
     }
 
@@ -736,7 +737,7 @@ void MainWindow::handleRecordingError() {
         audioRecorder->stopRecording();
 
     recordingIndicator->hide();
-    mainPreviewWidget->hide();
+    webcamPreviewWidget->hide();
     previewCheckbox->setChecked(false);
     videoWidget->hide();
     placeholderLabel->show();
@@ -1152,7 +1153,7 @@ bool MainWindow::eventFilter(QObject *object, QEvent *event) {
                         player->setAudioOutput(nullptr); // first, detach the output 
                         player->setAudioOutput(audioOutput.data()); // now gimme back my sound mon
                         player->play(); // the show must go on!
-                        
+
 #endif
                         return true;  // Event handled
                     }
@@ -1236,11 +1237,11 @@ void MainWindow::fetchVideo() {
 void MainWindow::onPreviewCheckboxToggled(bool enable) {
     if (enable) {
         qDebug() << "Camera preview will be enabled.";
-        mainPreviewWidget->show();
+        webcamPreviewWidget->show();
         if ( camera->isAvailable() && !camera->isActive() )
             camera->start();
     } else {
-        mainPreviewWidget->hide();
+        webcamPreviewWidget->hide();
         qDebug() << "Camera preview hidden.";
     }
 }
@@ -1266,8 +1267,8 @@ void MainWindow::proxyVideoFrame(QVideoFrame &frame) {
     QImage img = frame.toImage();
     if (!img.isNull()) {
         // Update the main VideoDisplayWidget
-        if (mainPreviewWidget) {
-            mainPreviewWidget->setImage(img);
+        if (webcamPreviewWidget) {
+            webcamPreviewWidget->setImage(img);
         }
 
         // Update each VideoDisplayWidget in the list
@@ -1281,34 +1282,34 @@ void MainWindow::proxyVideoFrame(QVideoFrame &frame) {
 
 void MainWindow::addVideoDisplayWidgetInDialog() {
     // is already open?
-    if (videoDialog && videoDialog->isVisible() ) {
+    if (webcamDialog && webcamDialog->isVisible() ) {
         // bring it to the front, captain
-        videoDialog->raise();
-        videoDialog->activateWindow();
+        webcamDialog->raise();
+        webcamDialog->activateWindow();
         return;
     }
 
-    videoDialog = new QDialog(this);
-    videoDialog->setWindowTitle("Webcam Preview");
-    videoDialog->setFixedSize(1024, 768); 
-    VideoDisplayWidget *newWidget = new VideoDisplayWidget(videoDialog);
+    webcamDialog = new QDialog(this);
+    webcamDialog->setWindowTitle("Webcam Preview");
+    webcamDialog->setFixedSize(1024, 768); 
+    VideoDisplayWidget *newWidget = new VideoDisplayWidget(webcamDialog);
     newWidget->setMinimumSize(1024, 768);
     
     // Add to the list
     previewWidgets.append(newWidget);
 
-    QVBoxLayout *layout = new QVBoxLayout(videoDialog);
+    QVBoxLayout *layout = new QVBoxLayout(webcamDialog);
     layout->addWidget(newWidget);
-    videoDialog->setLayout(layout);
+    webcamDialog->setLayout(layout);
 
     // signal to cleanup
-    connect(videoDialog, &QDialog::finished, this, [this]() {
+    connect(webcamDialog, &QDialog::finished, this, [this]() {
         // prevent memory leaks
-        videoDialog = nullptr;
+        webcamDialog = nullptr;
     });
 
     // Show me show me show me
-    videoDialog->show();
+    webcamDialog->show();
 }
 
 MainWindow::~MainWindow() {

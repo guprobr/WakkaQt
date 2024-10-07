@@ -34,7 +34,7 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    QString Wakka_versione = "v0.91a";
+    QString Wakka_versione = "v0.92a";
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
@@ -52,19 +52,17 @@ private slots:
 private:
 
     QList<VideoDisplayWidget*> previewWidgets;
-    VideoDisplayWidget *mainPreviewWidget;
-    QDialog *videoDialog; // Pointer to the currently webcam preview dialog
+    VideoDisplayWidget *webcamPreviewWidget;
+    QDialog *webcamDialog; // Pointer to the currently webcam preview dialog
 
     QColor highlightColor;
     QString setRez = "1920x540"; // its a vstack, same width, half the height
 
     QGraphicsScene *scene;
     QGraphicsView *previewView;
-    QGraphicsVideoItem *previewItem;
     QGraphicsRectItem *progressSong = nullptr;
     QGraphicsRectItem *progressSongFull = nullptr;
     QGraphicsTextItem *durationTextItem;
-    QGraphicsPixmapItem *wakkaLogoItem;
 
     QTimer *playbackTimer;
 
@@ -74,7 +72,6 @@ private:
     qint64 offset = 0;
 
     QAudioDevice selectedDevice;
-    QBuffer *audioBuffer;
 
     QProgressBar *progressBar;
     int totalDuration;

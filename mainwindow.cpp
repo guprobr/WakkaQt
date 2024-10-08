@@ -539,6 +539,7 @@ void MainWindow::chooseVideo()
         currentVideoFile = loadVideoFile;
         if ( player ) {
             playbackTimer->stop();
+            durationTextItem->setPlainText("PLEASE WAIT WHILE DECODING"); 
             vizPlayer->setMedia(currentVideoFile); 
             currentVideoName = QFileInfo(currentVideoFile).baseName();        
             addProgressSong(scene, getMediaDuration(currentVideoFile));
@@ -550,11 +551,23 @@ void MainWindow::chooseVideo()
 void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status)
 {
     if (status == QMediaPlayer::BufferedMedia ) {
-        playbackTimer->start(1000); // the playback cronometer
+        startEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK TIMESTAMP
     }
 
     if (status == QMediaPlayer::LoadedMedia ) {
-        vizPlayer->play(); // play when media is loaded!
+
+        if ( mediaRecorder && audioRecorder && isRecording )
+        {   
+            camera->start();
+            mediaRecorder->record();
+            audioRecorder->startRecording(audioRecorded);
+
+        }
+
+        playbackTimer->start(1000); // the playback cronometer
+        vizPlayer->play();
+        
+        
     }
 
 }
@@ -596,15 +609,12 @@ try {
         if (mediaRecorder && camera) {
 
             if ( player ) {
-                playbackTimer->stop();               
+                playbackTimer->stop();
+                durationTextItem->setPlainText("PLEASE WAIT WHILE DECODING");             
                 vizPlayer->setMedia(currentVideoFile);
                 addProgressSong(scene, getMediaDuration(currentVideoFile));        
                 progressSongFull->setToolTip("Will not seek while recording!");
-            }
-            startEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK TIMESTAMP
-            camera->start();
-            mediaRecorder->record();
-            audioRecorder->startRecording(audioRecorded);
+            }            
 
         }
 
@@ -630,16 +640,9 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
                 disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, nullptr); 
                 recordingEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK TIMESTAMP 
 
-                offset = (recordingEventTime - startEventTime) + player->position();
+                offset = (recordingEventTime - startEventTime);
                 qWarning() << "Calculated Offset: " << offset << " ms";
                 logTextEdit->append(QString("Calculated Offset: %1 ms").arg(offset));
-
-                if ( player->position() > mediaRecorder->duration() ) {
-                    qWarning() << "Something is very wrong with mediaRecorder. Aborting recording session. SORRY";
-                    logTextEdit->append("detected unstable mediaRecorder. PLEASE TRY AGAIN SORRY");
-                    handleRecordingError();
-                    QMessageBox::critical(this, "unstable mediaRecorder!", "Recording cancelled to prevent further errors..");
-                }
             }
 
         });
@@ -981,6 +984,7 @@ void MainWindow::mixAndRender(double vocalVolume) {
 
         if ( player ) {
             playbackTimer->stop();
+            durationTextItem->setPlainText("PLEASE WAIT WHILE DECODING"); 
             vizPlayer->setMedia(outputFilePath);
             addProgressSong(scene, getMediaDuration(outputFilePath));
 
@@ -1215,6 +1219,7 @@ void MainWindow::fetchVideo() {
             currentVideoFile = fetchVideoPath;  // Store the video playback file path
             if ( player ) {
                 playbackTimer->stop();
+                durationTextItem->setPlainText("PLEASE WAIT WHILE DECODING"); 
                 vizPlayer->setMedia(currentVideoFile);
                 currentVideoName = QFileInfo(currentVideoFile).baseName();
                 addProgressSong(scene, getMediaDuration(currentVideoFile));

@@ -60,11 +60,6 @@ void AudioVizMediaPlayer::setMedia(const QString &source)
 {
     m_mediaSource = source;
 
-    // Set the source for the QMediaPlayer here
-    if (m_mediaPlayer) { 
-        m_mediaPlayer->setSource(QUrl::fromLocalFile(source)); 
-    }
-
     QString audioFile = QDir::tempPath() + QDir::separator() + "temp_audio.mp3";
     extractAudio(source, audioFile);
 }
@@ -73,7 +68,7 @@ void AudioVizMediaPlayer::play()
 {
     if (m_mediaPlayer->playbackState() == QMediaPlayer::StoppedState || m_mediaPlayer->playbackState() == QMediaPlayer::PausedState) {
         m_mediaPlayer->play();
-        m_mediaPlayer->pause();
+
         if (!m_audioTimer->isActive()) {
             m_audioTimer->start(100);  // Start the timer to update the visualizer, if needed
         }
@@ -258,7 +253,10 @@ void AudioVizMediaPlayer::onAudioDecoderFinished()
     if (!m_audioTimer->isActive()) {
         m_audioTimer->start(100);
     }
-    m_mediaPlayer->play();
+    // Set the source for the QMediaPlayer here
+    if (m_mediaPlayer) { 
+        m_mediaPlayer->setSource(QUrl::fromLocalFile(m_mediaSource)); 
+    }
     
 }
 

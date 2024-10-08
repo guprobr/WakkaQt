@@ -142,15 +142,13 @@ MainWindow::MainWindow(QWidget *parent)
     previewView->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     previewView->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     previewView->setAlignment(Qt::AlignCenter);
-
     // Get the size of the view (the window size when it is first created)
     qreal viewWidth = previewView->width();
     qreal viewHeight = previewView->height();
-
     // Create durationTextItem
     durationTextItem = new QGraphicsTextItem;
     durationTextItem->setDefaultTextColor(palette.color(QPalette::Text));
-    durationTextItem->setFont(QFont("Verdana", 8));
+    durationTextItem->setFont(QFont("Verdana", 11));
     qreal textWidth = viewWidth * 0.95;
     durationTextItem->setTextWidth(textWidth);
     qreal textX = (viewWidth - textWidth) / 2;
@@ -179,11 +177,11 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Instantiate SndWidget
     soundLevelWidget = new SndWidget(this);
-    soundLevelWidget->setMinimumSize(200, 48);
-    soundLevelWidget->setMaximumSize(1920, 48);
+    soundLevelWidget->setMinimumSize(200, 32);
+    soundLevelWidget->setMaximumSize(1920, 32);
     soundLevelWidget->setToolTip("Sound input visualization widget");
 
-    // Initialize a working input device!
+    // Device label
     deviceLabel = new QLabel("Selected Device: None", this);
     deviceLabel->setFont(QFont("Verdana", 8));
     deviceLabel->setToolTip("Changing the default source input in the system cfg will not reflect the information here");
@@ -284,6 +282,7 @@ void MainWindow::resetMediaComponents(bool isStarting) {
     if (!isStarting)
         disconnectAllSignals(); // Ensure all signals are disconnected
 
+    playbackTimer->stop();
     // Reset multimedia components with null checks to avoid double free
     if (player) {
         player->stop();
@@ -524,6 +523,7 @@ void MainWindow::chooseVideo()
 
         currentVideoFile = loadVideoFile;
         if ( player ) {
+            playbackTimer->stop();
             player->setSource(QUrl::fromLocalFile(currentVideoFile)); 
             currentVideoName = QFileInfo(currentVideoFile).baseName();        
             addProgressBarToScene(scene, getMediaDuration(currentVideoFile));
@@ -604,7 +604,8 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
 
         connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, [=](qint64 currentDuration) {
             
-            if ( player && player->source().isEmpty()) {                
+            if ( player && player->source().isEmpty()) {
+                playbackTimer->stop();               
                 player->setSource(QUrl::fromLocalFile(currentVideoFile));
                 addProgressBarToScene(scene, getMediaDuration(currentVideoFile));        
                 progressSongFull->setToolTip("Will not seek while recording!");
@@ -929,7 +930,7 @@ void MainWindow::mixAndRender(double vocalVolume) {
     connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), [this, process, progressLabel](int exitCode, QProcess::ExitStatus exitStatus) {
         qWarning() << "FFmpeg finished with exit code" << exitCode << "and status" << (exitStatus == QProcess::NormalExit ? "NormalExit" : "CrashExit");
         
-        progressLabel->hide();
+        delete progressLabel;
         delete this->progressBar;
         process->deleteLater(); // Clean up the process object
 
@@ -966,6 +967,7 @@ void MainWindow::mixAndRender(double vocalVolume) {
         qDebug() << "Setting media source to" << outputFilePath;
         //currentVideoFile = outputFilePath; // uncomment this for our special Recursive Aracna View mode: its awesome
         if ( player ) {
+            playbackTimer->stop();
             player->setSource(QUrl::fromLocalFile(outputFilePath));
             addProgressBarToScene(scene, getMediaDuration(outputFilePath));
 
@@ -1194,11 +1196,14 @@ void MainWindow::fetchVideo() {
         QString fetchVideoPath = QFileDialog::getOpenFileName(this, "Choose the downloaded playback or any another", directory, "Videos (*.mp4 *.mkv *.avi)");
         if (!fetchVideoPath.isEmpty()) {
 
+            resetMediaComponents(false);
+
             placeholderLabel->hide();
             videoWidget->show();
             
             currentVideoFile = fetchVideoPath;  // Store the video playback file path
             if ( player ) {
+                playbackTimer->stop();
                 player->setSource(QUrl::fromLocalFile(currentVideoFile)); 
                 currentVideoName = QFileInfo(currentVideoFile).baseName();
                 addProgressBarToScene(scene, getMediaDuration(currentVideoFile));

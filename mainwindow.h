@@ -4,6 +4,8 @@
 #include "sndwidget.h"
 #include "videodisplaywidget.h"
 #include "audiorecorder.h"
+#include "audiovizmediaplayer.h"
+#include "audiovisualizerwidget.h"
 
 #include <QMainWindow>
 #include <QScopedPointer>
@@ -34,7 +36,7 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    QString Wakka_versione = "v0.933a";
+    QString Wakka_versione = "v0.95a";
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
@@ -78,6 +80,7 @@ private:
 
     QScopedPointer<QVideoWidget> videoWidget;
     QScopedPointer<QMediaPlayer> player;
+    QScopedPointer<AudioVizMediaPlayer> vizPlayer;
     QScopedPointer<QAudioOutput> audioOutput;
     QScopedPointer<AudioRecorder> audioRecorder;
     QScopedPointer<QMediaFormat> format;
@@ -85,6 +88,8 @@ private:
     QScopedPointer<QMediaCaptureSession> mediaCaptureSession;
     QScopedPointer<QCamera> camera;
     QScopedPointer<QVideoSink> videoSink;
+
+    AudioVisualizerWidget *vizWidget;
     
     QAction *loadPlaybackAction;
     QAction *chooseInputAction;

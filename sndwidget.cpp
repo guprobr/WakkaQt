@@ -22,7 +22,7 @@ SndWidget::SndWidget(QWidget *parent)
     format.setSampleFormat(QAudioFormat::Int16);
 
     connect(timer, &QTimer::timeout, this, &SndWidget::updateWaveform);
-    timer->start(55); // Update every 55 milliseconds
+    timer->start(111); // Update every 111 milliseconds
 }
 
 SndWidget::~SndWidget() {

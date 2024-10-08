@@ -38,11 +38,15 @@ add_executable(${PROJECT_NAME}
     previewdialog.cpp
     audioamplifier.cpp
     audiorecorder.cpp
+    audiovizmediaplayer.cpp
+    audiovisualizerwidget.cpp
     mainwindow.h
     sndwidget.h
     previewdialog.h
     audioamplifier.h
     audiorecorder.h
+    audiovizmediaplayer.h
+    audiovisualizerwidget.h
     videodisplaywidget.h
     ${resources}
 )

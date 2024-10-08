@@ -108,13 +108,13 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Create video widget
     videoWidget.reset(new QVideoWidget(this));
-    videoWidget->setMinimumSize(640, 480);
+    videoWidget->setMinimumSize(640, 240);
     videoWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     videoWidget->hide();
     
     // Create a QLabel to display the placeholder image
     placeholderLabel = new QLabel(this);
-    placeholderLabel->setMinimumSize(640, 480);
+    placeholderLabel->setMinimumSize(640, 240);
     QPixmap placeholderPixmap(":/images/logo.jpg");
     if (placeholderPixmap.isNull()) {
         qWarning() << "Failed to load placeholder image!";
@@ -215,11 +215,19 @@ MainWindow::MainWindow(QWidget *parent)
         logTextEdit->ensureCursorVisible();
     });
 
-    // custom cfgs
+    // Instantiate Audio Visualizer
+    vizWidget = new AudioVisualizerWidget(this);
+    vizWidget->setMinimumSize(200, 45);
+    vizWidget->setMaximumSize(1920, 45);
+    vizWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    vizWidget->setToolTip("Yelloopy© Audio Visualizer");
+
+    // custom options
     previewCheckbox = new QCheckBox("Cam Preview");
     previewCheckbox->setFont(QFont("Arial", 8));
     previewCheckbox->setToolTip("Toggle camera preview");
     indicatorLayout->addWidget(previewCheckbox);
+
 
     // Layout
     QWidget *containerWidget = new QWidget(this);
@@ -238,6 +246,7 @@ MainWindow::MainWindow(QWidget *parent)
     layout->addWidget(deviceLabel);
     layout->addLayout(fetchLayout);
     layout->addWidget(logTextEdit);
+    layout->addWidget(vizWidget);
 
     setCentralWidget(containerWidget);
 
@@ -251,6 +260,7 @@ MainWindow::MainWindow(QWidget *parent)
     renderAgainButton->setVisible(false);
     exitButton->setVisible(false);
     deviceLabel->setVisible(true);
+    vizWidget->show();
 
     // Connections
     connect(exitButton, &QPushButton::clicked, this, &QMainWindow::close);
@@ -273,6 +283,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     chooseInputDevice();
     resetMediaComponents(true);
+
 }
 
 
@@ -291,6 +302,9 @@ void MainWindow::resetMediaComponents(bool isStarting) {
         player->setSource(QUrl());        // Explicitly clear the media source
         player.reset();                   // Reset the unique pointer
     }
+
+    if ( vizPlayer )
+        vizPlayer.reset();
     
     if (audioOutput) {
         audioOutput->setMuted(true);
@@ -345,7 +359,7 @@ void MainWindow::configureMediaComponents()
         placeholderVideoWidget->setVisible(false);
     // Create new videoWidget
     videoWidget.reset(new QVideoWidget(this));
-    videoWidget->setMinimumSize(640, 480);
+    videoWidget->setMinimumSize(640, 240);
     videoWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     if ( placeholderVideoWidget->isVisible() )
         videoWidget->setVisible(true);
@@ -377,6 +391,7 @@ void MainWindow::configureMediaComponents()
     // Setup Media player
     player->setVideoOutput(videoWidget.data());
     player->setAudioOutput(audioOutput.data());
+    vizPlayer.reset(new AudioVizMediaPlayer(player.data(), vizWidget, this));
     
     // Setup SndWidget
     soundLevelWidget->setInputDevice(selectedDevice);
@@ -524,7 +539,7 @@ void MainWindow::chooseVideo()
         currentVideoFile = loadVideoFile;
         if ( player ) {
             playbackTimer->stop();
-            player->setSource(QUrl::fromLocalFile(currentVideoFile)); 
+            vizPlayer->setMedia(currentVideoFile); 
             currentVideoName = QFileInfo(currentVideoFile).baseName();        
             addProgressSong(scene, getMediaDuration(currentVideoFile));
             logTextEdit->append("Playback preview. Press SING to start recording.");
@@ -539,7 +554,7 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status)
     }
 
     if (status == QMediaPlayer::LoadedMedia ) {
-        player->play(); // play when media is loaded!
+        vizPlayer->play(); // play when media is loaded!
     }
 
 }
@@ -637,7 +652,7 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
         qWarning() << "Recording stopped.";
         
         if ( player )
-            player->stop();
+            vizPlayer->stop();
         playbackTimer->stop();
 
         videoWidget->hide();
@@ -713,7 +728,7 @@ void MainWindow::handleRecorderError(QMediaRecorder::Error error) {
         if (mediaRecorder ) {
             qWarning() << "Stopping media due to error...";
             if ( player )
-                player->stop();
+                vizPlayer->stop();
             playbackTimer->stop();
             mediaRecorder->stop();
         }
@@ -761,7 +776,7 @@ void MainWindow::handleRecordingError() {
 void MainWindow::renderAgain()
 {
     if ( player )
-        player->stop();
+        vizPlayer->stop();
     playbackTimer->stop();
     resetMediaComponents(false);
 
@@ -964,10 +979,10 @@ void MainWindow::mixAndRender(double vocalVolume) {
         videoWidget->show();
 
         qDebug() << "Setting media source to" << outputFilePath;
-        //currentVideoFile = outputFilePath; // uncomment this for our special Recursive Aracna View mode: its awesome
+
         if ( player ) {
             playbackTimer->stop();
-            player->setSource(QUrl::fromLocalFile(outputFilePath));
+            vizPlayer->setMedia(currentVideoFile);
             addProgressSong(scene, getMediaDuration(outputFilePath));
 
             qWarning() << "trimmed rec offset: " << offset << " ms";
@@ -1145,16 +1160,14 @@ bool MainWindow::eventFilter(QObject *object, QEvent *event) {
                     // Set the new position based on the click
                         qint64 newPosition = static_cast<qint64>(progress * player->duration());
 
-                        player->setPosition(newPosition); // Seek the media player to the clicked position
+                        vizPlayer->seek(newPosition); // Seek the media player to the clicked position
 
 #ifdef __linux__
 // Avoid breaking sound when seeking (Qt6.4 or gStreamer bug? on Linux only..)
-
                         player->pause(); // Pause for a smooth workaround
-                        player->setAudioOutput(nullptr); // first, detach the output 
+                        player->setAudioOutput(nullptr); // first, detach the audio output 
                         player->setAudioOutput(audioOutput.data()); // now gimme back my sound mon
                         player->play(); // the show must go on!
-
 #endif
                         return true;  // Event handled
                     }
@@ -1203,7 +1216,7 @@ void MainWindow::fetchVideo() {
             currentVideoFile = fetchVideoPath;  // Store the video playback file path
             if ( player ) {
                 playbackTimer->stop();
-                player->setSource(QUrl::fromLocalFile(currentVideoFile)); 
+                vizPlayer->setMedia(currentVideoFile);
                 currentVideoName = QFileInfo(currentVideoFile).baseName();
                 addProgressSong(scene, getMediaDuration(currentVideoFile));
 
@@ -1347,6 +1360,10 @@ MainWindow::~MainWindow() {
         delete soundLevelWidget;
     if ( progressSong )
         delete progressSong;
+    if ( vizPlayer )
+        vizPlayer.reset();
+    if ( vizWidget )
+        delete vizWidget;
 }
 
 // Function to disconnect all signals

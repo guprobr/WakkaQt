@@ -125,7 +125,7 @@ private:
 
     QString millisecondsToSecondsString(qint64 milliseconds);
     int getMediaDuration(const QString &filePath);
-    void addProgressBarToScene(QGraphicsScene *scene, qint64 duration);
+    void addProgressSong(QGraphicsScene *scene, qint64 duration);
     void updateProgress(const QString& output, QProgressBar* progressBar, int totalDuration);
     
     void mixAndRender(double vocalVolume);

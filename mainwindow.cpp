@@ -526,7 +526,7 @@ void MainWindow::chooseVideo()
             playbackTimer->stop();
             player->setSource(QUrl::fromLocalFile(currentVideoFile)); 
             currentVideoName = QFileInfo(currentVideoFile).baseName();        
-            addProgressBarToScene(scene, getMediaDuration(currentVideoFile));
+            addProgressSong(scene, getMediaDuration(currentVideoFile));
             logTextEdit->append("Playback preview. Press SING to start recording.");
         }
     }
@@ -607,7 +607,7 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
             if ( player && player->source().isEmpty()) {
                 playbackTimer->stop();               
                 player->setSource(QUrl::fromLocalFile(currentVideoFile));
-                addProgressBarToScene(scene, getMediaDuration(currentVideoFile));        
+                addProgressSong(scene, getMediaDuration(currentVideoFile));        
                 progressSongFull->setToolTip("Will not seek while recording!");
             }
             
@@ -772,11 +772,16 @@ void MainWindow::renderAgain()
     progressSongFull->setToolTip("Nothing to seek");
 
     // choose where to save rendered file
-    outputFilePath = QFileDialog::getSaveFileName(this, "Mix destination (default .MP4)", "", "Video or Audio Files (*.mp4 *.mkv *.avi *.mp3 *.flac *.wav)");
+    outputFilePath = QFileDialog::getSaveFileName(this, "Mix destination (default .MP4)", "", "Video or Audio Files (*.mp4 *.mkv *.webm *.avi *.mp3 *.flac *.wav)");
     if (!outputFilePath.isEmpty()) {
-        // Check if the file path has an extension
-        if (QFileInfo(outputFilePath).suffix().isEmpty()) {
-            outputFilePath.append(".mp4");  // Append .mp4 if no extension is provided
+        // Check if the file path has a valid extension
+        QStringList allowedExtensions = QStringList() << "mp4" << "mkv" << "webm" << "avi" << "mp3" << "flac" << "wav";
+        QString selectedExtension = QFileInfo(outputFilePath).suffix().toLower(); 
+
+        if (!allowedExtensions.contains(selectedExtension)) {
+            QMessageBox::warning(this, "Invalid File Extension", "Please choose a file with one of the following extensions:\n.mp4, .mkv, .webm, .avi, .mp3, .flac, .wav");
+            // Go back to the save destination dialog
+            return renderAgain();
         }
 
         // High resolution or fast render?
@@ -799,22 +804,12 @@ void MainWindow::renderAgain()
             mixAndRender(vocalVolume);
 
         } else {
-            chooseVideoButton->setEnabled(true);
-            loadPlaybackAction->setEnabled(true);
-            fetchButton->setEnabled(true);
-            chooseInputButton->setEnabled(true);
-            chooseInputAction->setEnabled(true);
-            singButton->setEnabled(false);
-            QMessageBox::warning(this, "Performance Aborted!", "Volume adjustment dialog cancelled..");             
+            QMessageBox::warning(this, "Cancelled?", "Repeating process so you don't lose your performance. Please adjust volume and click render...");             
+            return renderAgain();
         }
     } else {
-        chooseVideoButton->setEnabled(true);
-        loadPlaybackAction->setEnabled(true);
-        fetchButton->setEnabled(true);
-        chooseInputButton->setEnabled(true);
-        chooseInputAction->setEnabled(true);
-        singButton->setEnabled(false);
-        QMessageBox::warning(this, "Performance aborted!", "Rendering was cancelled..");
+        QMessageBox::warning(this, "Cancelled?", "Please choose a destination for your performance...");
+        return renderAgain();
     }
 }
 
@@ -853,9 +848,13 @@ void MainWindow::mixAndRender(double vocalVolume) {
     QFileInfo videofileInfo(currentVideoFile);
     QString videorama = "";
 
-    if ( camera->isAvailable() )
-        if ((outputFilePath.endsWith(".mp4", Qt::CaseInsensitive) || outputFilePath.endsWith(".avi", Qt::CaseInsensitive) || outputFilePath.endsWith(".mkv", Qt::CaseInsensitive))) 
-            if ( !( (currentVideoFile.endsWith("mp3", Qt::CaseInsensitive)) || (currentVideoFile.endsWith("wav", Qt::CaseInsensitive)) || (currentVideoFile.endsWith("flac", Qt::CaseInsensitive))) ) {
+        if ((outputFilePath.endsWith(".mp4", Qt::CaseInsensitive)                       \
+        || outputFilePath.endsWith(".avi", Qt::CaseInsensitive)                         \
+        || outputFilePath.endsWith(".mkv", Qt::CaseInsensitive)                         \
+        || outputFilePath.endsWith(".webm", Qt::CaseInsensitive) )) 
+            if ( !( (currentVideoFile.endsWith("mp3", Qt::CaseInsensitive))             \
+                ||  (currentVideoFile.endsWith("wav", Qt::CaseInsensitive))             \
+                ||  (currentVideoFile.endsWith("flac", Qt::CaseInsensitive)) )) {
                 // Combine both recorded and playback videos
                 videorama = QString("[1:v]trim=%1ms,setpts=PTS-STARTPTS,scale=%2[webcam]; \
                                     [2:v]scale=%2[video]; \
@@ -969,7 +968,7 @@ void MainWindow::mixAndRender(double vocalVolume) {
         if ( player ) {
             playbackTimer->stop();
             player->setSource(QUrl::fromLocalFile(outputFilePath));
-            addProgressBarToScene(scene, getMediaDuration(outputFilePath));
+            addProgressSong(scene, getMediaDuration(outputFilePath));
 
             qWarning() << "trimmed rec offset: " << offset << " ms";
             this->logTextEdit->append(QString("trimmed recording Offset: %1 ms").arg(offset));
@@ -1078,7 +1077,7 @@ void MainWindow::updatePlaybackDuration() {
     }
 }
 
-void MainWindow::addProgressBarToScene(QGraphicsScene *scene, qint64 duration) {
+void MainWindow::addProgressSong(QGraphicsScene *scene, qint64 duration) {
      
     disconnect(player.data(), &QMediaPlayer::positionChanged, this, nullptr);
 
@@ -1206,7 +1205,7 @@ void MainWindow::fetchVideo() {
                 playbackTimer->stop();
                 player->setSource(QUrl::fromLocalFile(currentVideoFile)); 
                 currentVideoName = QFileInfo(currentVideoFile).baseName();
-                addProgressBarToScene(scene, getMediaDuration(currentVideoFile));
+                addProgressSong(scene, getMediaDuration(currentVideoFile));
 
                 downloadStatusLabel->setText("Download YouTube URL");
                 singButton->setEnabled(true); 

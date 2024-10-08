@@ -108,18 +108,18 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Create video widget
     videoWidget.reset(new QVideoWidget(this));
-    videoWidget->setMinimumSize(320, 200);
+    videoWidget->setMinimumSize(640, 480);
     videoWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     videoWidget->hide();
     
     // Create a QLabel to display the placeholder image
     placeholderLabel = new QLabel(this);
-    placeholderLabel->setMinimumSize(320, 200);
+    placeholderLabel->setMinimumSize(640, 480);
     QPixmap placeholderPixmap(":/images/logo.jpg");
     if (placeholderPixmap.isNull()) {
         qWarning() << "Failed to load placeholder image!";
     } else {
-        placeholderLabel->setPixmap(placeholderPixmap.scaled(320, 320, Qt::KeepAspectRatio));
+        placeholderLabel->setPixmap(placeholderPixmap.scaled(640, 640, Qt::KeepAspectRatio));
     }
     placeholderLabel->setAlignment(Qt::AlignCenter);
     placeholderLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
@@ -127,7 +127,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Create the main VideoDisplayWidget
     webcamPreviewWidget = new VideoDisplayWidget(this);
-    webcamPreviewWidget->setFixedSize(640, 120);
+    webcamPreviewWidget->setFixedSize(640, 160);
     webcamPreviewWidget->setToolTip("Click to open large preview");
     QHBoxLayout *webcamPreviewLayout = new QHBoxLayout();
     webcamPreviewLayout->addStretch();
@@ -148,8 +148,8 @@ MainWindow::MainWindow(QWidget *parent)
     // Create durationTextItem
     durationTextItem = new QGraphicsTextItem;
     durationTextItem->setDefaultTextColor(palette.color(QPalette::Text));
-    durationTextItem->setFont(QFont("Verdana", 11));
-    qreal textWidth = viewWidth * 0.95;
+    durationTextItem->setFont(QFont("Verdana", 12));
+    qreal textWidth = viewWidth * 0.98;
     durationTextItem->setTextWidth(textWidth);
     qreal textX = (viewWidth - textWidth) / 2;
     qreal textY = viewHeight - durationTextItem->boundingRect().height();
@@ -345,7 +345,7 @@ void MainWindow::configureMediaComponents()
         placeholderVideoWidget->setVisible(false);
     // Create new videoWidget
     videoWidget.reset(new QVideoWidget(this));
-    videoWidget->setMinimumSize(320, 200);
+    videoWidget->setMinimumSize(640, 480);
     videoWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     if ( placeholderVideoWidget->isVisible() )
         videoWidget->setVisible(true);

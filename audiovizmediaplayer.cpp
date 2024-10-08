@@ -75,7 +75,7 @@ void AudioVizMediaPlayer::play()
         m_mediaPlayer->play();
         m_mediaPlayer->pause();
         if (!m_audioTimer->isActive()) {
-            m_audioTimer->start(100);  // Start the timer to update the visualizer
+            m_audioTimer->start(100);  // Start the timer to update the visualizer, if needed
         }
     }
 }
@@ -255,6 +255,9 @@ void AudioVizMediaPlayer::onAudioDecoderFinished()
     qDebug() << "Audio Visualizer decoding finished";
     m_visualizer->clear();  // Clear visualizations
     m_audioPosition = 0;
+    if (!m_audioTimer->isActive()) {
+        m_audioTimer->start(100);
+    }
     m_mediaPlayer->play();
     
 }

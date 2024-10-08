@@ -9,9 +9,7 @@
 AudioVisualizerWidget::AudioVisualizerWidget(QWidget *parent)
     : QWidget(parent)
 {
-    setFixedHeight(48); 
-    setMinimumWidth(800); 
-
+    
     QTimer *timer = new QTimer(this);
     connect(timer, &QTimer::timeout, this, &AudioVisualizerWidget::updatePainter);
     timer->start(10);

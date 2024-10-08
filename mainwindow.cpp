@@ -555,6 +555,8 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status)
 
     if (status == QMediaPlayer::LoadedMedia ) {
         vizPlayer->play(); // play when media is loaded!
+        player->setAudioOutput(nullptr);
+        player->setAudioOutput(audioOutput.data());
     }
 
 }
@@ -595,6 +597,12 @@ try {
         
         if (mediaRecorder && camera) {
 
+            if ( player ) {
+                playbackTimer->stop();               
+                vizPlayer->setMedia(currentVideoFile);
+                addProgressSong(scene, getMediaDuration(currentVideoFile));        
+                progressSongFull->setToolTip("Will not seek while recording!");
+            }
             startEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK TIMESTAMP
             camera->start();
             mediaRecorder->record();
@@ -618,13 +626,6 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
         singButton->setEnabled(true); // Click to finish recording
 
         connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, [=](qint64 currentDuration) {
-            
-            if ( player && player->source().isEmpty()) {
-                playbackTimer->stop();               
-                player->setSource(QUrl::fromLocalFile(currentVideoFile));
-                addProgressSong(scene, getMediaDuration(currentVideoFile));        
-                progressSongFull->setToolTip("Will not seek while recording!");
-            }
             
             if ( player && player->position() > 0 ) 
             {
@@ -906,7 +907,7 @@ void MainWindow::mixAndRender(double vocalVolume) {
                         .arg(videorama);
 
     // Map audio output
-    arguments   << "-ac" << "2"                 // Force stereo
+    arguments  << "-ac" << "2"                 // Force stereo
                 << "-dither_method" << "none"   // dithering off
                 << "-map" << "[wakkamix]";      // ensure audio mix goes on the pack
     if ( !videorama.isEmpty() ) {
@@ -982,7 +983,7 @@ void MainWindow::mixAndRender(double vocalVolume) {
 
         if ( player ) {
             playbackTimer->stop();
-            vizPlayer->setMedia(currentVideoFile);
+            vizPlayer->setMedia(outputFilePath);
             addProgressSong(scene, getMediaDuration(outputFilePath));
 
             qWarning() << "trimmed rec offset: " << offset << " ms";

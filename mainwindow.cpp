@@ -555,8 +555,10 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status)
 
     if (status == QMediaPlayer::LoadedMedia ) {
         vizPlayer->play(); // play when media is loaded!
+#ifdef __linux__
         player->setAudioOutput(nullptr);
         player->setAudioOutput(audioOutput.data());
+#endif
     }
 
 }

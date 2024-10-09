@@ -2,6 +2,7 @@
 #include "sndwidget.h"
 #include "previewdialog.h"
 
+#include <QCoreApplication>
 #include <QMenu>
 #include <QMenuBar>
 #include <QIcon>
@@ -107,7 +108,7 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     // Create video widget
-    videoWidget.reset(new QVideoWidget(this));
+    videoWidget = new QVideoWidget(this);
     videoWidget->setMinimumSize(640, 240);
     videoWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     videoWidget->hide();
@@ -237,7 +238,7 @@ MainWindow::MainWindow(QWidget *parent)
     layout->addWidget(previewView);
     layout->addWidget(soundLevelWidget);
     layout->addWidget(placeholderLabel);  
-    layout->addWidget(videoWidget.data());       
+    layout->addWidget(videoWidget);       
     layout->addWidget(singButton);
     layout->addWidget(chooseVideoButton);
     layout->addWidget(chooseInputButton);
@@ -288,6 +289,9 @@ MainWindow::MainWindow(QWidget *parent)
 
 
 void MainWindow::resetMediaComponents(bool isStarting) {
+
+    QCoreApplication::processEvents();
+
     qDebug() << "Resetting media components";
 
     if (!isStarting)
@@ -295,6 +299,12 @@ void MainWindow::resetMediaComponents(bool isStarting) {
 
     playbackTimer->stop();
     // Reset multimedia components with null checks to avoid double free
+
+    if ( vizPlayer ) {
+        vizPlayer->stop();
+        vizPlayer.reset();
+    }
+
     if (player) {
         player->stop();
         player->setVideoOutput(nullptr);  // Clear video output before resetting
@@ -302,9 +312,6 @@ void MainWindow::resetMediaComponents(bool isStarting) {
         player->setSource(QUrl());        // Explicitly clear the media source
         player.reset();                   // Reset the unique pointer
     }
-
-    if ( vizPlayer )
-        vizPlayer.reset();
     
     if (audioOutput) {
         audioOutput->setMuted(true);
@@ -347,30 +354,6 @@ void MainWindow::configureMediaComponents()
 {
     qDebug() << "Reconfiguring media components";
 
-    // First, RESET the VideoWidget to free memory from previous loaded videos
-    QVideoWidget *placeholderVideoWidget = new QVideoWidget();
-    // Get the main layout and add the videoWidget
-    QVBoxLayout *layout = qobject_cast<QVBoxLayout*>(centralWidget()->layout());
-    // Replace the former videoWidget with a placeholder
-    layout->replaceWidget(videoWidget.data(), placeholderVideoWidget);
-    if ( videoWidget->isVisible() )
-        placeholderVideoWidget->setVisible(true);
-    else
-        placeholderVideoWidget->setVisible(false);
-    // Create new videoWidget
-    videoWidget.reset(new QVideoWidget(this));
-    videoWidget->setMinimumSize(640, 240);
-    videoWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    if ( placeholderVideoWidget->isVisible() )
-        videoWidget->setVisible(true);
-    else
-        videoWidget->setVisible(false);
-    // put the new videoWidget in the right place
-    layout->replaceWidget(placeholderVideoWidget, videoWidget.data());
-    // we don't need the placeholder anymore, free it
-    delete placeholderVideoWidget;
-    placeholderVideoWidget = nullptr;
-
     // PATHS to the tmp files for recording audio and video
     webcamRecorded = QDir::temp().filePath("WakkaQt_tmp_recording.mp4");
     audioRecorded = QDir::temp().filePath("WakkaQt_tmp_recording.wav");
@@ -389,7 +372,7 @@ void MainWindow::configureMediaComponents()
     mediaCaptureSession.reset(new QMediaCaptureSession(this));
 
     // Setup Media player
-    player->setVideoOutput(videoWidget.data());
+    player->setVideoOutput(videoWidget);
     player->setAudioOutput(audioOutput.data());
     vizPlayer.reset(new AudioVizMediaPlayer(player.data(), vizWidget, this));
     
@@ -537,10 +520,12 @@ void MainWindow::chooseVideo()
         videoWidget->show();
 
         currentVideoFile = loadVideoFile;
-        if ( player ) {
+        if ( player && vizPlayer ) {
+            vizPlayer->stop();
             playbackTimer->stop();
             durationTextItem->setPlainText("PLEASE WAIT WHILE DECODING"); 
             vizPlayer->setMedia(currentVideoFile); 
+            //player->setSource(QUrl::fromLocalFile(currentVideoFile));
             currentVideoName = QFileInfo(currentVideoFile).baseName();        
             addProgressSong(scene, getMediaDuration(currentVideoFile));
             logTextEdit->append("Playback preview. Press SING to start recording.");
@@ -564,9 +549,10 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status)
 
         }
 
-        playbackTimer->start(1000); // the playback cronometer
-        vizPlayer->play();
-        
+        if ( player && vizPlayer ) {
+            playbackTimer->start(1000); // the playback cronometer
+            vizPlayer->play();
+        }        
         
     }
 
@@ -608,7 +594,8 @@ try {
         
         if (mediaRecorder && camera) {
 
-            if ( player ) {
+            if ( player && vizPlayer ) {
+                vizPlayer->stop();
                 playbackTimer->stop();
                 durationTextItem->setPlainText("PLEASE WAIT WHILE DECODING");             
                 vizPlayer->setMedia(currentVideoFile);
@@ -653,7 +640,7 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
     if (state == QMediaRecorder::StoppedState) {
         qWarning() << "Recording stopped.";
         
-        if ( player )
+        if ( player && vizPlayer )
             vizPlayer->stop();
         playbackTimer->stop();
 
@@ -729,7 +716,7 @@ void MainWindow::handleRecorderError(QMediaRecorder::Error error) {
     try {
         if (mediaRecorder ) {
             qWarning() << "Stopping media due to error...";
-            if ( player )
+            if ( player && vizPlayer )
                 vizPlayer->stop();
             playbackTimer->stop();
             mediaRecorder->stop();
@@ -777,7 +764,7 @@ void MainWindow::handleRecordingError() {
 // render //
 void MainWindow::renderAgain()
 {
-    if ( player )
+    if ( player && vizPlayer )
         vizPlayer->stop();
     playbackTimer->stop();
     resetMediaComponents(false);
@@ -982,7 +969,9 @@ void MainWindow::mixAndRender(double vocalVolume) {
 
         qDebug() << "Setting media source to" << outputFilePath;
 
-        if ( player ) {
+        if ( player && vizPlayer ) {
+
+            vizPlayer->stop();
             playbackTimer->stop();
             durationTextItem->setPlainText("PLEASE WAIT WHILE DECODING"); 
             vizPlayer->setMedia(outputFilePath);
@@ -1217,7 +1206,8 @@ void MainWindow::fetchVideo() {
             videoWidget->show();
             
             currentVideoFile = fetchVideoPath;  // Store the video playback file path
-            if ( player ) {
+            if ( player && vizPlayer ) {
+                vizPlayer->stop();
                 playbackTimer->stop();
                 durationTextItem->setPlainText("PLEASE WAIT WHILE DECODING"); 
                 vizPlayer->setMedia(currentVideoFile);
@@ -1359,7 +1349,7 @@ MainWindow::~MainWindow() {
     if ( format )
         format.reset();
     if ( videoWidget )
-        videoWidget.reset();
+        delete videoWidget;
     if ( soundLevelWidget )
         delete soundLevelWidget;
     if ( progressSong )

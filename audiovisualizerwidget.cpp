@@ -31,6 +31,7 @@ void AudioVisualizerWidget::updateVisualization(const QByteArray &audioData, con
 void AudioVisualizerWidget::clear()
 {
     // Clear the visualization data
+    m_visualizationData.detach();
     m_visualizationData.clear();
     update(); // Request a repaint
 }

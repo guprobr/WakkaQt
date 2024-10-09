@@ -36,7 +36,7 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    QString Wakka_versione = "v0.95a";
+    QString Wakka_versione = "v0.96a";
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
@@ -78,7 +78,9 @@ private:
     QProgressBar *progressBar;
     int totalDuration;
 
-    QScopedPointer<QVideoWidget> videoWidget;
+    QVideoWidget *videoWidget;
+    AudioVisualizerWidget *vizWidget;
+
     QScopedPointer<QMediaPlayer> player;
     QScopedPointer<AudioVizMediaPlayer> vizPlayer;
     QScopedPointer<QAudioOutput> audioOutput;
@@ -88,8 +90,6 @@ private:
     QScopedPointer<QMediaCaptureSession> mediaCaptureSession;
     QScopedPointer<QCamera> camera;
     QScopedPointer<QVideoSink> videoSink;
-
-    AudioVisualizerWidget *vizWidget;
     
     QAction *loadPlaybackAction;
     QAction *chooseInputAction;

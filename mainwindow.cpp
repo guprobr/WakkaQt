@@ -571,11 +571,11 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status)
             banner->setToolTip(currentVideoName);
             setBanner(currentVideoName);
             
-            vizPlayer->play();
-            playbackTimer->start(1000); // the playback cronometer
-            
-            if ( !isRecording )
+            if ( !isRecording ) {
                 isPlayback = true;
+                vizPlayer->play();
+                playbackTimer->start(1000); // the playback cronometer
+            }
             else {
 
                 isPlayback = false;
@@ -662,21 +662,15 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
                 
                 recordingEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK TIMESTAMP 
                 qint64 offsetEvent = (recordingEventTime - startEventTime);
-                offset = mediaRecorder->duration() + offsetEvent;
+                offset = mediaRecorder->duration();
 
                 //qWarning() << "MediaRecorder duration: " << mediaRecorder->duration() << " ms";
                 //qWarning() << "Event timers Offset: " << offsetEvent << " ms";
                 //qWarning() << "Calculated Latency Offset: " << offset << " ms";
                 logTextEdit->append(QString("Latency Offset: %1 ms").arg(offset));
                     
-                vizPlayer->seek(0); // rewind to sync
-#ifdef __linux__
-// Avoid breaking sound when seeking (Qt6.4 or gStreamer bug? on Linux only..)
-                player->pause(); // Pause for a smooth workaround
-                player->setAudioOutput(nullptr); // first, detach the audio output 
-                player->setAudioOutput(audioOutput.data()); // now gimme back my sound mon
-                player->play(); // the show must go on!
-#endif
+                vizPlayer->play();
+                playbackTimer->start(1000);
             
         });
 

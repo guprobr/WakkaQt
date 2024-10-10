@@ -602,8 +602,6 @@ void MainWindow::onDurationChanged(qint64 currentDuration) {
     if (currentDuration > 0 && isRecording) {
         qDebug() << "Duration changed, now restarting playback and starting audio recording.";
 
-        audioRecorder->startRecording(audioRecorded);
-        
         // Restart playback from the same position
         qDebug() << "MediaRecorder Latency Duration: " << currentDuration << " ms";
         logTextEdit->append(QString("Latency duration: %1 ms").arg(currentDuration));
@@ -616,7 +614,7 @@ void MainWindow::onDurationChanged(qint64 currentDuration) {
         player->setAudioOutput(audioOutput.data());
         player->play(); // the show must go on!
 #endif
-        
+        audioRecorder->startRecording(audioRecorded);
         // Update UI to show recording status
         recordingIndicator->show();
         singButton->setText("Finish!");

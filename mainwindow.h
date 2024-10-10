@@ -36,19 +36,20 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    QString Wakka_versione = "v0.969a";
+    QString Wakka_versione = "v0.971a";
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
-    void onVideoFrameReceived(const QVideoFrame &frame);
-    void proxyVideoFrame(QVideoFrame &frame);
+    void onVideoFrameReceived(const QVideoFrame &frame); // See below
+    void proxyVideoFrame(QVideoFrame &frame); // MEthod to mirror the webcam output from mediacapturesession
     void addVideoDisplayWidgetInDialog(); // Method to add a VideoDisplayWidget in a dialog
 
 private slots:
     //void onAudioInputsChanged();
-    void onRecorderStateChanged(QMediaRecorder::RecorderState state);
-    void onPlaybackStateChanged(QMediaPlayer::PlaybackState state);
+    //void onRecorderStateChanged(QMediaRecorder::RecorderState state);
+    //void onPlaybackStateChanged(QMediaPlayer::PlaybackState state);
     void onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status);
+    void onDurationChanged(qint64 currentDuration);
     void handleRecorderError(QMediaRecorder::Error error);
     void onPreviewCheckboxToggled(bool checked);
     

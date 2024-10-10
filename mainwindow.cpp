@@ -553,9 +553,7 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
     if ( state == QMediaPlayer::PlaybackState::PlayingState ) {
 
         if ( isRecording ) {
-            audioRecorder->startRecording(audioRecorded);
-            startEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK TIMESTAMP
-            mediaRecorder->record();
+            
         }
     }
 
@@ -624,7 +622,10 @@ try {
             if ( player && vizPlayer ) {
 
                 camera->start();
-                
+                startEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK TIMESTAMP
+                audioRecorder->startRecording(audioRecorded);
+                mediaRecorder->record();
+
                 setBanner("DECODING... Please wait.");
                 vizPlayer->setMedia(currentVideoFile);
                 addProgressSong(scene, getMediaDuration(currentVideoFile));        

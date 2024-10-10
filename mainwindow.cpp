@@ -579,9 +579,9 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status)
             else {
 
                 isPlayback = false;
-                vizPlayer->pause();
+                //vizPlayer->pause();
                 startEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK TIMESTAMP 
-                mediaRecorder->record(); // recorders started                               
+                mediaRecorder->record(); // recorder started                               
 
             }            
             
@@ -650,21 +650,28 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
     // when "Recording Starts"
     if (mediaRecorder->recorderState() == QMediaRecorder::RecordingState) {
 
-        recordingIndicator->show();
-        singButton->setText("Finish!");
-        singButton->setEnabled(true); // Click to finish recording
-        vizPlayer->play();
-
         connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, [=](qint64 currentDuration) {
             
-            if ( player->position() > 0 ) {
-                disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, nullptr); 
-                recordingEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK TIMESTAMP
-                offset = ( recordingEventTime - startEventTime );
-                logTextEdit->append(QString("Latency Offset: %1 ms").arg(offset));
-                audioRecorder->startRecording(audioRecorded);
-            }
-                
+            recordingIndicator->show();
+            singButton->setText("Finish!");
+            singButton->setEnabled(true); // Click to finish recording
+
+            recordingEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK TIMESTAMP
+            offset = ( recordingEventTime - startEventTime );
+            logTextEdit->append(QString("Latency Offset: %1 ms").arg(offset));
+
+            vizPlayer->seek(0);
+#ifdef __linux__
+// Avoid breaking sound when seeking
+            player->pause();
+            player->setAudioOutput(nullptr);
+            player->setAudioOutput(audioOutput.data());
+            player->play();
+#endif
+            audioRecorder->startRecording(audioRecorded);
+
+            disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, nullptr); 
+               
         });
 
     }
@@ -920,11 +927,11 @@ void MainWindow::mixAndRender(double vocalVolume) {
           << "-i" << webcamRecorded // recorded camera INPUT file
           << "-i" << currentVideoFile // playback file INPUT file
           << "-filter_complex"      // masterization and vocal enhancement of recorded audio
-          << QString("[0:a]aformat=channel_layouts=stereo,asetpts=PTS-STARTPTS, \
-                        afftdn=nf=-20:nr=10:nt=w,speechnorm,acompressor=threshold=0.5:ratio=4,highpass=f=200,%1 \
-                        aecho=0.6:0.4:69|51:0.21|0.13,treble=g=12,volume=%2[vocals]; \
-                        [2:a][vocals]amix=inputs=2:normalize=0,aresample=async=1[wakkamix];%3" 
-                        )
+          << QString("[0:a]aformat=channel_layouts=stereo,atrim=%1ms,asetpts=PTS-STARTPTS, \
+                        afftdn=nf=-20:nr=10:nt=w,speechnorm,acompressor=threshold=0.5:ratio=4,highpass=f=200,%2 \
+                        aecho=0.6:0.4:69|51:0.21|0.13,treble=g=12,volume=%3[vocals]; \
+                        [2:a][vocals]amix=inputs=2:normalize=0,aresample=async=1[wakkamix];%4" 
+                        ).arg(offset)
                         .arg(talent)
                         .arg(vocalVolume)
                         .arg(videorama);

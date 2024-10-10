@@ -554,7 +554,6 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
 
         if ( isRecording ) {
             audioRecorder->startRecording(audioRecorded);
-            camera->start();
             startEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK TIMESTAMP
             mediaRecorder->record();
         }
@@ -623,9 +622,10 @@ try {
         if (mediaRecorder && camera) {
 
             if ( player && vizPlayer ) {
+
+                camera->start();
                 
                 setBanner("DECODING... Please wait.");
-                
                 vizPlayer->setMedia(currentVideoFile);
                 addProgressSong(scene, getMediaDuration(currentVideoFile));        
                 progressSongFull->setToolTip("Will not seek while recording!");
@@ -842,12 +842,12 @@ void MainWindow::renderAgain()
             mixAndRender(vocalVolume);
 
         } else {
-            QMessageBox::warning(this, "Cancelled?", "Repeating process so you don't lose your performance. Please adjust volume and click render...");             
-            return renderAgain();
+            QMessageBox::critical(this, "Aborted", "Performance cancelled.");             
+            return;
         }
     } else {
-        QMessageBox::warning(this, "Cancelled?", "Please choose a destination for your performance...");
-        return renderAgain();
+        QMessageBox::critical(this, "Aborted", "Performance cancelled.");
+        return;
     }
 }
 

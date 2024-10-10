@@ -156,6 +156,7 @@ MainWindow::MainWindow(QWidget *parent)
     scene->setSceneRect(0, 0, viewWidth, viewHeight);
 
     banner = new QLabel(Wakka_welcome, this);
+    banner->setTextFormat(Qt::TextFormat::RichText);
     banner->setFont(QFont("Arial", 10));
     banner->setAlignment(Qt::AlignCenter);
     banner->setToolTip("Here be the song title, dargh!");
@@ -536,7 +537,7 @@ void MainWindow::chooseVideo()
                 
                 vizPlayer->setMedia(currentVideoFile); 
                 //player->setSource(QUrl::fromLocalFile(currentVideoFile));
-                currentVideoName = QFileInfo(currentVideoFile).baseName();        
+                currentVideoName = QFileInfo(currentVideoFile).completeBaseName();        
                 addProgressSong(scene, getMediaDuration(currentVideoFile));
                 logTextEdit->append("Playback preview. Press SING to start recording.");
             }

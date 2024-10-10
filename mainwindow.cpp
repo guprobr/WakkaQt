@@ -579,8 +579,7 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status)
             else {
 
                 isPlayback = false;
-                vizPlayer->pause(); // pause to sync!
-
+                
                 audioRecorder->startRecording(audioRecorded);
                 mediaRecorder->record(); // recorders started
                 startEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK TIMESTAMP
@@ -670,7 +669,14 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
                 //qWarning() << "Calculated Latency Offset: " << offset << " ms";
                 logTextEdit->append(QString("Latency Offset: %1 ms").arg(offset));
                     
-                vizPlayer->play(); 
+                vizPlayer->seek(0); // rewind to sync
+#ifdef __linux__
+// Avoid breaking sound when seeking (Qt6.4 or gStreamer bug? on Linux only..)
+                player->pause(); // Pause for a smooth workaround
+                player->setAudioOutput(nullptr); // first, detach the audio output 
+                player->setAudioOutput(audioOutput.data()); // now gimme back my sound mon
+                player->play(); // the show must go on!
+#endif
             
         });
 

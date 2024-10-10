@@ -47,6 +47,7 @@ public:
 private slots:
     //void onAudioInputsChanged();
     void onRecorderStateChanged(QMediaRecorder::RecorderState state);
+    void onPlaybackStateChanged(QMediaPlayer::PlaybackState state);
     void onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status);
     void handleRecorderError(QMediaRecorder::Error error);
     void onPreviewCheckboxToggled(bool checked);
@@ -69,6 +70,7 @@ private:
     QTimer *playbackTimer;
 
     bool isRecording;
+    bool isPlayback;
     qint64 startEventTime = 0;
     qint64 recordingEventTime = 0;
     qint64 offset = 0;

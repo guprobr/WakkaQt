@@ -46,6 +46,7 @@
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , isRecording(false)
+    , isPlayback(false)
     , webcamDialog(nullptr)
 {
     QString Wakka_welcome = "Welcome to WakkaQt " + Wakka_versione;
@@ -401,6 +402,7 @@ void MainWindow::configureMediaComponents()
     connect(mediaRecorder.data(), &QMediaRecorder::recorderStateChanged, this, &MainWindow::onRecorderStateChanged);
     connect(mediaRecorder.data(), &QMediaRecorder::errorOccurred, this, &MainWindow::handleRecorderError);
     connect(player.data(), &QMediaPlayer::mediaStatusChanged, this, &MainWindow::onPlayerMediaStatusChanged);
+    connect(player.data(), &QMediaPlayer::playbackStateChanged, this, &MainWindow::onPlaybackStateChanged);
     connect(videoSink.data(), &QVideoSink::videoFrameChanged, this, &MainWindow::onVideoFrameReceived);
 
     qDebug() << "Reconfigured media components";
@@ -546,21 +548,24 @@ void MainWindow::chooseVideo()
     delete fileDialog;
 }
 
-void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status)
-{
-    if (status == QMediaPlayer::BufferedMedia ) {
-        startEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK TIMESTAMP
-    }
+void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
 
-    if (status == QMediaPlayer::LoadedMedia ) {
+    if ( state == QMediaPlayer::PlaybackState::PlayingState ) {
 
-        if ( mediaRecorder && audioRecorder && isRecording )
-        {   
+        if ( isRecording ) {
+            audioRecorder->startRecording(audioRecorded);
+            startEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK TIMESTAMP
+
             camera->start();
             mediaRecorder->record();
-            audioRecorder->startRecording(audioRecorded);
-
         }
+    }
+
+}
+
+void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status)
+{
+    if (status == QMediaPlayer::LoadedMedia ) {
 
         if ( player && vizPlayer ) {
             
@@ -568,8 +573,14 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status)
             banner->setToolTip(currentVideoName);
             setBanner(currentVideoName);
 
+            if ( !isRecording )
+                isPlayback = true;
+            else
+                isPlayback = false;
+
             playbackTimer->start(1000); // the playback cronometer
             vizPlayer->play();
+            
         }        
         
     }
@@ -613,9 +624,7 @@ try {
         if (mediaRecorder && camera) {
 
             if ( player && vizPlayer ) {
-                vizPlayer->stop();
-                playbackTimer->stop();
-
+                
                 setBanner("DECODING... Please wait.");
                 
                 vizPlayer->setMedia(currentVideoFile);
@@ -647,8 +656,12 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
                 disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, nullptr); 
                 recordingEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK TIMESTAMP 
 
-                offset = (recordingEventTime - startEventTime);
+                offset = (recordingEventTime - startEventTime) - mediaRecorder->duration();
+
+                //qWarning() << "MediaPlayer position: " << player->position() << " ms";
+                //qWarning() << "MediaRecorder duration: " << mediaRecorder->duration() << " ms";
                 qWarning() << "Calculated Offset: " << offset << " ms";
+                logTextEdit->append(QString("Event Time: %1 ms").arg((recordingEventTime - startEventTime)));
                 logTextEdit->append(QString("Calculated Offset: %1 ms").arg(offset));
             }
 
@@ -788,6 +801,8 @@ void MainWindow::renderAgain()
         vizPlayer->stop();
     playbackTimer->stop();
     resetMediaComponents(false);
+
+    isPlayback = false;
 
     renderAgainButton->setVisible(false);
     chooseVideoButton->setEnabled(false);
@@ -1151,7 +1166,7 @@ bool MainWindow::eventFilter(QObject *object, QEvent *event) {
             QPointF clickPos = mouseEvent->scenePos();  // Get the mouse click position in scene coordinates
 
             if ( progressSong ) {
-                if ( !isRecording ) {
+                if ( !isRecording && isPlayback) {
                     // Get progress bar position and dimensions
                     qreal progressBarX = progressSong->pos().x();
                     qreal progressBarY = progressSong->pos().y();
@@ -1398,6 +1413,7 @@ void MainWindow::disconnectAllSignals() {
 
     if (player) {
         disconnect(player.data(), &QMediaPlayer::mediaStatusChanged, this, &MainWindow::onPlayerMediaStatusChanged);
+        disconnect(player.data(), &QMediaPlayer::playbackStateChanged, this, &MainWindow::onPlaybackStateChanged);
     }
 
 }

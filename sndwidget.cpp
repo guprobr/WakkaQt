@@ -13,9 +13,6 @@ SndWidget::SndWidget(QWidget *parent)
       audioSource(nullptr),
       audioBuffer(new QBuffer(this)) {
 
-    // Initialize the buffer
-    waveformBuffer.resize(4096, 0.0f);
-
     // Set up the default audio format
     format.setSampleRate(44100);
     format.setChannelCount(1);

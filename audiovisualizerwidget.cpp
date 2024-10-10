@@ -12,7 +12,7 @@ AudioVisualizerWidget::AudioVisualizerWidget(QWidget *parent)
     
     QTimer *timer = new QTimer(this);
     connect(timer, &QTimer::timeout, this, &AudioVisualizerWidget::updatePainter);
-    timer->start(10);
+    timer->start(25);
 }
 
 AudioVisualizerWidget::~AudioVisualizerWidget()
@@ -45,8 +45,8 @@ void AudioVisualizerWidget::paintEvent(QPaintEvent *event)
 
     painter.fillRect(rect(), Qt::black);
 
-    QPen pen(Qt::darkYellow); // Color of the visualization
-    pen.setStyle(Qt::PenStyle::DashLine);
+    QPen pen(Qt::yellow); // Color of the visualization
+    pen.setStyle(Qt::PenStyle::DotLine);
     painter.setPen(pen);
     painter.setBrush(QBrush(Qt::darkGreen));
 

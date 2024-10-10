@@ -7,13 +7,12 @@ AudioRecorder::AudioRecorder(QAudioDevice selectedDevice, QObject* parent)
       m_audioSource(nullptr),
       m_isRecording(false)
 {
-    qDebug() << "Determine proper format for AudioRecorder";
+    //qDebug() << "Determine proper format for AudioRecorder";
     m_audioFormat = selectedDevice.preferredFormat();
-    
-    qDebug() << "Preferred Audio Format:";
-    qDebug() << "Sample rate:" << m_audioFormat.sampleRate();
-    qDebug() << "Channels:" << m_audioFormat.channelCount();
-    qDebug() << "Sample size:" << m_audioFormat.bytesPerSample();
+    //qDebug() << "Preferred Audio Format:";
+    //qDebug() << "Sample rate:" << m_audioFormat.sampleRate();
+    //qDebug() << "Channels:" << m_audioFormat.channelCount();
+    //qDebug() << "Sample size:" << m_audioFormat.bytesPerSample();
 
     if (!m_audioFormat.sampleRate()) { // a sort of bug in preferredFormat() returns zero on some high-fidelity audio interfaces
         m_audioFormat.setSampleRate(192000);
@@ -22,7 +21,7 @@ AudioRecorder::AudioRecorder(QAudioDevice selectedDevice, QObject* parent)
     }
     
     if ( !selectedDevice.isFormatSupported(m_audioFormat) ) {
-        qDebug() << "Selected format is bogus. Fallback";
+        qDebug() << "Preferred format is bogus.";
         m_audioFormat.setSampleRate(44100);
         m_audioFormat.setChannelCount(1);
         m_audioFormat.setSampleFormat(QAudioFormat::SampleFormat::Int16);

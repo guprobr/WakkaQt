@@ -24,7 +24,7 @@ AudioVizMediaPlayer::AudioVizMediaPlayer(QMediaPlayer *m_player, AudioVisualizer
 
     // Set a default audio format
     m_audioFormat.setSampleRate(44100);
-    m_audioFormat.setChannelCount(2);
+    m_audioFormat.setChannelCount(1);
     m_audioFormat.setSampleFormat(QAudioFormat::Int16);
 }
 
@@ -51,13 +51,15 @@ void AudioVizMediaPlayer::setMedia(const QString &source)
 {
     m_mediaSource = source;
 
+    m_mediaPlayer->setSource(QUrl());
+
     // Reset the audio data
     m_decodedAudioData->detach();  
     m_decodedAudioData->clear();  // Clear the audio buffer
     m_framePositions->detach();    
     m_framePositions->clear();    // Clear frame positions
 
-    QString audioFile = QDir::tempPath() + QDir::separator() + "temp_audio.wav";
+    QString audioFile = QDir::tempPath() + QDir::separator() + "WakkaQt_extracted_playback.wav";
     extractAudio(source, audioFile);
 }
 
@@ -119,6 +121,10 @@ void AudioVizMediaPlayer::seek(qint64 position)
         qWarning() << "Calculated audio position out of bounds:" << closestFramePos;
         return;
     }
+
+    if (!m_audioTimer->isActive()) {
+            m_audioTimer->start(100);  // Start the timer to update the visualizer, if needed
+        }
 
     // Update media player position
     m_mediaPlayer->setPosition(position);
@@ -195,6 +201,7 @@ void AudioVizMediaPlayer::updateVisualizer()
         // Ensure audioPosition doesn't exceed the audio data size
         if (m_audioPosition >= m_decodedAudioData->size()) {
             m_audioPosition = 0;  // Reset if we reach the end
+            pause(); 
         }
     } else {
         m_visualizer->clear();  // Clear visualization if no data to visualize
@@ -234,7 +241,9 @@ void AudioVizMediaPlayer::extractAudio(const QString &source, const QString &out
 
     connect(ffmpegThread, &QThread::started, [ffmpegProcess, source, outputFile]() {
         QStringList ffmpegArgs;
-        ffmpegArgs << "-y" << "-i" << source << outputFile;
+        ffmpegArgs << "-y" << "-i" << source 
+                    << "-vn" << "-ac" << "1" 
+                    << "-acodec" << "pcm_s16le" << "-ar" << "44100" << outputFile;
 
         ffmpegProcess->start("ffmpeg", ffmpegArgs);
         if (!ffmpegProcess->waitForStarted()) {

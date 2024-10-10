@@ -34,7 +34,6 @@ private:
     QBuffer *audioBuffer;
 
     QVector<qint16> audioData;
-    QVector<float> waveformBuffer;
     QMutex bufferMutex;
     
 };

@@ -36,7 +36,7 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    QString Wakka_versione = "v0.96a";
+    QString Wakka_versione = "v0.969a";
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
@@ -101,6 +101,7 @@ private:
     QLabel* placeholderLabel;   // logo
     QLabel *recordingIndicator; 
     QLabel *deviceLabel;
+    QLabel *banner;
 
     QCheckBox *previewCheckbox;
 
@@ -142,8 +143,10 @@ private:
     void updateDeviceLabel(const QString &deviceLabelText);
 
     void disconnectAllSignals();
+    void resizeEvent(QResizeEvent* event) override;
     void closeEvent(QCloseEvent *event) override;
 
+    void setBanner(const QString &msg);
     bool eventFilter(QObject *object, QEvent *event) override;
     
 };

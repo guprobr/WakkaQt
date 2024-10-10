@@ -143,21 +143,23 @@ MainWindow::MainWindow(QWidget *parent)
     previewView->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     previewView->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     previewView->setAlignment(Qt::AlignCenter);
-    // Get the size of the view (the window size when it is first created)
     qreal viewWidth = previewView->width();
     qreal viewHeight = previewView->height();
-    // Create durationTextItem
+    // Create playback chronometer text item
     durationTextItem = new QGraphicsTextItem;
     durationTextItem->setDefaultTextColor(palette.color(QPalette::Text));
-    durationTextItem->setFont(QFont("Verdana", 12));
-    qreal textWidth = viewWidth * 0.98;
-    durationTextItem->setTextWidth(textWidth);
-    qreal textX = (viewWidth - textWidth) / 2;
-    qreal textY = viewHeight - durationTextItem->boundingRect().height();
-    durationTextItem->setPos(textX, textY);
-    durationTextItem->setPlainText(Wakka_welcome);
+    durationTextItem->setFont(QFont("Courier", 16, QFont::Bold));
+    durationTextItem->setY(previewView->height() - durationTextItem->boundingRect().height());
+    durationTextItem->setPlainText("00:00:00 / 00:00:00");
+        
     scene->addItem(durationTextItem);
     scene->setSceneRect(0, 0, viewWidth, viewHeight);
+
+    banner = new QLabel(Wakka_welcome, this);
+    banner->setFont(QFont("Arial", 10));
+    banner->setAlignment(Qt::AlignCenter);
+    banner->setToolTip("Here be the song title, dargh!");
+    setBanner(Wakka_welcome);
 
     // Create buttons
     QPushButton *exitButton = new QPushButton("Exit", this);
@@ -235,6 +237,7 @@ MainWindow::MainWindow(QWidget *parent)
     QVBoxLayout *layout = new QVBoxLayout(containerWidget);
     layout->addLayout(indicatorLayout);
     layout->addLayout(webcamPreviewLayout);
+    layout->addWidget(banner);
     layout->addWidget(previewView);
     layout->addWidget(soundLevelWidget);
     layout->addWidget(placeholderLabel);  
@@ -509,28 +512,37 @@ void MainWindow::updateDeviceLabel(const QString &deviceLabelText) {
 
 void MainWindow::chooseVideo()
 {
-    QString loadVideoFile = QFileDialog::getOpenFileName(this, "Open Playback File", QString(), "Video or Audio (*.mp4 *.mkv *.webm *.avi *.mov *.mp3 *.wav *.flac)");
-    if (!loadVideoFile.isEmpty()) {
+    //QString loadVideoFile = QFileDialog::getOpenFileName(this, "Open Playback File", QString(), "Video or Audio (*.mp4 *.mkv *.webm *.avi *.mov *.mp3 *.wav *.flac)");
+    QFileDialog* fileDialog = new QFileDialog(this);
+    //fileDialog->setAttribute(Qt::WA_DeleteOnClose);
+    fileDialog->setWindowTitle("Open Playback File");
+    fileDialog->setNameFilter("Video or Audio (*.mp4 *.mkv *.webm *.avi *.mov *.mp3 *.wav *.flac)");
+    if (fileDialog->exec() == QDialog::Accepted) {
+        QString loadVideoFile = fileDialog->selectedFiles().first();
+        if (!loadVideoFile.isEmpty()) {
 
-        resetMediaComponents(false);
+            resetMediaComponents(false);
 
-        singButton->setEnabled(true);
-        renderAgainButton->setVisible(false);
-        placeholderLabel->hide();
-        videoWidget->show();
+            singButton->setEnabled(true);
+            renderAgainButton->setVisible(false);
+            placeholderLabel->hide();
+            videoWidget->show();
 
-        currentVideoFile = loadVideoFile;
-        if ( player && vizPlayer ) {
-            vizPlayer->stop();
-            playbackTimer->stop();
-            durationTextItem->setPlainText("PLEASE WAIT WHILE DECODING"); 
-            vizPlayer->setMedia(currentVideoFile); 
-            //player->setSource(QUrl::fromLocalFile(currentVideoFile));
-            currentVideoName = QFileInfo(currentVideoFile).baseName();        
-            addProgressSong(scene, getMediaDuration(currentVideoFile));
-            logTextEdit->append("Playback preview. Press SING to start recording.");
+            currentVideoFile = loadVideoFile;
+            if ( player && vizPlayer ) {
+                vizPlayer->stop();
+                playbackTimer->stop();
+                setBanner("DECODING... Please wait."); 
+                
+                vizPlayer->setMedia(currentVideoFile); 
+                //player->setSource(QUrl::fromLocalFile(currentVideoFile));
+                currentVideoName = QFileInfo(currentVideoFile).baseName();        
+                addProgressSong(scene, getMediaDuration(currentVideoFile));
+                logTextEdit->append("Playback preview. Press SING to start recording.");
+            }
         }
     }
+    delete fileDialog;
 }
 
 void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status)
@@ -597,7 +609,9 @@ try {
             if ( player && vizPlayer ) {
                 vizPlayer->stop();
                 playbackTimer->stop();
-                durationTextItem->setPlainText("PLEASE WAIT WHILE DECODING");             
+
+                setBanner("DECODING... Please wait.");
+                
                 vizPlayer->setMedia(currentVideoFile);
                 addProgressSong(scene, getMediaDuration(currentVideoFile));        
                 progressSongFull->setToolTip("Will not seek while recording!");
@@ -973,7 +987,9 @@ void MainWindow::mixAndRender(double vocalVolume) {
 
             vizPlayer->stop();
             playbackTimer->stop();
-            durationTextItem->setPlainText("PLEASE WAIT WHILE DECODING"); 
+
+            setBanner("DECODING... PLEASE WAIT.");
+
             vizPlayer->setMedia(outputFilePath);
             addProgressSong(scene, getMediaDuration(outputFilePath));
 
@@ -1067,6 +1083,7 @@ int MainWindow::getMediaDuration(const QString &filePath) {
 }
 
 void MainWindow::updatePlaybackDuration() {
+
     if (player) {
 
         qint64 currentPosition = player->position();
@@ -1075,13 +1092,12 @@ void MainWindow::updatePlaybackDuration() {
         QString currentTime = QDateTime::fromMSecsSinceEpoch(currentPosition).toUTC().toString("hh:mm:ss");
         QString totalTime = QDateTime::fromMSecsSinceEpoch(totalDuration).toUTC().toString("hh:mm:ss");
 
-        QString durationText = QString("%1 / %2 - %3")
+        QString durationText = QString("%1 / %2")
                                 .arg(currentTime)
-                                .arg(totalTime)
-                                .arg(currentVideoName);
+                                .arg(totalTime);
         
         durationTextItem->setPlainText(durationText);
-    }
+    }       
 }
 
 void MainWindow::addProgressSong(QGraphicsScene *scene, qint64 duration) {
@@ -1097,8 +1113,8 @@ void MainWindow::addProgressSong(QGraphicsScene *scene, qint64 duration) {
     progressSongFull = new QGraphicsRectItem(0, 0, 640, 20);
     progressSongFull->setToolTip("Click to seek");
     scene->addItem(progressSongFull);
-    progressSongFull->setPos(0, 0);
-
+    progressSongFull->setPos((this->previewView->width() - progressSongFull->boundingRect().width()) / 2, 0);
+    
     if (progressSong) {
         scene->removeItem(progressSong);
         delete progressSong;
@@ -1108,7 +1124,7 @@ void MainWindow::addProgressSong(QGraphicsScene *scene, qint64 duration) {
     progressSong = new QGraphicsRectItem(0, 0, 0, 20);
     progressSong->setBrush(QBrush(highlightColor));
     scene->addItem(progressSong);
-    progressSong->setPos(0, 0);
+    progressSong->setPos((this->previewView->width() - progressSongFull->boundingRect().width()) / 2, 0);
 
     // Update progress bar as media plays
     connect(player.data(), &QMediaPlayer::positionChanged, this, [=](qint64 currentPosition) {
@@ -1117,6 +1133,8 @@ void MainWindow::addProgressSong(QGraphicsScene *scene, qint64 duration) {
     });
 
     durationTextItem->setToolTip(currentVideoName);
+    banner->setToolTip(currentVideoName);
+    setBanner(currentVideoName);
 }
 
 bool MainWindow::eventFilter(QObject *object, QEvent *event) {
@@ -1209,7 +1227,9 @@ void MainWindow::fetchVideo() {
             if ( player && vizPlayer ) {
                 vizPlayer->stop();
                 playbackTimer->stop();
-                durationTextItem->setPlainText("PLEASE WAIT WHILE DECODING"); 
+                
+                setBanner("DECODING... Please wait.");
+
                 vizPlayer->setMedia(currentVideoFile);
                 currentVideoName = QFileInfo(currentVideoFile).baseName();
                 addProgressSong(scene, getMediaDuration(currentVideoFile));
@@ -1377,6 +1397,31 @@ void MainWindow::disconnectAllSignals() {
         disconnect(player.data(), &QMediaPlayer::mediaStatusChanged, this, &MainWindow::onPlayerMediaStatusChanged);
     }
 
+}
+
+void MainWindow::setBanner(const QString &msg) {
+    banner->setText(msg);
+}
+
+void MainWindow::resizeEvent(QResizeEvent* event) {
+
+    QMainWindow::resizeEvent(event);
+
+    // Update the scene size to match the view size
+    QRectF sceneRect = previewView->rect(); 
+    previewView->scene()->setSceneRect(sceneRect); 
+    qreal sceneWidth = previewView->scene()->width();
+    
+    if ( this->progressSongFull ) {
+        progressSongFull->setX((sceneWidth - progressSongFull->boundingRect().width()) / 2);
+    }
+    if ( this->progressSong ) {
+        progressSong->setX((sceneWidth - progressSongFull->boundingRect().width()) / 2);
+    }    
+    
+    durationTextItem->setTextWidth(durationTextItem->boundingRect().width());
+    durationTextItem->setX((this->previewView->width() - durationTextItem->boundingRect().width()) / 2);
+    
 }
 
 void MainWindow::closeEvent(QCloseEvent *event)

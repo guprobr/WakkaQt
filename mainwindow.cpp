@@ -554,10 +554,9 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
 
         if ( isRecording ) {
             audioRecorder->startRecording(audioRecorded);
-            startEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK TIMESTAMP
-
             camera->start();
             mediaRecorder->record();
+            startEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK TIMESTAMP
         }
     }
 

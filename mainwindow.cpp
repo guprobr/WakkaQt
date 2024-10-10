@@ -581,7 +581,6 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status)
                 isPlayback = false;
                 vizPlayer->pause();
                 startEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK TIMESTAMP 
-                audioRecorder->startRecording(audioRecorded);
                 mediaRecorder->record(); // recorders started                               
 
             }            
@@ -663,6 +662,7 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
                 recordingEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK TIMESTAMP
                 offset = ( recordingEventTime - startEventTime );
                 logTextEdit->append(QString("Latency Offset: %1 ms").arg(offset));
+                audioRecorder->startRecording(audioRecorded);
             }
                 
         });
@@ -920,11 +920,11 @@ void MainWindow::mixAndRender(double vocalVolume) {
           << "-i" << webcamRecorded // recorded camera INPUT file
           << "-i" << currentVideoFile // playback file INPUT file
           << "-filter_complex"      // masterization and vocal enhancement of recorded audio
-          << QString("[0:a]aformat=channel_layouts=stereo,atrim=%1ms,asetpts=PTS-STARTPTS, \
-                        afftdn=nf=-20:nr=10:nt=w,speechnorm,acompressor=threshold=0.5:ratio=4,highpass=f=200,%2 \
-                        aecho=0.6:0.4:69|51:0.21|0.13,treble=g=12,volume=%3[vocals]; \
-                        [2:a][vocals]amix=inputs=2:normalize=0,aresample=async=1[wakkamix];%4" 
-                        ).arg(offset)
+          << QString("[0:a]aformat=channel_layouts=stereo,asetpts=PTS-STARTPTS, \
+                        afftdn=nf=-20:nr=10:nt=w,speechnorm,acompressor=threshold=0.5:ratio=4,highpass=f=200,%1 \
+                        aecho=0.6:0.4:69|51:0.21|0.13,treble=g=12,volume=%2[vocals]; \
+                        [2:a][vocals]amix=inputs=2:normalize=0,aresample=async=1[wakkamix];%3" 
+                        )
                         .arg(talent)
                         .arg(vocalVolume)
                         .arg(videorama);

@@ -110,13 +110,13 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Create video widget
     videoWidget = new QVideoWidget(this);
-    videoWidget->setMinimumSize(640, 240);
+    videoWidget->setMinimumSize(320, 160);
     videoWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     videoWidget->hide();
     
     // Create a QLabel to display the placeholder image
     placeholderLabel = new QLabel(this);
-    placeholderLabel->setMinimumSize(640, 240);
+    placeholderLabel->setMinimumSize(320, 160);
     QPixmap placeholderPixmap(":/images/logo.jpg");
     if (placeholderPixmap.isNull()) {
         qWarning() << "Failed to load placeholder image!";
@@ -129,7 +129,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Create the main VideoDisplayWidget
     webcamPreviewWidget = new VideoDisplayWidget(this);
-    webcamPreviewWidget->setFixedSize(640, 160);
+    webcamPreviewWidget->setFixedSize(320, 120);
     webcamPreviewWidget->setToolTip("Click to open large preview");
     QHBoxLayout *webcamPreviewLayout = new QHBoxLayout();
     webcamPreviewLayout->addStretch();
@@ -222,8 +222,8 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Instantiate Audio Visualizer
     vizWidget = new AudioVisualizerWidget(this);
-    vizWidget->setMinimumSize(200, 45);
-    vizWidget->setMaximumSize(1920, 45);
+    vizWidget->setMinimumSize(200, 32);
+    vizWidget->setMaximumSize(1920, 32);
     vizWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     vizWidget->setToolTip("Yelloopy© Audio Visualizer");
 
@@ -555,8 +555,8 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
         if ( isRecording ) {
             audioRecorder->startRecording(audioRecorded);
             camera->start();
-            mediaRecorder->record();
             startEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK TIMESTAMP
+            mediaRecorder->record();
         }
     }
 

@@ -570,22 +570,21 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status)
             durationTextItem->setToolTip(currentVideoName);
             banner->setToolTip(currentVideoName);
             setBanner(currentVideoName);
+            vizPlayer->play();
+            playbackTimer->start(1000); // the playback cronometer
             
             if ( !isRecording ) {
                 isPlayback = true;
-                vizPlayer->play();
-                playbackTimer->start(1000); // the playback cronometer
             }
             else {
 
                 isPlayback = false;
-                
+                vizPlayer->pause();
+                startEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK TIMESTAMP 
                 audioRecorder->startRecording(audioRecorded);
-                mediaRecorder->record(); // recorders started
-                startEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK TIMESTAMP
+                mediaRecorder->record(); // recorders started                               
 
-            }
-            
+            }            
             
         }        
         
@@ -655,23 +654,17 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
         recordingIndicator->show();
         singButton->setText("Finish!");
         singButton->setEnabled(true); // Click to finish recording
+        vizPlayer->play();
 
         connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, [=](qint64 currentDuration) {
             
+            if ( player->position() > 0 ) {
                 disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, nullptr); 
-                
-                recordingEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK TIMESTAMP 
-                qint64 offsetEvent = (recordingEventTime - startEventTime);
-                offset = mediaRecorder->duration();
-
-                //qWarning() << "MediaRecorder duration: " << mediaRecorder->duration() << " ms";
-                //qWarning() << "Event timers Offset: " << offsetEvent << " ms";
-                //qWarning() << "Calculated Latency Offset: " << offset << " ms";
+                recordingEventTime = QDateTime::currentMSecsSinceEpoch(); // MARK TIMESTAMP
+                offset = ( recordingEventTime - startEventTime );
                 logTextEdit->append(QString("Latency Offset: %1 ms").arg(offset));
-                    
-                vizPlayer->play();
-                playbackTimer->start(1000);
-            
+            }
+                
         });
 
     }
@@ -1021,9 +1014,8 @@ void MainWindow::mixAndRender(double vocalVolume) {
             vizPlayer->setMedia(outputFilePath);
             addProgressSong(scene, getMediaDuration(outputFilePath));
 
-            qWarning() << "trimmed rec offset: " << offset << " ms";
-            this->logTextEdit->append(QString("trimmed recording Offset: %1 ms").arg(offset));
-
+            qWarning() << "recording offset: " << offset << " ms";
+            this->logTextEdit->append(QString("Latency Offset: %1 ms").arg(offset));
             this->logTextEdit->append("Playing mix!");
         }
 

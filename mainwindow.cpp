@@ -149,7 +149,7 @@ MainWindow::MainWindow(QWidget *parent)
     durationTextItem = new QGraphicsTextItem;
     durationTextItem->setDefaultTextColor(palette.color(QPalette::Text));
     durationTextItem->setFont(QFont("Courier", 16, QFont::Bold));
-    durationTextItem->setY(previewView->height() - durationTextItem->boundingRect().height());
+    durationTextItem->setY(previewView->height() - (durationTextItem->boundingRect().height()) +5 );
     durationTextItem->setPlainText("00:00:00 / 00:00:00");
         
     scene->addItem(durationTextItem);
@@ -562,6 +562,11 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status)
         }
 
         if ( player && vizPlayer ) {
+            
+            durationTextItem->setToolTip(currentVideoName);
+            banner->setToolTip(currentVideoName);
+            setBanner(currentVideoName);
+
             playbackTimer->start(1000); // the playback cronometer
             vizPlayer->play();
         }        
@@ -1132,9 +1137,6 @@ void MainWindow::addProgressSong(QGraphicsScene *scene, qint64 duration) {
         progressSong->setRect(0, 0, 640 * progress, 20);
     });
 
-    durationTextItem->setToolTip(currentVideoName);
-    banner->setToolTip(currentVideoName);
-    setBanner(currentVideoName);
 }
 
 bool MainWindow::eventFilter(QObject *object, QEvent *event) {

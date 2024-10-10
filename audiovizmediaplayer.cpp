@@ -201,7 +201,7 @@ void AudioVizMediaPlayer::updateVisualizer()
         // Ensure audioPosition doesn't exceed the audio data size
         if (m_audioPosition >= m_decodedAudioData->size()) {
             m_audioPosition = 0;  // Reset if we reach the end
-            pause(); 
+            //pause(); 
         }
     } else {
         m_visualizer->clear();  // Clear visualization if no data to visualize

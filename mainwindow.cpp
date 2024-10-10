@@ -1234,7 +1234,7 @@ void MainWindow::fetchVideo() {
                 setBanner("DECODING... Please wait.");
 
                 vizPlayer->setMedia(currentVideoFile);
-                currentVideoName = QFileInfo(currentVideoFile).baseName();
+                currentVideoName = QFileInfo(currentVideoFile).completeBaseName();
                 addProgressSong(scene, getMediaDuration(currentVideoFile));
 
                 downloadStatusLabel->setText("Download YouTube URL");

@@ -1218,7 +1218,7 @@ void MainWindow::fetchVideo() {
         process->deleteLater();
 
         // Open the choose video dialog in the directory chosen to save video
-        QString fetchVideoPath = QFileDialog::getOpenFileName(this, "Choose the downloaded playback or any another", directory, "Videos (*.mp4 *.mkv *.avi)");
+        QString fetchVideoPath = QFileDialog::getOpenFileName(this, "Choose the downloaded playback or any another", directory, "Videos (*.mp4 *.mkv *.webm *.avi)");
         if (!fetchVideoPath.isEmpty()) {
 
             resetMediaComponents(false);

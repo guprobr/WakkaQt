@@ -576,17 +576,12 @@ void MainWindow::startRecording() {
 
         if (mediaRecorder && player && vizPlayer) {
 
+    // First, start camera to prep media recording
+            camera->start();
+
             setBanner("DECODING... Please wait.");
             addProgressSong(scene, getMediaDuration(currentVideoFile));  // Update UI
             vizPlayer->setMedia(currentVideoFile);  // Prepare video playback
-            
-            // First, start camera and prep media recording
-            camera->start();
-            mediaRecorder->record();  // media recording has latency
-                            // we Start the audio recording later, should be instant
-            
-            // Start listening for the first duration change
-            connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);
 
         } else {
             qWarning() << "Failed to initialize media recorder or player.";
@@ -597,42 +592,48 @@ void MainWindow::startRecording() {
     }
 }
 
+void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status) {
+
+    if ( QMediaPlayer::MediaStatus::LoadedMedia == status ) {
+        
+        setBanner(currentVideoName);
+        banner->setToolTip(currentVideoName);
+        vizPlayer->play();
+        playbackTimer->start(1000);
+
+        if ( isRecording ) {
+            
+            mediaRecorder->record();  // media recording has latency
+            audioRecorder->startRecording(audioRecorded);
+
+            // Start listening for the first duration change
+            connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);
+
+        }
+
+    }
+
+}
+
 // Handler for durationChanged signal from mediaRecorder
 void MainWindow::onDurationChanged(qint64 currentDuration) {
-    if (currentDuration > 0 && isRecording) {
-        qDebug() << "Duration changed, now restarting playback and starting audio recording.";
 
-        // Restart playback from the same position
+    if (currentDuration > 0 && isRecording && player->position() > 0 ) {
+
+        // Disconnect this handler once we've started recording
+        disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);
+
+        // calc offset 
+        offset = currentDuration - player->position();
         qDebug() << "MediaRecorder Latency Duration: " << currentDuration << " ms";
-        logTextEdit->append(QString("Latency duration: %1 ms").arg(currentDuration));
-        vizPlayer->seek(currentDuration);  // Seek to the same spot
-        vizPlayer->play();
-#ifdef __linux__
-// Avoid breaking sound when seeking (Qt6.4 or gStreamer bug?)
-        player->pause();
-        player->setAudioOutput(nullptr); 
-        player->setAudioOutput(audioOutput.data());
-        player->play(); // the show must go on!
-#endif
-        audioRecorder->startRecording(audioRecorded);
+        logTextEdit->append(QString("Latency duration: %1 ms").arg(offset));
+
         // Update UI to show recording status
         recordingIndicator->show();
         singButton->setText("Finish!");
         singButton->setEnabled(true);
 
-        // Disconnect this handler once we've started recording
-        disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, nullptr);
-
     }
-}
-
-void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status) {
-
-    setBanner(currentVideoName);
-    banner->setToolTip(currentVideoName);
-    vizPlayer->play();
-    playbackTimer->start(1000);
-
 }
 
 // recording FINISH button
@@ -1326,7 +1327,9 @@ MainWindow::~MainWindow() {
     previewWidgets.clear();
 
     if (isRecording) {
-        stopRecording();
+        mediaRecorder->stop();
+        audioRecorder->stopRecording();
+        camera->stop();
     }
 
     disconnectAllSignals();

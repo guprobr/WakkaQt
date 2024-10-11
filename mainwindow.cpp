@@ -906,7 +906,7 @@ void MainWindow::mixAndRender(double vocalVolume) {
                 videorama = QString("[1:v]trim=%1ms,setpts=PTS-STARTPTS,scale=%2[webcam]; \
                                     [2:v]scale=%2[video]; \
                                     [video][webcam]vstack[videorama];")
-                                    .arg(offset*2)
+                                    .arg(offset)
                                     .arg(setRez);
                                     
             } else {
@@ -915,7 +915,7 @@ void MainWindow::mixAndRender(double vocalVolume) {
                 // No video playback, work only with webcam video
                 videorama = QString("[1:v]trim=%1ms,setpts=PTS-STARTPTS, \
                                     scale=%2,tpad=stop_mode=clone:stop_duration=%3[videorama];")
-                                    .arg(offset*2)
+                                    .arg(offset)
                                     .arg(fullRez)
                                     .arg(stopDuration);
             }

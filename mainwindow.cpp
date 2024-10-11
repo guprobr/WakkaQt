@@ -570,7 +570,7 @@ void MainWindow::chooseVideo()
     delete fileDialog;
 }
 
-// Simplified start recording logic without OFFSETs
+// Simplified start recording logic
 void MainWindow::startRecording() {
     try {
         if (currentVideoFile.isEmpty()) {
@@ -681,8 +681,14 @@ void MainWindow::stopRecording() {
         else
             mediaCaptureSession->setCamera(nullptr);
         
-        if ( mediaRecorder->isAvailable() ) {}
+        if ( mediaRecorder->isAvailable() ) {
+            
+            offset = mediaRecorder->duration() - player->position();
+            qWarning() << "Latency Duration: " << offset << " ms";
+            logTextEdit->append(QString("Latency duration: %1 ms").arg(offset));
             mediaRecorder->stop();
+
+        }
 
         if ( audioRecorder->isRecording() )
             audioRecorder->stopRecording();
@@ -698,9 +704,6 @@ void MainWindow::stopRecording() {
         qWarning() << "Recording stopped.";
         
         if ( player && vizPlayer ) {
-            offset = mediaRecorder->duration() - player->position();
-            qDebug() << "MediaRecorder Latency Duration: " << offset << " ms";
-            logTextEdit->append(QString("Latency duration: %1 ms").arg(offset));
             vizPlayer->stop();
             playbackTimer->stop();
         }

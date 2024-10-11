@@ -617,14 +617,13 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status) {
         
         setBanner(currentVideoName);
         banner->setToolTip(currentVideoName);
-        
-        if ( !isRecording ) {
-            vizPlayer->play();
-        } else {
+        vizPlayer->play();
 
-            audioRecorder->startRecording(audioRecorded);
-            mediaRecorder->record();  // media recording has latency
-                        
+        if ( isRecording ) {
+
+            vizPlayer->pause();
+            audioRecorder->startRecording(audioRecorded);  
+            mediaRecorder->record();
             // Start listening for the first duration change
             connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);
 
@@ -651,7 +650,7 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
 // Handler for durationChanged signal from mediaRecorder
 void MainWindow::onDurationChanged(qint64 currentDuration) {
 
-    if (currentDuration > 0 && isRecording && !player->position() ) {
+    if (currentDuration > 0 && isRecording ) {
 
         // Disconnect this handler once we've started recording
         disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);
@@ -676,22 +675,22 @@ void MainWindow::stopRecording() {
             return;
         }
 
+        
         if ( camera->isAvailable() && camera->isActive() )
             camera->stop();
         else
             mediaCaptureSession->setCamera(nullptr);
         
         if ( mediaRecorder->isAvailable() ) {
-
             mediaRecorder->stop();
-            offset = mediaRecorder->duration() - player->position();
-            qWarning() << "Latency Duration: " << offset << " ms";
-            logTextEdit->append(QString("Latency duration: %1 ms").arg(offset));
-
         }
 
         if ( audioRecorder->isRecording() )
             audioRecorder->stopRecording();
+
+        offset = mediaRecorder->duration() - player->position();
+        qWarning() << "Latency Duration: " << offset << " ms";
+        logTextEdit->append(QString("Latency duration: %1 ms").arg(offset));
 
         recordingIndicator->hide();
         webcamPreviewWidget->hide();

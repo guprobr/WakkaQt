@@ -604,8 +604,7 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status) {
         if ( isRecording ) {
             
             mediaRecorder->record();  // media recording has latency
-            audioRecorder->startRecording(audioRecorded);
-
+            
             // Start listening for the first duration change
             connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);
 
@@ -642,6 +641,7 @@ void MainWindow::onDurationChanged(qint64 currentDuration) {
         singButton->setText("Finish!");
         singButton->setEnabled(true);
 
+        audioRecorder->startRecording(audioRecorded);
     }
 }
 

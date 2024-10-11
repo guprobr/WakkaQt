@@ -405,7 +405,7 @@ void MainWindow::configureMediaComponents()
     //connect(mediaRecorder.data(), &QMediaRecorder::recorderStateChanged, this, &MainWindow::onRecorderStateChanged);
     connect(mediaRecorder.data(), &QMediaRecorder::errorOccurred, this, &MainWindow::handleRecorderError);
     connect(player.data(), &QMediaPlayer::mediaStatusChanged, this, &MainWindow::onPlayerMediaStatusChanged);
-    //connect(player.data(), &QMediaPlayer::playbackStateChanged, this, &MainWindow::onPlaybackStateChanged);
+    connect(player.data(), &QMediaPlayer::playbackStateChanged, this, &MainWindow::onPlaybackStateChanged);
     connect(videoSink.data(), &QVideoSink::videoFrameChanged, this, &MainWindow::onVideoFrameReceived);
 
     qDebug() << "Reconfigured media components";
@@ -516,6 +516,35 @@ void MainWindow::updateDeviceLabel(const QString &deviceLabelText) {
     }
 }
 
+ void MainWindow::playVideo(const QString& playbackVideoPath) {
+
+    if ( player && vizPlayer ) {
+
+        isPlayback = false; // disable seeking while decoding/loading media
+
+        vizPlayer->stop();
+        playbackTimer->stop();
+        
+        if (progressSongFull) {
+            scene->removeItem(progressSongFull);
+            delete progressSongFull;
+            progressSongFull = nullptr;
+        }
+        if (progressSong) {
+            scene->removeItem(progressSong);
+            delete progressSong;
+            progressSong = nullptr;
+        }
+
+        setBanner("DECODING... Please wait."); 
+                
+        currentVideoName = QFileInfo(playbackVideoPath).completeBaseName();
+        currentPlayback = playbackVideoPath;
+        vizPlayer->setMedia(playbackVideoPath);
+    }
+
+ }
+
 void MainWindow::chooseVideo()
 {
     QFileDialog* fileDialog = new QFileDialog(this);
@@ -533,17 +562,9 @@ void MainWindow::chooseVideo()
             videoWidget->show();
 
             currentVideoFile = loadVideoFile;
-            if ( player && vizPlayer ) {
-                vizPlayer->stop();
-                playbackTimer->stop();
-                setBanner("DECODING... Please wait."); 
-                
-                currentVideoName = QFileInfo(currentVideoFile).completeBaseName();        
-                addProgressSong(scene, getMediaDuration(currentVideoFile));
-                vizPlayer->setMedia(currentVideoFile); 
-                
-                logTextEdit->append("Playback preview. Press SING to start recording.");
-            }
+            playVideo(currentVideoFile);
+            logTextEdit->append("Playback preview. Press SING to start recording.");
+
         }
     }
     delete fileDialog;
@@ -579,9 +600,7 @@ void MainWindow::startRecording() {
     // First, start camera to prep media recording
             camera->start();
 
-            setBanner("DECODING... Please wait.");
-            addProgressSong(scene, getMediaDuration(currentVideoFile));  // Update UI
-            vizPlayer->setMedia(currentVideoFile);  // Prepare video playback
+            playVideo(currentVideoFile);
 
         } else {
             qWarning() << "Failed to initialize media recorder or player.";
@@ -599,8 +618,7 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status) {
         setBanner(currentVideoName);
         banner->setToolTip(currentVideoName);
         vizPlayer->play();
-        playbackTimer->start(1000);
-
+        
         if ( isRecording ) {
             
             mediaRecorder->record();  // media recording has latency
@@ -610,6 +628,20 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status) {
 
         }
 
+    }
+
+}
+
+void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
+
+    if ( QMediaPlayer::PlaybackState::PlayingState == state ) {
+        
+        if ( !playbackTimer->isActive())
+            playbackTimer->start(1000);
+        if ( !isPlayback ) // if loading/decoding
+            addProgressSong(scene, getMediaDuration(currentPlayback));
+
+        isPlayback = true; // enable seeking
     }
 
 }
@@ -976,18 +1008,8 @@ void MainWindow::mixAndRender(double vocalVolume) {
 
         qDebug() << "Setting media source to" << outputFilePath;
 
-        if ( player && vizPlayer ) {
-
-            vizPlayer->stop();
-            playbackTimer->stop();
-
-            setBanner("DECODING... PLEASE WAIT.");
-
-            addProgressSong(scene, getMediaDuration(outputFilePath));
-            vizPlayer->setMedia(outputFilePath);            
-
-            this->logTextEdit->append("Playing mix!");
-        }
+        playVideo(outputFilePath);
+        this->logTextEdit->append("Playing mix!");
 
     });
 
@@ -1135,7 +1157,7 @@ bool MainWindow::eventFilter(QObject *object, QEvent *event) {
             QPointF clickPos = mouseEvent->scenePos();  // Get the mouse click position in scene coordinates
 
             if ( progressSong ) {
-                if ( !isRecording) {
+                if ( !isRecording && isPlayback ) {
                     // Get progress bar position and dimensions
                     qreal progressBarX = progressSong->pos().x();
                     qreal progressBarY = progressSong->pos().y();
@@ -1215,11 +1237,7 @@ void MainWindow::fetchVideo() {
                 vizPlayer->stop();
                 playbackTimer->stop();
                 
-                setBanner("DECODING... Please wait.");
-
-                currentVideoName = QFileInfo(currentVideoFile).completeBaseName();
-                addProgressSong(scene, getMediaDuration(currentVideoFile));
-                vizPlayer->setMedia(currentVideoFile);                
+                playVideo(currentVideoFile);     
 
                 downloadStatusLabel->setText("Download YouTube URL");
                 singButton->setEnabled(true); 
@@ -1384,7 +1402,7 @@ void MainWindow::disconnectAllSignals() {
 
     if (player) {
         disconnect(player.data(), &QMediaPlayer::mediaStatusChanged, this, &MainWindow::onPlayerMediaStatusChanged);
-        //disconnect(player.data(), &QMediaPlayer::playbackStateChanged, this, &MainWindow::onPlaybackStateChanged);
+        disconnect(player.data(), &QMediaPlayer::playbackStateChanged, this, &MainWindow::onPlaybackStateChanged);
     }
 
 }

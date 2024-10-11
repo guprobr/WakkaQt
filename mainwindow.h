@@ -47,7 +47,7 @@ public:
 private slots:
     //void onAudioInputsChanged();
     //void onRecorderStateChanged(QMediaRecorder::RecorderState state);
-    //void onPlaybackStateChanged(QMediaPlayer::PlaybackState state);
+    void onPlaybackStateChanged(QMediaPlayer::PlaybackState state);
     void onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status);
     void onDurationChanged(qint64 currentDuration);
     void handleRecorderError(QMediaRecorder::Error error);
@@ -115,6 +115,7 @@ private:
     
     QTextEdit *logTextEdit; // logs
     
+    QString currentPlayback;
     QString currentVideoFile;
     QString currentVideoName;
     QString webcamRecorded;
@@ -123,6 +124,7 @@ private:
 
     SndWidget *soundLevelWidget;
 
+    void playVideo(const QString& playbackVideoPath);
     void chooseVideo();
     void updatePlaybackDuration();
 

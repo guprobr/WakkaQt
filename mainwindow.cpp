@@ -649,15 +649,17 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
 // Handler for durationChanged signal from mediaRecorder
 void MainWindow::onDurationChanged(qint64 currentDuration) {
 
+    audioRecorder->startRecording(audioRecorded);
+
     if (currentDuration > 0 && isRecording && player->position() > 0 ) {
 
         // Disconnect this handler once we've started recording
         disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);
 
         // calc offset and rewind
-        offset = currentDuration + player->position();
-        qDebug() << "MediaRecorder Latency Duration: " << currentDuration << " ms";
-        logTextEdit->append(QString("Latency duration: %1 ms").arg(offset));
+        //offset = currentDuration + player->position();
+        //qDebug() << "MediaRecorder Latency Duration: " << currentDuration << " ms";
+        //logTextEdit->append(QString("Latency duration: %1 ms").arg(offset));
 
         vizPlayer->seek(0);
  #ifdef __linux__
@@ -673,7 +675,7 @@ void MainWindow::onDurationChanged(qint64 currentDuration) {
         singButton->setText("Finish!");
         singButton->setEnabled(true);
 
-        audioRecorder->startRecording(audioRecorded);
+        
     }
 }
 
@@ -692,8 +694,9 @@ void MainWindow::stopRecording() {
         else
             mediaCaptureSession->setCamera(nullptr);
         
-        if ( mediaRecorder->isAvailable() )
+        if ( mediaRecorder->isAvailable() ) {}
             mediaRecorder->stop();
+
         if ( audioRecorder->isRecording() )
             audioRecorder->stopRecording();
 
@@ -707,9 +710,13 @@ void MainWindow::stopRecording() {
 
         qWarning() << "Recording stopped.";
         
-        if ( player && vizPlayer )
+        if ( player && vizPlayer ) {
+            offset = mediaRecorder->duration() - player->position();
+            qDebug() << "MediaRecorder Latency Duration: " << offset << " ms";
+            logTextEdit->append(QString("Latency duration: %1 ms").arg(offset));
             vizPlayer->stop();
-        playbackTimer->stop();
+            playbackTimer->stop();
+        }
 
         videoWidget->hide();
         placeholderLabel->show();

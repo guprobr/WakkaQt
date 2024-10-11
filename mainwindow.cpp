@@ -1407,10 +1407,6 @@ void MainWindow::resizeEvent(QResizeEvent* event) {
 
 void MainWindow::closeEvent(QCloseEvent *event)
 {
-    if (isRecording) {
-        // Stop the recording safely
-        stopRecording();
-    }
     // Now allow the window to close
     event->accept(); // Call the base class implementation
 }

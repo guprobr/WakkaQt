@@ -617,10 +617,11 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status) {
         
         setBanner(currentVideoName);
         banner->setToolTip(currentVideoName);
-        vizPlayer->play();
         
-        if ( isRecording ) {
-            
+        if ( !isRecording ) {
+            vizPlayer->play();
+        } else {
+
             mediaRecorder->record();  // media recording has latency
             audioRecorder->startRecording(audioRecorded);
             
@@ -650,30 +651,17 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
 // Handler for durationChanged signal from mediaRecorder
 void MainWindow::onDurationChanged(qint64 currentDuration) {
 
-    if (currentDuration > 0 && isRecording && player->position() > 0 ) {
+    if (currentDuration > 0 && isRecording && !player->position() ) {
 
         // Disconnect this handler once we've started recording
         disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);
 
-        // calc offset and rewind
-        //offset = currentDuration + player->position();
-        //qDebug() << "MediaRecorder Latency Duration: " << currentDuration << " ms";
-        //logTextEdit->append(QString("Latency duration: %1 ms").arg(offset));
-
-        vizPlayer->seek(0);
- #ifdef __linux__
-// Avoid breaking sound when seeking (Qt6.4 or gStreamer bug? on Linux only..)
-        player->pause(); 
-        player->setAudioOutput(nullptr);  
-        player->setAudioOutput(audioOutput.data()); 
-        player->play(); 
-#endif       
-
+        vizPlayer->play();
+ 
         // Update UI to show recording status
         recordingIndicator->show();
         singButton->setText("Finish!");
         singButton->setEnabled(true);
-
         
     }
 }

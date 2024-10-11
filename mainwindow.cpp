@@ -622,6 +622,7 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status) {
         if ( isRecording ) {
             
             mediaRecorder->record();  // media recording has latency
+            audioRecorder->startRecording(audioRecorded);
             
             // Start listening for the first duration change
             connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);
@@ -648,8 +649,6 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
 
 // Handler for durationChanged signal from mediaRecorder
 void MainWindow::onDurationChanged(qint64 currentDuration) {
-
-    audioRecorder->startRecording(audioRecorded);
 
     if (currentDuration > 0 && isRecording && player->position() > 0 ) {
 

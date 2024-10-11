@@ -682,11 +682,11 @@ void MainWindow::stopRecording() {
             mediaCaptureSession->setCamera(nullptr);
         
         if ( mediaRecorder->isAvailable() ) {
-            
+
+            mediaRecorder->stop();
             offset = mediaRecorder->duration() - player->position();
             qWarning() << "Latency Duration: " << offset << " ms";
             logTextEdit->append(QString("Latency duration: %1 ms").arg(offset));
-            mediaRecorder->stop();
 
         }
 

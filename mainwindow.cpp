@@ -623,8 +623,7 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status) {
         } else {
 
             mediaRecorder->record();  // media recording has latency
-            audioRecorder->startRecording(audioRecorded);
-            
+                        
             // Start listening for the first duration change
             connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);
 
@@ -657,6 +656,7 @@ void MainWindow::onDurationChanged(qint64 currentDuration) {
         disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);
 
         vizPlayer->play();
+        audioRecorder->startRecording(audioRecorded);
  
         // Update UI to show recording status
         recordingIndicator->show();
@@ -920,7 +920,7 @@ void MainWindow::mixAndRender(double vocalVolume) {
                         afftdn=nf=-20:nr=10:nt=w,speechnorm,acompressor=threshold=0.5:ratio=4,highpass=f=200,%2 \
                         aecho=0.6:0.4:69|51:0.21|0.13,treble=g=12,volume=%3[vocals]; \
                         [2:a][vocals]amix=inputs=2:normalize=0,aresample=async=1[wakkamix];%4" 
-                        ).arg(offset)
+                        ).arg(0)
                         .arg(talent)
                         .arg(vocalVolume)
                         .arg(videorama);

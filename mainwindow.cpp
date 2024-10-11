@@ -611,28 +611,6 @@ void MainWindow::startRecording() {
     }
 }
 
-void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status) {
-
-    if ( QMediaPlayer::MediaStatus::LoadedMedia == status ) {
-        
-        setBanner(currentVideoName);
-        banner->setToolTip(currentVideoName);
-        vizPlayer->play();
-
-        if ( isRecording ) {
-
-            vizPlayer->pause();
-            audioRecorder->startRecording(audioRecorded);  
-            mediaRecorder->record();
-            // Start listening for the first duration change
-            connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);
-
-        }
-
-    }
-
-}
-
 void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
 
     if ( QMediaPlayer::PlaybackState::PlayingState == state ) {
@@ -647,22 +625,41 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
 
 }
 
+void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status) {
+
+    if ( QMediaPlayer::MediaStatus::LoadedMedia == status ) {
+        
+        setBanner(currentVideoName);
+        banner->setToolTip(currentVideoName);
+        
+        if ( isRecording ) {
+
+            mediaRecorder->record();
+            // Start listening for the first duration change
+            connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);
+
+        } else {
+            vizPlayer->play();
+        }
+
+    }
+
+}
+
 // Handler for durationChanged signal from mediaRecorder
 void MainWindow::onDurationChanged(qint64 currentDuration) {
-
-    if (currentDuration > 0 && isRecording ) {
 
         // Disconnect this handler once we've started recording
         disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);
 
         vizPlayer->play();
+        audioRecorder->startRecording(audioRecorded);
  
         // Update UI to show recording status
         recordingIndicator->show();
         singButton->setText("Finish!");
         singButton->setEnabled(true);
-        
-    }
+
 }
 
 // recording FINISH button
@@ -674,23 +671,21 @@ void MainWindow::stopRecording() {
             QMessageBox::critical(this, "ERROR.", "Tried to stop Recording, but we are not recording. ERROR.");
             return;
         }
-
-        
-        if ( camera->isAvailable() && camera->isActive() )
-            camera->stop();
-        else
-            mediaCaptureSession->setCamera(nullptr);
         
         if ( mediaRecorder->isAvailable() ) {
             mediaRecorder->stop();
+            offset = mediaRecorder->duration() - player->position();
+            qWarning() << "Latency Duration: " << offset << " ms";
+            logTextEdit->append(QString("Latency duration: %1 ms").arg(offset));
         }
 
         if ( audioRecorder->isRecording() )
             audioRecorder->stopRecording();
 
-        offset = mediaRecorder->duration() - player->position();
-        qWarning() << "Latency Duration: " << offset << " ms";
-        logTextEdit->append(QString("Latency duration: %1 ms").arg(offset));
+        if ( camera->isAvailable() && camera->isActive() )
+            camera->stop();
+        else
+            mediaCaptureSession->setCamera(nullptr);
 
         recordingIndicator->hide();
         webcamPreviewWidget->hide();
@@ -922,7 +917,7 @@ void MainWindow::mixAndRender(double vocalVolume) {
                         afftdn=nf=-20:nr=10:nt=w,speechnorm,acompressor=threshold=0.5:ratio=4,highpass=f=200,%2 \
                         aecho=0.6:0.4:69|51:0.21|0.13,treble=g=12,volume=%3[vocals]; \
                         [2:a][vocals]amix=inputs=2:normalize=0,aresample=async=1[wakkamix];%4" 
-                        ).arg(offset)
+                        ).arg(0)
                         .arg(talent)
                         .arg(vocalVolume)
                         .arg(videorama);

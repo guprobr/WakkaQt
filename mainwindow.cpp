@@ -655,7 +655,7 @@ void MainWindow::onDurationChanged(qint64 currentDuration) {
         disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);
 
         // calc offset and rewind
-        offset = currentDuration;
+        offset = currentDuration + player->position();
         qDebug() << "MediaRecorder Latency Duration: " << currentDuration << " ms";
         logTextEdit->append(QString("Latency duration: %1 ms").arg(offset));
 

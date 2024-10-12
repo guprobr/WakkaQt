@@ -581,8 +581,8 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status) {
 
         // Start listening for the first duration change
             connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);
-            mediaRecorder->record(); // start recording but wait recording state to start playback
-        
+            mediaRecorder->record(); // start audio recording with no offset!
+
         } else {
             vizPlayer->play(); // if not recording. Just play right after load
         }
@@ -595,7 +595,7 @@ void MainWindow::onDurationChanged(qint64 currentDuration) {
 
     if ( player->playbackState() == QMediaPlayer::PlaybackState::PlayingState ) {
         offset = currentDuration - player->position();
-        vizPlayer->seek(offset);
+        vizPlayer->seek(currentDuration);
 #ifdef __linux__
 // Avoid breaking sound when seeking
         player->pause();
@@ -951,7 +951,7 @@ void MainWindow::mixAndRender(double vocalVolume) {
                         afftdn=nf=-20:nr=10:nt=w,speechnorm,acompressor=threshold=0.5:ratio=4,highpass=f=200,%2 \
                         aecho=0.6:0.4:69|51:0.21|0.13,treble=g=12,volume=%3[vocals]; \
                         [2:a][vocals]amix=inputs=2:normalize=0,aresample=async=1[wakkamix];%4" 
-                        ).arg(offset)
+                        ).arg(0)
                         .arg(talent)
                         .arg(vocalVolume)
                         .arg(videorama);

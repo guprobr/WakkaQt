@@ -654,8 +654,6 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
 
     if ( QMediaRecorder::RecorderState::RecordingState == state ) {
         
-        vizPlayer->play();
-
         // Update UI to show recording status
         recordingIndicator->show();
         singButton->setText("Finish!");
@@ -678,7 +676,11 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
 // Handler for durationChanged signal from mediaRecorder
 void MainWindow::onDurationChanged(qint64 currentDuration) {
 
-        offset = currentDuration - player->position();
+        if ( !player->position() ) {
+            offset = currentDuration;
+            vizPlayer->play();
+            disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);
+        }
 
 }
 
@@ -1399,7 +1401,7 @@ void MainWindow::disconnectAllSignals() {
     if (mediaRecorder) {
         disconnect(mediaRecorder.data(), &QMediaRecorder::recorderStateChanged, this, &MainWindow::onRecorderStateChanged);
         disconnect(mediaRecorder.data(), &QMediaRecorder::errorOccurred, this, &MainWindow::handleRecorderError);
-        disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, nullptr);
+        disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);
     }
 
     if (player) {

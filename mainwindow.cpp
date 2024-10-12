@@ -581,8 +581,6 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status) {
         if ( isRecording ) {
 
             mediaRecorder->record(); // mediaRecorder must start only after video loaded
-            audioRecorder->startRecording(audioRecorded);
-            
             // Start listening for the first duration change
             connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);
 
@@ -653,7 +651,8 @@ void MainWindow::startRecording() {
 void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
 
     if ( QMediaRecorder::RecorderState::RecordingState == state ) {
-        
+
+        audioRecorder->startRecording(audioRecorded);        
         // Update UI to show recording status
         recordingIndicator->show();
         singButton->setText("Finish!");
@@ -672,14 +671,13 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
 
 }
 
-
 // Handler for durationChanged signal from mediaRecorder
 void MainWindow::onDurationChanged(qint64 currentDuration) {
 
         if ( !player->position() ) {
             vizPlayer->play();
         }
-        
+
         offset = currentDuration - player->position();
 
 }

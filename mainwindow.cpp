@@ -579,12 +579,12 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status) {
         
         if ( isRecording ) {
 
-            mediaRecorder->record(); // mediaRecorder must start only after video loaded
-            // Start listening for the first duration change
+        // Start listening for the first duration change
             connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);
-
+            mediaRecorder->record(); // start recording but wait for recording to play
+        
         } else {
-            vizPlayer->play(); // when not recording. play after load
+            vizPlayer->play(); // if not recording. Just play right after load
         }
 
     }
@@ -595,8 +595,6 @@ void MainWindow::onDurationChanged(qint64 currentDuration) {
 
     if ( player->playbackState() == QMediaPlayer::PlaybackState::PlayingState )
         offset = currentDuration - player->position();
-    else
-        vizPlayer->play();
     
 }
 
@@ -604,13 +602,13 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
 
     if ( QMediaRecorder::RecorderState::RecordingState == state ) {
        
-        audioRecorder->startRecording(audioRecorded);
         // Update UI to show recording status
         recordingIndicator->show();
         singButton->setText("Finish!");
         singButton->setEnabled(true);
 
-        //vizPlayer->play();
+        vizPlayer->play();
+        audioRecorder->startRecording(audioRecorded); // audioRecorder has less latency, start immediately with recording to sync
 
     }
 
@@ -669,7 +667,7 @@ void MainWindow::startRecording() {
 
             // prep camera first
             camera->start();
-            playVideo(currentVideoFile); // just load video on AudioVizMediaPlayer
+            playVideo(currentVideoFile); // just load video on AudioVizMediaPlayer, we wait for decoding to record
 
         } else {
             qWarning() << "Failed to initialize camera, media recorder or player.";

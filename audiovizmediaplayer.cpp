@@ -51,7 +51,7 @@ void AudioVizMediaPlayer::setMedia(const QString &source)
 {
     m_mediaSource = source;
 
-    m_mediaPlayer->setSource(QUrl());
+    //m_mediaPlayer->setSource(QUrl());
 
     // Reset the audio data
     m_decodedAudioData->detach();  

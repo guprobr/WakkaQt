@@ -597,9 +597,7 @@ void MainWindow::onDurationChanged(qint64 currentDuration) {
         offset = currentDuration - player->position();
         disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);
     } 
-    
-    audioRecorder->startRecording(audioRecorded); // start audio recording with offset = 0
-    
+        
 }
 
 void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
@@ -638,6 +636,9 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
             addProgressSong(scene, getMediaDuration(currentPlayback));
 
         isPlayback = true; // enable seeking
+
+        if ( isRecording )
+            audioRecorder->startRecording(audioRecorded);
     }
 
 }
@@ -942,7 +943,7 @@ void MainWindow::mixAndRender(double vocalVolume) {
                         afftdn=nf=-20:nr=10:nt=w,speechnorm,acompressor=threshold=0.5:ratio=4,highpass=f=200,%2 \
                         aecho=0.6:0.4:69|51:0.21|0.13,treble=g=12,volume=%3[vocals]; \
                         [2:a][vocals]amix=inputs=2:normalize=0,aresample=async=1[wakkamix];%4" 
-                        ).arg(0)
+                        ).arg(offset)
                         .arg(talent)
                         .arg(vocalVolume)
                         .arg(videorama);

@@ -584,9 +584,9 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status) {
             // Start listening for the first duration change
             connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);
 
+        } else {
+            vizPlayer->play(); 
         }
-        
-        vizPlayer->play();       
 
     }
 
@@ -599,8 +599,12 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
         
         if ( !playbackTimer->isActive())
             playbackTimer->start(1000);
+
         if ( !isPlayback ) // if loading/decoding
             addProgressSong(scene, getMediaDuration(currentPlayback));
+
+        if ( isRecording )
+            audioRecorder->startRecording(audioRecorded);
 
         isPlayback = true; // enable seeking
     }
@@ -652,7 +656,6 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
 
     if ( QMediaRecorder::RecorderState::RecordingState == state ) {
        
-        audioRecorder->startRecording(audioRecorded); // start recording audio after video recording started
         // Update UI to show recording status
         recordingIndicator->show();
         singButton->setText("Finish!");
@@ -673,7 +676,13 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
 
 // Handler for durationChanged signal from mediaRecorder
 void MainWindow::onDurationChanged(qint64 currentDuration) {
-    offset = currentDuration - player->position();
+
+        if ( !player->position() ) {
+            vizPlayer->play();
+        }
+
+        offset = currentDuration - player->position();
+
 }
 
 // recording FINISH button
@@ -921,7 +930,7 @@ void MainWindow::mixAndRender(double vocalVolume) {
                         afftdn=nf=-20:nr=10:nt=w,speechnorm,acompressor=threshold=0.5:ratio=4,highpass=f=200,%2 \
                         aecho=0.6:0.4:69|51:0.21|0.13,treble=g=12,volume=%3[vocals]; \
                         [2:a][vocals]amix=inputs=2:normalize=0,aresample=async=1[wakkamix];%4" 
-                        ).arg(offset/2)
+                        ).arg(offset)
                         .arg(talent)
                         .arg(vocalVolume)
                         .arg(videorama);

@@ -594,7 +594,7 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status) {
 void MainWindow::onDurationChanged(qint64 currentDuration) {
 
         offset = currentDuration - player->position();
-        
+        disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);
 }
 
 void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {

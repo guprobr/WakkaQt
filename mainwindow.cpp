@@ -846,7 +846,23 @@ void MainWindow::renderAgain()
             double vocalVolume = dialog.getVolume();
             mixAndRender(vocalVolume);
 
+        } else {
+            chooseVideoButton->setEnabled(true);
+            loadPlaybackAction->setEnabled(true);
+            fetchButton->setEnabled(true);
+            chooseInputButton->setEnabled(true);
+            chooseInputAction->setEnabled(true);
+            singButton->setEnabled(false);
+            QMessageBox::warning(this, "Performance cancelled", "Performance cancelled during volume adjustment.");
         }
+    } else {
+        chooseVideoButton->setEnabled(true);
+        loadPlaybackAction->setEnabled(true);
+        fetchButton->setEnabled(true);
+        chooseInputButton->setEnabled(true);
+        chooseInputAction->setEnabled(true);
+        singButton->setEnabled(false);
+        QMessageBox::warning(this, "Performance cancelled", "Performance cancelled!");
     }
 }
 

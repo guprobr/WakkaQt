@@ -578,7 +578,8 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status) {
         banner->setToolTip(currentVideoName);
         
         if ( isRecording ) {
-
+            
+            offset = 0;
             mediaRecorder->record(); // mediaRecorder must start only after video loaded
             // Start listening for the first duration change
             connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);
@@ -616,7 +617,7 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
 
 void MainWindow::onDurationChanged(qint64 currentDuration) {
     
-    if ( !player->position() ) { // win32 needs this check
+    if ( !offset ) { // win32 needs this check
         offset = currentDuration;
         logTextEdit->append(QString("Latency duration: %1 ms").arg(offset));
         disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);

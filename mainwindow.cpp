@@ -677,10 +677,10 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
 void MainWindow::onDurationChanged(qint64 currentDuration) {
 
         if ( !player->position() ) {
-            offset = currentDuration;
             vizPlayer->play();
-            disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);
         }
+        
+        offset = currentDuration - player->position();
 
 }
 

@@ -591,23 +591,6 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status) {
 
 }
 
-void MainWindow::onDurationChanged(qint64 currentDuration) {
-
-    if ( player->playbackState() == QMediaPlayer::PlaybackState::PlayingState ) {
-        offset = currentDuration - player->position();
-        vizPlayer->seek(currentDuration);
-#ifdef __linux__
-// Avoid breaking sound when seeking
-        player->pause();
-        player->setAudioOutput(nullptr);
-        player->setAudioOutput(audioOutput.data());
-        player->play(); // the show must go on!
-#endif
-        disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);
-    } 
-        
-}
-
 void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
 
     if ( QMediaRecorder::RecorderState::RecordingState == state ) {
@@ -632,6 +615,15 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
 
 }
 
+void MainWindow::onDurationChanged(qint64 currentDuration) {
+
+    if ( player->playbackState() == QMediaPlayer::PlaybackState::PlayingState ) {
+        offset = currentDuration - player->position();
+        audioRecorder->startRecording(audioRecorded);
+        disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);
+    } 
+        
+}
 
 void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
 
@@ -645,8 +637,6 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
 
         isPlayback = true; // enable seeking
 
-        if ( isRecording )
-            audioRecorder->startRecording(audioRecorded);
     }
 
 }

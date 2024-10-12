@@ -606,9 +606,7 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
 
             audioRecorder->startRecording(audioRecorded);
             audioRecorderOffset = mediaRecorder->duration() - offset;
-            if ( !audioRecorderOffset ) { // workaround for Windows
-                audioRecorderOffset = offset;
-            }
+            
             logTextEdit->append(QString("Latency duration: %1 ms").arg(offset));
             logTextEdit->append(QString("AudioRec Latency: %1 ms").arg(audioRecorderOffset));
 
@@ -711,6 +709,9 @@ void MainWindow::stopRecording() {
         qWarning() << "Recording stopped.";
         qWarning() << "Latency Duration: " << offset << " ms";
         logTextEdit->append(QString("Rec stop: Latency duration: %1 ms").arg(offset));
+        if ( !audioRecorderOffset ) { // workaround for Windows
+            audioRecorderOffset = offset;
+        }
 
         recordingIndicator->hide();
         webcamPreviewWidget->hide();

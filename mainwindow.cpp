@@ -576,17 +576,8 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status) {
         
         setBanner(currentVideoName); // video loaded, set title
         banner->setToolTip(currentVideoName);
+        vizPlayer->play(); // play as soon as video loads
         
-        if ( isRecording ) {
-
-        // Start listening for the first duration change
-            connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);
-            mediaRecorder->record(); // start audio recording with no offset!
-
-        } else {
-            vizPlayer->play(); // if not recording. Just play right after load
-        }
-
     }
 
 }
@@ -599,8 +590,6 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
         recordingIndicator->show();
         singButton->setText("Finish!");
         singButton->setEnabled(true);
-
-        vizPlayer->play(); // now we are ready for playback
 
     }
 
@@ -617,15 +606,12 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
 
 void MainWindow::onDurationChanged(qint64 currentDuration) {
 
-    if ( player->playbackState() == QMediaPlayer::PlaybackState::PlayingState ) {
+    offset = currentDuration - player->position(); // MARK offset
+    qWarning() << "Latency Duration: " << offset << " ms";
+    logTextEdit->append(QString("Latency duration: %1 ms").arg(offset));
         
-        offset = currentDuration - player->position();
-        qWarning() << "Latency Duration: " << offset << " ms";
-        logTextEdit->append(QString("Latency duration: %1 ms").arg(offset));
-        
-        audioRecorder->startRecording(audioRecorded);
-        disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);
-    } 
+    audioRecorder->startRecording(audioRecorded);
+    disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);
         
 }
 
@@ -637,9 +623,15 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
             playbackTimer->start(1000);
 
         if ( !isPlayback ) // if loading
-            addProgressSong(scene, getMediaDuration(currentPlayback));
+            addProgressSong(scene, static_cast<int>(getMediaDuration(currentPlayback)));
 
         isPlayback = true; // enable seeking
+
+        if ( isRecording ) {
+        // Start listening for the first duration change
+            connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);
+            mediaRecorder->record(); // start media Recorder when playback starts
+        }
 
     }
 
@@ -673,7 +665,7 @@ void MainWindow::startRecording() {
 
             // prep camera first
             camera->start();
-            playVideo(currentVideoFile); // just load video on AudioVizMediaPlayer, we wait for decoding to record
+            playVideo(currentVideoFile); // just load video on AudioVizMediaPlayer, it will start decoding and loading
 
         } else {
             qWarning() << "Failed to initialize camera, media recorder or player.";
@@ -708,7 +700,7 @@ void MainWindow::stopRecording() {
 
         qWarning() << "Latency Duration: " << offset << " ms";
         logTextEdit->append(QString("Recording stop: Latency duration: %1 ms").arg(offset));
-        audioOffset = 1000 * (getMediaDuration(webcamRecorded) - getMediaDuration(audioRecorded));
+        audioOffset = (mediaRecorder->duration() - (1000 * getMediaDuration(audioRecorded))) - offset;
         qWarning() << "Audio offset: " << audioOffset << " ms";
         logTextEdit->append(QString("Audio offset: %1 ms").arg(audioOffset));
 
@@ -885,8 +877,8 @@ void MainWindow::mixAndRender(double vocalVolume) {
     chooseInputButton->setEnabled(true);
     chooseInputAction->setEnabled(true);
 
-    int totalDuration = getMediaDuration(currentVideoFile);  // Get the total duration
-    int recordingDuration = getMediaDuration(webcamRecorded);  // Get the recording duration
+    int totalDuration = static_cast<int>(getMediaDuration(currentVideoFile));  // Get the total duration
+    int recordingDuration = static_cast<int>(getMediaDuration(webcamRecorded));  // Get the recording duration
     int stopDuration = ( totalDuration - recordingDuration );
     if ( stopDuration < 0 )
         stopDuration = 0;
@@ -1099,7 +1091,7 @@ void MainWindow::updateProgress(const QString& output, QProgressBar* progressBar
 }
 
 
-int MainWindow::getMediaDuration(const QString &filePath) {
+double MainWindow::getMediaDuration(const QString &filePath) {
     QProcess ffprobeProcess;
     ffprobeProcess.start("ffprobe", QStringList() << "-v" << "error" << "-show_entries" << "format=duration" << "-of" << "default=noprint_wrappers=1:nokey=1" << filePath);
     ffprobeProcess.waitForFinished();
@@ -1115,7 +1107,7 @@ int MainWindow::getMediaDuration(const QString &filePath) {
 
     int durationInSeconds = static_cast<int>(duration);
     qDebug() << "Media duration:" << durationInSeconds << "seconds";
-    return durationInSeconds;
+    return duration;
 }
 
 void MainWindow::updatePlaybackDuration() {

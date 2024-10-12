@@ -591,51 +591,23 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status) {
 
 }
 
-void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
-
-    if ( QMediaPlayer::PlaybackState::PlayingState == state ) {
-        
-        if ( !playbackTimer->isActive())
-            playbackTimer->start(1000);
-
-        if ( !isPlayback ) // if loading/decoding
-            addProgressSong(scene, getMediaDuration(currentPlayback));
-
-        if ( isRecording ) {
-
-            audioRecorder->startRecording(audioRecorded);
-            audioRecorderOffset = mediaRecorder->duration() - offset;
-            
-            logTextEdit->append(QString("Audio Rec Latency: %1 ms").arg(audioRecorderOffset));
-
-        }
-
-        isPlayback = true; // enable seeking
-    }
-
-}
-
 void MainWindow::onDurationChanged(qint64 currentDuration) {
 
-    if ( currentDuration > 0 ) {
-
-        offset = currentDuration;
-        logTextEdit->append(QString("Latency duration: %1 ms").arg(offset));
-        disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);
-        vizPlayer->play();
-    
-    }
-
+        offset = currentDuration - player->position();
+        
 }
 
 void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
 
     if ( QMediaRecorder::RecorderState::RecordingState == state ) {
        
+        audioRecorder->startRecording(audioRecorded);
         // Update UI to show recording status
         recordingIndicator->show();
         singButton->setText("Finish!");
         singButton->setEnabled(true);
+
+        vizPlayer->play();
 
     }
 
@@ -651,7 +623,21 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
 }
 
 
-// Simplified start recording logic
+void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
+
+    if ( QMediaPlayer::PlaybackState::PlayingState == state ) {
+        
+        if ( !playbackTimer->isActive())
+            playbackTimer->start(1000);
+
+        if ( !isPlayback ) // if loading
+            addProgressSong(scene, getMediaDuration(currentPlayback));
+
+        isPlayback = true; // enable seeking
+    }
+
+}
+
 void MainWindow::startRecording() {
     try {
         if (currentVideoFile.isEmpty()) {
@@ -936,7 +922,7 @@ void MainWindow::mixAndRender(double vocalVolume) {
                         afftdn=nf=-20:nr=10:nt=w,speechnorm,acompressor=threshold=0.5:ratio=4,highpass=f=200,%2 \
                         aecho=0.6:0.4:69|51:0.21|0.13,treble=g=12,volume=%3[vocals]; \
                         [2:a][vocals]amix=inputs=2:normalize=0,aresample=async=1[wakkamix];%4" 
-                        ).arg(audioRecorderOffset)
+                        ).arg(offset)
                         .arg(talent)
                         .arg(vocalVolume)
                         .arg(videorama);

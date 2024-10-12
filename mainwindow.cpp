@@ -595,6 +595,14 @@ void MainWindow::onDurationChanged(qint64 currentDuration) {
 
     if ( player->playbackState() == QMediaPlayer::PlaybackState::PlayingState ) {
         offset = currentDuration - player->position();
+        vizPlayer->seek(offset);
+#ifdef __linux__
+// Avoid breaking sound when seeking
+        player->pause();
+        player->setAudioOutput(nullptr);
+        player->setAudioOutput(audioOutput.data());
+        player->play(); // the show must go on!
+#endif
         disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);
     } 
         

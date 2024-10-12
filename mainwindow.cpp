@@ -615,11 +615,12 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
 }
 
 void MainWindow::onDurationChanged(qint64 currentDuration) {
-
-    offset = currentDuration;
-    logTextEdit->append(QString("Latency duration: %1 ms").arg(offset));
-    disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);
     
+    if ( !player->position() ) { // win32 needs this check
+        offset = currentDuration;
+        logTextEdit->append(QString("Latency duration: %1 ms").arg(offset));
+        disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);
+    }
     vizPlayer->play(); // playback triggers only we are sure recording is happening
 
 }

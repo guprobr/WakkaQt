@@ -75,6 +75,7 @@ private:
     qint64 startEventTime = 0;
     qint64 recordingEventTime = 0;
     qint64 offset = 0;
+    qint64 audioOffset = 0;
 
     QAudioDevice selectedDevice;
 

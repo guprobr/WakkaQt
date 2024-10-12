@@ -618,8 +618,8 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
 void MainWindow::onDurationChanged(qint64 currentDuration) {
 
     if ( player->playbackState() == QMediaPlayer::PlaybackState::PlayingState ) {
-        offset = currentDuration; // - player->position();
-        audioOffset = currentDuration - player->position();
+        offset = currentDuration - player->position();
+        audioOffset = offset - player->position();
         qWarning() << "Latency Duration: " << offset << " ms";
         logTextEdit->append(QString("Latency duration: %1 ms").arg(offset));
         qWarning() << "Audio Latency Duration: " << audioOffset << " ms";

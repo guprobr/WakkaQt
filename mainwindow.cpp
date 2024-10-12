@@ -606,9 +606,6 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
             audioRecorder->startRecording(audioRecorded);
             audioRecorderOffset = mediaRecorder->duration() - offset;
             
-            if ( !audioRecorderOffset ) // workaround for windows
-                audioRecorderOffset = offset;
-
             logTextEdit->append(QString("Audio Rec Latency: %1 ms").arg(audioRecorderOffset));
 
         }
@@ -620,11 +617,14 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
 
 void MainWindow::onDurationChanged(qint64 currentDuration) {
 
-    offset = currentDuration;
-    logTextEdit->append(QString("Latency duration: %1 ms").arg(offset));
-    disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);
+    if ( currentDuration > 0 ) {
+
+        offset = currentDuration;
+        logTextEdit->append(QString("Latency duration: %1 ms").arg(offset));
+        disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);
+        vizPlayer->play();
     
-    vizPlayer->play(); // playback triggers only we if its really recording
+    }
 
 }
 

@@ -578,8 +578,7 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status) {
         banner->setToolTip(currentVideoName);
         
         if ( isRecording ) {
-            
-            offset = 0;
+
             mediaRecorder->record(); // mediaRecorder must start only after video loaded
             // Start listening for the first duration change
             connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);
@@ -605,7 +604,13 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
         if ( isRecording ) {
 
             audioRecorder->startRecording(audioRecorded);
+            audioRecorderOffset = mediaRecorder->duration() - offset;
             
+            if ( !audioRecorderOffset ) // workaround for windows
+                audioRecorderOffset = offset;
+
+            logTextEdit->append(QString("Audio Rec Latency: %1 ms").arg(audioRecorderOffset));
+
         }
 
         isPlayback = true; // enable seeking
@@ -614,15 +619,12 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
 }
 
 void MainWindow::onDurationChanged(qint64 currentDuration) {
-    
-    if ( !player->position() )
-        vizPlayer->play(); // playback triggers only when we are sure recording is happening
-    else {
-        if ( !audioRecorderOffset )
-            audioRecorderOffset = currentDuration - offset;
-    }
 
-    offset = currentDuration - player->position();
+    offset = currentDuration;
+    logTextEdit->append(QString("Latency duration: %1 ms").arg(offset));
+    disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);
+    
+    vizPlayer->play(); // playback triggers only we if its really recording
 
 }
 
@@ -648,6 +650,8 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
 
 }
 
+
+// Simplified start recording logic
 void MainWindow::startRecording() {
     try {
         if (currentVideoFile.isEmpty()) {
@@ -710,7 +714,6 @@ void MainWindow::stopRecording() {
         qWarning() << "Recording stopped.";
         qWarning() << "Latency Duration: " << offset << " ms";
         logTextEdit->append(QString("Rec stop: Latency duration: %1 ms").arg(offset));
-        logTextEdit->append(QString("AudioRec Latency: %1 ms").arg(audioRecorderOffset));
 
         recordingIndicator->hide();
         webcamPreviewWidget->hide();

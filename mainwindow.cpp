@@ -584,7 +584,7 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status) {
             connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);
 
         } else {
-            vizPlayer->play(); 
+            vizPlayer->play(); // when not recording. play after load
         }
 
     }
@@ -595,7 +595,9 @@ void MainWindow::onDurationChanged(qint64 currentDuration) {
 
     if ( player->playbackState() == QMediaPlayer::PlaybackState::PlayingState )
         offset = currentDuration - player->position();
-        //disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);
+    else
+        vizPlayer->play();
+    
 }
 
 void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
@@ -608,7 +610,7 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
         singButton->setText("Finish!");
         singButton->setEnabled(true);
 
-        vizPlayer->play();
+        //vizPlayer->play();
 
     }
 

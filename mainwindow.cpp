@@ -581,7 +581,8 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status) {
 
         // Start listening for the first duration change
             connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);
-            mediaRecorder->record(); // start recording but wait for recording to play
+            mediaRecorder->record(); // start recording but wait recording state to start playback
+            audioRecorder->startRecording(audioRecorded);
         
         } else {
             vizPlayer->play(); // if not recording. Just play right after load
@@ -608,7 +609,6 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
         singButton->setEnabled(true);
 
         vizPlayer->play();
-        audioRecorder->startRecording(audioRecorded); // audioRecorder has less latency, start immediately with recording to sync
 
     }
 

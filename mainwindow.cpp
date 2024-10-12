@@ -651,8 +651,7 @@ void MainWindow::startRecording() {
 void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
 
     if ( QMediaRecorder::RecorderState::RecordingState == state ) {
-
-        audioRecorder->startRecording(audioRecorded);        
+       
         // Update UI to show recording status
         recordingIndicator->show();
         singButton->setText("Finish!");
@@ -675,6 +674,7 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
 void MainWindow::onDurationChanged(qint64 currentDuration) {
 
         if ( !player->position() ) {
+            audioRecorder->startRecording(audioRecorded);
             vizPlayer->play();
         }
 
@@ -927,7 +927,7 @@ void MainWindow::mixAndRender(double vocalVolume) {
                         afftdn=nf=-20:nr=10:nt=w,speechnorm,acompressor=threshold=0.5:ratio=4,highpass=f=200,%2 \
                         aecho=0.6:0.4:69|51:0.21|0.13,treble=g=12,volume=%3[vocals]; \
                         [2:a][vocals]amix=inputs=2:normalize=0,aresample=async=1[wakkamix];%4" 
-                        ).arg(offset)
+                        ).arg(offset/2)
                         .arg(talent)
                         .arg(vocalVolume)
                         .arg(videorama);

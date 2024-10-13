@@ -662,24 +662,28 @@ void MainWindow::stopRecording() {
             return;
         }
 
+        // OFFSETs
+        qint64 lastPos = player->position();
+        qint64 duration = 1000 * getMediaDuration(currentVideoFile);
+
         if ( audioRecorder->isRecording() )
             audioRecorder->stopRecording();
 
+        if ( mediaRecorder->isAvailable() ) {
+            mediaRecorder->stop();
+        }
+
         if ( camera->isAvailable() && camera->isActive() )
             camera->stop();
-
-        // OFFSETs
-        qint64 lastPos = player->position();
-        qint64 duration = player->duration();
 
         // mediaRecorder offset
         offset = ( mediaRecorder->duration() + ( duration - lastPos )) -  duration;
         qWarning() << "Camera Latency calc: " << offset << " ms";
         logTextEdit->append(QString("Camera Latency calc: %1 ms").arg(offset));
-        
-        if ( mediaRecorder->isAvailable() ) {
-            mediaRecorder->stop();
-        }
+        // AudioRecorder offset
+        audioOffset = (1000 * getMediaDuration(audioRecorded) + ( duration - lastPos )) -  duration;
+        qWarning() << "Audio Latency calc: " << audioOffset << " ms";
+        logTextEdit->append(QString("Audio Latency calc: %1 ms").arg(audioOffset));
 
         if ( player ) {
             player->stop();
@@ -703,11 +707,6 @@ void MainWindow::stopRecording() {
         QFile fileAudio(audioRecorded);
         QFile fileCam(webcamRecorded);
         if (fileAudio.size() > 0 && fileCam.size() > 0 ) {
-
-            // AudioRecorder offset
-            audioOffset = (1000 * getMediaDuration(audioRecorded) + ( duration - lastPos )) -  duration;
-            qWarning() << "Audio Latency calc: " << audioOffset << " ms";
-            logTextEdit->append(QString("Audio Latency calc: %1 ms").arg(audioOffset));
 
             qWarning() << "Recording saved successfully";
             renderAgain();

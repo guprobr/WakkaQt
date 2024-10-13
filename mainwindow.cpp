@@ -589,8 +589,6 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status) {
         if ( !playbackTimer->isActive())
             playbackTimer->start(1000);
 
-        recordingTimer.restart();
-
         vizPlayer->play();
                 
     }
@@ -613,12 +611,6 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
 
         isPlayback = true; // enable seeking now
         
-        qint64 delay = recordingTimer.elapsed();
-        if (delay ) {
-            qWarning() << "Playback command delayed by" << delay << "ms!";
-            offset = delay;
-        }
-
     }
 
 }
@@ -659,14 +651,13 @@ void MainWindow::startRecording() {
 
         if (camera && mediaRecorder && player && vizPlayer) {
 
-            //playVideo(currentVideoFile); // playback already loaded/decoded before, less overhead for low-end machines
             connect(player.data(), &QMediaPlayer::positionChanged, this, &MainWindow::onPlayerPosChanged);
             
             camera->start(); // prep camera first
             
-            connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onRecorderDurationChanged);
-            mediaRecorder->record(); // start recording video
+            recordingTimer.start();
             audioRecorder->startRecording(audioRecorded); // start audio recorder
+            mediaRecorder->record(); // start recording video            
             
         } else {
             qWarning() << "Failed to initialize camera, media recorder or player.";
@@ -690,23 +681,22 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
     
         
         vizPlayer->seek(0);
-        player->pause();
 #ifdef __linux__
+        player->pause();
         player->setAudioOutput(nullptr);
         player->setAudioOutput(audioOutput.data());
 #endif
-        recordingTimer.restart();
         player->play();
+
+        qint64 delay = recordingTimer.elapsed();
+        if (delay ) {
+            qWarning() << "Media record command delayed by" << delay << "ms!";
+            offset = delay;
+        }
 
     }
     
 }
-
-
-void MainWindow::onRecorderDurationChanged(qint64 currentDuration) {
-    
-}
-
 
 // recording FINISH button
 void MainWindow::stopRecording() {
@@ -1479,7 +1469,6 @@ void MainWindow::disconnectAllSignals() {
     if (mediaRecorder) {
         disconnect(mediaRecorder.data(), &QMediaRecorder::recorderStateChanged, this, &MainWindow::onRecorderStateChanged);
         disconnect(mediaRecorder.data(), &QMediaRecorder::errorOccurred, this, &MainWindow::handleRecorderError);
-        disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onRecorderDurationChanged);
     }
 
     if (player) {

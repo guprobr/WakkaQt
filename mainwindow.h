@@ -46,7 +46,6 @@ public:
     void addVideoDisplayWidgetInDialog(); // Method to add a VideoDisplayWidget in a dialog
 
 private slots:
-    void onRecorderDurationChanged(qint64 currentDuration);
     void onRecorderStateChanged(QMediaRecorder::RecorderState state);
     void onPlaybackStateChanged(QMediaPlayer::PlaybackState state);
     void onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status);

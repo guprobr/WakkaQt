@@ -624,8 +624,10 @@ void MainWindow::onPlayerPosChanged(qint64 position) {
 }
 
 void MainWindow::onRecorderDurationChanged(qint64 currentDuration) {
-
-    offset = currentDuration - player->position();
+    
+    if ( player->playbackState() == QMediaPlayer::PlayingState && currentDuration ) {
+        offset = currentDuration - player->position();
+    }
 
 }
 
@@ -662,8 +664,9 @@ void MainWindow::startRecording() {
             connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onRecorderDurationChanged);
             
             camera->start(); // prep camera first
-            mediaRecorder->record(); // start recording video            
             audioRecorder->startRecording(audioRecorded); // start audio recorder
+            mediaRecorder->record(); // start recording video            
+            
             
         } else {
             qWarning() << "Failed to initialize camera, media recorder or player.";
@@ -686,8 +689,8 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
         singAction->setEnabled(true);
         
         vizPlayer->seek(0);
-        player->pause();
 #ifdef __linux__
+        player->pause();
         player->setAudioOutput(nullptr);
         player->setAudioOutput(audioOutput.data());
 #endif

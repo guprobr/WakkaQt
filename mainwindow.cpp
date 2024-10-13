@@ -181,8 +181,8 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Instantiate SndWidget
     soundLevelWidget = new SndWidget(this);
-    soundLevelWidget->setMinimumSize(200, 32);
-    soundLevelWidget->setMaximumSize(1920, 32);
+    soundLevelWidget->setMinimumSize(200, 25);
+    soundLevelWidget->setMaximumHeight(50);
     soundLevelWidget->setToolTip("Sound input visualization widget");
 
     // Device label
@@ -210,7 +210,7 @@ MainWindow::MainWindow(QWidget *parent)
     logTextEdit = new QTextEdit(this);
     logTextEdit->setReadOnly(true);
     logUI(Wakka_welcome);
-    logTextEdit->setFixedHeight(50);
+    logTextEdit->setFixedHeight(75);
     logTextEdit->setFont(QFont("Arial", 9));
     logTextEdit->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     // Move cursor to the end of the text when text is appended
@@ -221,8 +221,8 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Instantiate Audio Visualizer
     vizWidget = new AudioVisualizerWidget(this);
-    vizWidget->setMinimumSize(200, 32);
-    vizWidget->setMaximumSize(1920, 32);
+    vizWidget->setMinimumSize(200, 25);
+    vizWidget->setMaximumHeight(75);
     vizWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     vizWidget->setToolTip("Yelloopy© Audio Visualizer");
 
@@ -658,8 +658,6 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
 
     if ( QMediaRecorder::RecordingState == state ) {
         
-        
-
         // Update UI to show recording status
         recordingIndicator->show();
         singButton->setText("Finish!");
@@ -963,7 +961,7 @@ void MainWindow::mixAndRender(double vocalVolume) {
           << "-filter_complex"      // masterization and vocal enhancement of recorded audio
           << QString("[0:a]aformat=channel_layouts=stereo,atrim=%1ms,asetpts=PTS-STARTPTS, \
                         afftdn=nf=-20:nr=10:nt=w,speechnorm,acompressor=threshold=0.5:ratio=4,highpass=f=200,%2 \
-                        aecho=0.5:0.5:69|51:0.21|0.13,treble=g=12,volume=%3[vocals]; \
+                        aecho=0.9:0.5:69|51:0.21|0.13,treble=g=12,volume=%3[vocals]; \
                         [2:a][vocals]amix=inputs=2:normalize=0,aresample=async=1[wakkamix];%4" 
                         ).arg(audioOffset)
                         .arg(talent)

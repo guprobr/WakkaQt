@@ -576,9 +576,6 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status) {
         setBanner(currentVideoName); // video loaded, set title
         banner->setToolTip(currentVideoName);
         
-        if ( isRecording ) 
-            startTimer.start();
-        
         vizPlayer->play(); // if recording we must play after recorders
         
     }
@@ -602,7 +599,7 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
 
             // Calculate latency offset
             if ( !offset ) {
-                offset = recordingTimer.elapsed() - startTimer.elapsed();
+                offset = startTimer.elapsed() - recordingTimer.elapsed();
                 qWarning() << "Calculated system latency offset: " << offset << "ms";      
                 recordingTimer.invalidate();
                 startTimer.invalidate();
@@ -654,10 +651,10 @@ void MainWindow::startRecording() {
 
             // prep camera first
             camera->start();
+
+            startTimer.start();
             playVideo(currentVideoFile); // decode and load video src
 
-            // Start recording timer for synchronization
-            recordingTimer.start();
             mediaRecorder->record();
             audioRecorder->startRecording(audioRecorded);
             connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onRecorderDurationChanged);
@@ -680,6 +677,7 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
         singButton->setText("Finish!");
         singButton->setEnabled(true);
 
+        recordingTimer.start();
     }
     
 }

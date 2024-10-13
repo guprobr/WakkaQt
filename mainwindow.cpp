@@ -671,6 +671,12 @@ void MainWindow::startRecording() {
 void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
 
     if ( QMediaRecorder::RecordingState == state ) {
+
+        qint64 delay = recordingTimer.elapsed();
+        if (delay ) {
+            qWarning() << "Media record command delayed by" << delay << "ms!";
+            offset = delay;
+        }
         
         // Update UI to show recording status
         recordingIndicator->show();
@@ -678,7 +684,6 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
         singAction->setText("Finish recording");
         singButton->setEnabled(true);
         singAction->setEnabled(true);
-    
         
         vizPlayer->seek(0);
 #ifdef __linux__
@@ -687,12 +692,6 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
         player->setAudioOutput(audioOutput.data());
 #endif
         player->play();
-
-        qint64 delay = recordingTimer.elapsed();
-        if (delay ) {
-            qWarning() << "Media record command delayed by" << delay << "ms!";
-            offset = delay;
-        }
 
     }
     

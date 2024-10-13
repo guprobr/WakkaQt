@@ -575,8 +575,11 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status) {
         
         setBanner(currentVideoName); // video loaded, set title
         banner->setToolTip(currentVideoName);
-        if ( !isRecording ) 
-            vizPlayer->play(); // if recording we must play after recorders
+        
+        if ( isRecording ) 
+            startTimer.start();
+        
+        vizPlayer->play(); // if recording we must play after recorders
         
     }
 }
@@ -594,8 +597,17 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
         isPlayback = true; // enable seeking
 
         if ( isRecording ) {
+
             connect(player.data(), &QMediaPlayer::positionChanged, this, &MainWindow::onPlayerPosChanged);
-            
+
+            // Calculate latency offset
+            if ( !offset ) {
+                offset = recordingTimer.elapsed() - startTimer.elapsed();
+                qWarning() << "Calculated system latency offset: " << offset << "ms";      
+                recordingTimer.invalidate();
+                startTimer.invalidate();
+            }
+
         }
 
     }
@@ -636,6 +648,7 @@ void MainWindow::startRecording() {
         // Set up the house for recording
         resetMediaComponents(false);
         isRecording = true;
+        offset = 0;
 
         if (camera && mediaRecorder && player && vizPlayer) {
 
@@ -644,8 +657,7 @@ void MainWindow::startRecording() {
             playVideo(currentVideoFile); // decode and load video src
 
             // Start recording timer for synchronization
-            recordingTimer.start();  // Record the timestamp right before starting recording
-
+            recordingTimer.start();
             mediaRecorder->record();
             audioRecorder->startRecording(audioRecorded);
             connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onRecorderDurationChanged);
@@ -662,20 +674,18 @@ void MainWindow::startRecording() {
 void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
 
     if ( QMediaRecorder::RecorderState::RecordingState == state ) {
-       // Update UI to show recording status
+        
+        // Update UI to show recording status
         recordingIndicator->show();
         singButton->setText("Finish!");
         singButton->setEnabled(true);
-        // Calculate latency offset
-        offset = recordingTimer.elapsed();
-        qWarning() << "Calculated system latency offset: " << offset << "ms";      
-        recordingTimer.invalidate();
-    }
 
+    }
+    
 }
 
 void MainWindow::onRecorderDurationChanged(qint64 duration) {
-    player->play();
+
 }
 
 // recording FINISH button

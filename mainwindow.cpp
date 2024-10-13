@@ -668,14 +668,7 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
         recordingIndicator->show();
         singButton->setText("Finish!");
         singButton->setEnabled(true);
-
-    }
-    
-}
-
-void MainWindow::onRecorderDurationChanged(qint64 duration) {
     // Calculate system latency offset
-    if ( !offset ) {
         offset = recordingTimer.elapsed();
         qWarning() << "Calculated system latency offset: " << offset << "ms";      
         recordingTimer.invalidate();
@@ -686,8 +679,13 @@ void MainWindow::onRecorderDurationChanged(qint64 duration) {
         player->setAudioOutput(audioOutput.data());
 #endif
         vizPlayer->play();
+
     }
     
+}
+
+void MainWindow::onRecorderDurationChanged(qint64 duration) {
+
 }
 
 // recording FINISH button

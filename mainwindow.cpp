@@ -579,39 +579,8 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status) {
         vizPlayer->play(); // play as soon as video loads
         
     }
-
 }
 
-void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
-
-    if ( QMediaRecorder::RecorderState::RecordingState == state ) {
-        
-        // Update UI to show recording status
-        recordingIndicator->show();
-        singButton->setText("Finish!");
-        singButton->setEnabled(true);
-
-    }
-
-    if ( QMediaRecorder::RecorderState::StoppedState == state ) {
-        
-        if ( player && vizPlayer ) {
-            vizPlayer->stop();
-            playbackTimer->stop();
-        }
-
-    }
-
-}
-
-void MainWindow::onDurationChanged(qint64 currentDuration) {
-
-    offset = -1 * ( player->position() - currentDuration); // MARK offset
-    qWarning() << "Latency Duration: " << offset << " ms";
-    logTextEdit->append(QString("Latency duration: %1 ms").arg(offset));
-    disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);
-        
-}
 
 void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
 
@@ -628,10 +597,8 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
         if ( isRecording ) {
         // Start listening for the first duration change
             connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);
-            mediaRecorder->record(); // start Recorder when playback starts
-            audioRecorder->startRecording(audioRecorded);
+            mediaRecorder->record(); // start Recorder when playback is started
         }
-
     }
 
 }
@@ -664,7 +631,7 @@ void MainWindow::startRecording() {
 
             // prep camera first
             camera->start();
-            playVideo(currentVideoFile); // just load video on AudioVizMediaPlayer, it will start decoding and loading
+            playVideo(currentVideoFile); // load video on AudioVizMediaPlayer, it will start decoding and loading
 
         } else {
             qWarning() << "Failed to initialize camera, media recorder or player.";
@@ -673,6 +640,20 @@ void MainWindow::startRecording() {
         logTextEdit->append("Error during startRecording: " + QString::fromStdString(e.what()));
         handleRecordingError();
     }
+}
+
+void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
+    if ( QMediaRecorder::RecorderState::RecordingState == state ) {
+       // Update UI to show recording status
+        recordingIndicator->show();
+        singButton->setText("Finish!");
+        singButton->setEnabled(true);
+    }
+}
+
+void MainWindow::onDurationChanged(qint64 currentDuration) {
+    audioRecorder->startRecording(audioRecorded);
+    disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);    
 }
 
 // recording FINISH button
@@ -684,6 +665,10 @@ void MainWindow::stopRecording() {
             QMessageBox::critical(this, "ERROR.", "Tried to stop Recording, but we are not recording. ERROR.");
             return;
         }
+
+        offset = ( mediaRecorder->duration() + ( player->duration() - player->position() )) -  player->duration();
+        qWarning() << "Latency calc: " << offset << " ms";
+        logTextEdit->append(QString("Latency calc: %1 ms").arg(offset));
         
         if ( audioRecorder->isRecording() )
             audioRecorder->stopRecording();
@@ -693,6 +678,11 @@ void MainWindow::stopRecording() {
 
         if ( mediaRecorder->isAvailable() ) {
             mediaRecorder->stop();
+        }
+        
+        if ( player && vizPlayer ) {
+            vizPlayer->stop();
+            playbackTimer->stop();
         }
 
         qWarning() << "Recording stopped.";

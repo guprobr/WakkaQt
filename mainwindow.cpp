@@ -230,8 +230,11 @@ MainWindow::MainWindow(QWidget *parent)
     previewCheckbox = new QCheckBox("Cam Preview");
     previewCheckbox->setFont(QFont("Arial", 8));
     previewCheckbox->setToolTip("Toggle camera preview");
+    offsetCheckbox = new QCheckBox("No offset");
+    offsetCheckbox->setFont(QFont("Arial", 8));
+    offsetCheckbox->setToolTip("Disable automatic latency compensation (for debug)");
     indicatorLayout->addWidget(previewCheckbox);
-
+    indicatorLayout->addWidget(offsetCheckbox);
 
     // Layout
     QWidget *containerWidget = new QWidget(this);
@@ -734,6 +737,14 @@ void MainWindow::stopRecording() {
             audioOffset = offset + (1000 * getMediaDuration(audioRecorded) + audioOffset) - (1000 * getMediaDuration(currentVideoFile));
             qWarning() << "Audio Latency calc: " << audioOffset << " ms";
             logTextEdit->append(QString("Audio Latency calc: %1 ms").arg(audioOffset));
+
+            if ( offsetCheckbox->isChecked() ) {
+                qWarning() << "Disabling latency offsets!";
+                logTextEdit->append("Latency offsets are disabled!");
+                audioOffset = 0;
+                videoOffset = 0;
+            }
+
             renderAgain();
 
         } else {

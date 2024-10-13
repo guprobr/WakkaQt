@@ -111,6 +111,7 @@ private:
     QLabel *banner;
 
     QCheckBox *previewCheckbox;
+    QCheckBox *offsetCheckbox;
 
     // yt-dlp
     QLineEdit *urlInput;

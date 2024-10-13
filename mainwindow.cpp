@@ -591,16 +591,6 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status) {
 
         recordingTimer.restart();
 
-        connect(player.data(), &QMediaPlayer::playbackStateChanged, this, [this](QMediaPlayer::PlaybackState state) {
-            if (state == QMediaPlayer::PlayingState) {
-                qint64 delay = recordingTimer.elapsed();
-                if (delay > 10) {
-                    qWarning() << "Playback command delayed by" << delay << "ms!";
-                    offset = delay;
-                }
-            }
-        });
-
         vizPlayer->play();
                 
     }
@@ -622,6 +612,12 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
             addProgressSong(scene, static_cast<int>(getMediaDuration(currentPlayback)));
 
         isPlayback = true; // enable seeking now
+        
+        qint64 delay = recordingTimer.elapsed();
+        if (delay ) {
+            qWarning() << "Playback command delayed by" << delay << "ms!";
+            offset = delay;
+        }
 
     }
 
@@ -660,7 +656,6 @@ void MainWindow::startRecording() {
         // Set up the house for recording
         //resetMediaComponents(false); // we dont reset anymore, see below
         isRecording = true;
-        //offset = 0;
 
         if (camera && mediaRecorder && player && vizPlayer) {
 
@@ -693,8 +688,8 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
         singButton->setEnabled(true);
         singAction->setEnabled(true);
     
-        vizPlayer->seek(0);
         
+        vizPlayer->seek(0);
         player->pause();
 #ifdef __linux__
         player->setAudioOutput(nullptr);
@@ -703,7 +698,6 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
         recordingTimer.restart();
         player->play();
 
-
     }
     
 }
@@ -711,13 +705,6 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
 
 void MainWindow::onRecorderDurationChanged(qint64 currentDuration) {
     
-   /* if ( !offset ) {
-        // Calculate system latency offset
-        offset = recordingTimer.elapsed();
-        qWarning() << "Calculated system latency offset: " << offset << "ms";      
-        recordingTimer.invalidate();
-    } */
-
 }
 
 
@@ -1092,6 +1079,8 @@ void MainWindow::mixAndRender(double vocalVolume) {
         playVideo(outputFilePath);
         logUI("Playing mix!");
         logUI(QString("System Latency offset: %1 ms").arg(offset));
+        logUI(QString("Cam Latency: %1 ms").arg(videoOffset));
+        logUI(QString("Audio Latency: %1 ms").arg(audioOffset));
 
     });
 

@@ -37,7 +37,7 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    QString Wakka_versione = "v0.986a";
+    QString Wakka_versione = "v0.98666a";
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
@@ -46,6 +46,7 @@ public:
     void addVideoDisplayWidgetInDialog(); // Method to add a VideoDisplayWidget in a dialog
 
 private slots:
+    void onRecorderDurationChanged(qint64 currentDuration);
     void onRecorderStateChanged(QMediaRecorder::RecorderState state);
     void onPlaybackStateChanged(QMediaPlayer::PlaybackState state);
     void onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status);
@@ -73,10 +74,8 @@ private:
     bool isRecording;
     bool isPlayback;
     
-    QElapsedTimer recordingTimer;
-
-    qint64 offset = 0;
     qint64 pos = 0;
+    qint64 offset = 0;
     qint64 videoOffset = 0;
     qint64 audioOffset = 0;
 

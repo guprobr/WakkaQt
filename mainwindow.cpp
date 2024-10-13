@@ -595,16 +595,6 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
 
         isPlayback = true; // enable seeking
 
-        if ( isRecording ) {
-            connect(player.data(), &QMediaPlayer::positionChanged, this, &MainWindow::onPlayerPosChanged);
-            connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onRecorderDurationChanged);
-
-            recordingTimer.start();
-            mediaRecorder->record();
-            audioRecorder->startRecording(audioRecorded);
-            
-        }
-
     }
 
 }
@@ -641,7 +631,7 @@ void MainWindow::startRecording() {
         chooseInputDevice();  // User must select input device
 
         // Set up the house for recording
-        resetMediaComponents(false);
+        //resetMediaComponents(false);
         isRecording = true;
         offset = 0;
 
@@ -649,7 +639,13 @@ void MainWindow::startRecording() {
 
             // prep camera first
             camera->start();
-            playVideo(currentVideoFile); // decode and load video src
+            //playVideo(currentVideoFile); // decode and load video src
+            connect(player.data(), &QMediaPlayer::positionChanged, this, &MainWindow::onPlayerPosChanged);
+            connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onRecorderDurationChanged);
+
+            recordingTimer.start();
+            mediaRecorder->record();
+            audioRecorder->startRecording(audioRecorded);
             
         } else {
             qWarning() << "Failed to initialize camera, media recorder or player.";
@@ -677,8 +673,9 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
         player->pause();
         player->setAudioOutput(nullptr);
         player->setAudioOutput(audioOutput.data());
+        player->play();
 #endif
-        vizPlayer->play();
+        
 
     }
     

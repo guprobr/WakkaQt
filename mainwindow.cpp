@@ -597,7 +597,6 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
             connect(player.data(), &QMediaPlayer::positionChanged, this, &MainWindow::onPlayerPosChanged);
             // start Recorders
             mediaRecorder->record();
-            audioRecorder->startRecording(audioRecorded);
         }
 
     }
@@ -605,6 +604,9 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
 }
 
 void MainWindow::onPlayerPosChanged(qint64 pos) {
+
+        if ( !audioRecorder->isRecording() )
+            audioRecorder->startRecording(audioRecorded);
 
         if ( player->playbackState() == QMediaPlayer::PlayingState && pos ) {
             // mediaRecorder offset

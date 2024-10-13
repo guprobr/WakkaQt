@@ -574,19 +574,19 @@ void MainWindow::chooseVideo()
 
 void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status) {
 
-    if ( QMediaPlayer::MediaStatus::LoadedMedia == status ) {
+    if ( QMediaPlayer::LoadedMedia == status ) {
         
         setBanner(currentVideoName); // video loaded, set title
         banner->setToolTip(currentVideoName);
-        
-        vizPlayer->play(); // if recording we must play after recorders
+        if ( !isRecording )
+            vizPlayer->play();
         
     }
 }
 
 void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
 
-    if ( QMediaPlayer::PlaybackState::PlayingState == state ) {
+    if ( QMediaPlayer::PlayingState == state ) {
         
         if ( !playbackTimer->isActive())
             playbackTimer->start(1000);
@@ -597,17 +597,13 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
         isPlayback = true; // enable seeking
 
         if ( isRecording ) {
-
             connect(player.data(), &QMediaPlayer::positionChanged, this, &MainWindow::onPlayerPosChanged);
-
-            // Calculate latency offset
+            // Calculate system latency offset
             if ( !offset ) {
-                offset = startTimer.elapsed() - recordingTimer.elapsed();
+                offset = recordingTimer.elapsed();
                 qWarning() << "Calculated system latency offset: " << offset << "ms";      
                 recordingTimer.invalidate();
-                startTimer.invalidate();
             }
-
         }
 
     }
@@ -618,7 +614,7 @@ void MainWindow::onPlayerPosChanged(qint64 pos) {
 
         if ( player->playbackState() == QMediaPlayer::PlayingState && pos ) {
             // mediaRecorder offset
-            videoOffset = offset + ( mediaRecorder->duration() + (player->duration() - pos)) - player->duration();
+            videoOffset = ( mediaRecorder->duration() + (player->duration() - pos)) - player->duration();
             // AudioRecorder offset
             audioOffset = (player->duration() - pos);
         }
@@ -655,9 +651,9 @@ void MainWindow::startRecording() {
             // prep camera first
             camera->start();
 
-            startTimer.start();
+            recordingTimer.start();
             playVideo(currentVideoFile); // decode and load video src
-
+            
             mediaRecorder->record();
             audioRecorder->startRecording(audioRecorded);
             connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onRecorderDurationChanged);
@@ -673,20 +669,21 @@ void MainWindow::startRecording() {
 
 void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
 
-    if ( QMediaRecorder::RecorderState::RecordingState == state ) {
+    if ( QMediaRecorder::RecordingState == state ) {
         
         // Update UI to show recording status
         recordingIndicator->show();
         singButton->setText("Finish!");
         singButton->setEnabled(true);
-
-        recordingTimer.start();
     }
     
 }
 
 void MainWindow::onRecorderDurationChanged(qint64 duration) {
-
+    
+    vizPlayer->play();
+    disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onRecorderDurationChanged);
+    
 }
 
 // recording FINISH button
@@ -700,7 +697,7 @@ void MainWindow::stopRecording() {
         }
 
         if ( player ) {
-            player->stop();
+            vizPlayer->stop();
             playbackTimer->stop();
         }
 
@@ -734,7 +731,7 @@ void MainWindow::stopRecording() {
 
             qWarning() << "Recording saved successfully";
             qWarning() << "Camera Latency calc: " << videoOffset << " ms";
-            audioOffset = offset + (1000 * getMediaDuration(audioRecorded) + audioOffset) - (1000 * getMediaDuration(currentVideoFile));
+            audioOffset = (1000 * getMediaDuration(audioRecorded) + audioOffset) - (1000 * getMediaDuration(currentVideoFile));
             qWarning() << "Audio Latency calc: " << audioOffset << " ms";
             logTextEdit->append(QString("Audio Latency calc: %1 ms").arg(audioOffset));
 

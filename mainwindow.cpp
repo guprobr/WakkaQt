@@ -688,8 +688,8 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
         singAction->setEnabled(true);
         
         vizPlayer->seek(0);
-#ifdef __linux__
         player->pause();
+#ifdef __linux__
         player->setAudioOutput(nullptr);
         player->setAudioOutput(audioOutput.data());
 #endif

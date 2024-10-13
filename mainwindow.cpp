@@ -591,10 +591,6 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
         singButton->setText("Finish!");
         singButton->setEnabled(true);
 
-        offset = -1 * player->position(); // MARK offset
-        qWarning() << "Latency Duration: " << offset << " ms";
-        logTextEdit->append(QString("Latency duration: %1 ms").arg(offset));
-
     }
 
     if ( QMediaRecorder::RecorderState::StoppedState == state ) {
@@ -610,6 +606,9 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
 
 void MainWindow::onDurationChanged(qint64 currentDuration) {
 
+    offset = -1 * ( player->position() - currentDuration); // MARK offset
+    qWarning() << "Latency Duration: " << offset << " ms";
+    logTextEdit->append(QString("Latency duration: %1 ms").arg(offset));
     disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);
         
 }

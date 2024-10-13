@@ -625,12 +625,10 @@ void MainWindow::startRecording() {
 
             // prep camera first
             camera->start();
-
-            // start Recorders
-            audioRecorder->startRecording(audioRecorded);
-            mediaRecorder->record();
-
             playVideo(currentVideoFile); // decode and load video src
+            // start Recorders
+            mediaRecorder->record();
+            audioRecorder->startRecording(audioRecorded);
 
         } else {
             qWarning() << "Failed to initialize camera, media recorder or player.";

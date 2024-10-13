@@ -614,9 +614,9 @@ void MainWindow::onPlayerPosChanged(qint64 pos) {
 
         if ( player->playbackState() == QMediaPlayer::PlayingState && pos ) {
             // mediaRecorder offset
-            videoOffset = ( mediaRecorder->duration() + (player->duration() - pos)) - player->duration();
+            videoOffset = pos;
             // AudioRecorder offset
-            audioOffset = (player->duration() - pos);
+            audioOffset = pos;
         }
         
 }
@@ -651,11 +651,13 @@ void MainWindow::startRecording() {
             // prep camera first
             camera->start();
 
-            recordingTimer.start();
+            
             playVideo(currentVideoFile); // decode and load video src
             
             mediaRecorder->record();
             audioRecorder->startRecording(audioRecorded);
+            recordingTimer.start();
+
             connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onRecorderDurationChanged);
             
         } else {
@@ -681,8 +683,10 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
 
 void MainWindow::onRecorderDurationChanged(qint64 duration) {
     
-    vizPlayer->play();
-    disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onRecorderDurationChanged);
+    if ( duration ) {
+        vizPlayer->play();
+        disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onRecorderDurationChanged);
+    }
     
 }
 
@@ -730,8 +734,9 @@ void MainWindow::stopRecording() {
         if (fileAudio.size() > 0 && fileCam.size() > 0 ) {
 
             qWarning() << "Recording saved successfully";
+            videoOffset = (1000 * getMediaDuration(webcamRecorded)) - videoOffset;
             qWarning() << "Camera Latency calc: " << videoOffset << " ms";
-            audioOffset = (1000 * getMediaDuration(audioRecorded) + audioOffset) - (1000 * getMediaDuration(currentVideoFile));
+            audioOffset = (1000 * getMediaDuration(audioRecorded)) - audioOffset;
             qWarning() << "Audio Latency calc: " << audioOffset << " ms";
             logTextEdit->append(QString("Audio Latency calc: %1 ms").arg(audioOffset));
 
@@ -1048,7 +1053,7 @@ void MainWindow::mixAndRender(double vocalVolume) {
 
         playVideo(outputFilePath);
         this->logTextEdit->append("Playing mix!");
-        this->logTextEdit->append(QString("Latency offset: %1 ms").arg(videoOffset));
+        this->logTextEdit->append(QString("System Latency offset: %1 ms").arg(offset));
 
     });
 

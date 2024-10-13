@@ -685,6 +685,9 @@ void MainWindow::onRecorderDurationChanged(qint64 currentDuration) {
         recordingTimer.invalidate();
     }
 
+    if ( player->position() >= player->duration() )
+        stopRecording(); // Let's not mess our offset system completely
+
 }
 
 
@@ -816,17 +819,24 @@ void MainWindow::handleRecordingError() {
 void MainWindow::renderAgain()
 {
 
+    qWarning() << "Recording saved successfully";
+
     qint64 n_offset = offset;
     if ( offsetCheckbox->isChecked() ) {
         qWarning() << "Disabling system latency offset!";
         logUI("System Latency offset disabled!");
         n_offset = 0;
     } 
-    // Calculate latency
-    qWarning() << "Recording saved successfully";
-    videoOffset = n_offset + ((1000 * getMediaDuration(webcamRecorded)) - pos);
+    
+    // Calculate latency    
+    // DETERMINE videoOffset
+    qint64 recDuration = 1000 * getMediaDuration(webcamRecorded);
+    videoOffset = n_offset + (recDuration - pos);
     qWarning() << "Camera Latency: " << videoOffset << " ms";
-    audioOffset = n_offset + ((1000 * getMediaDuration(audioRecorded)) - pos);
+    
+    // DETERMINE audioOffset
+    recDuration = 1000 * getMediaDuration(audioRecorded);
+    audioOffset = n_offset + (recDuration - pos);
     qWarning() << "Audio Latency: " << audioOffset << " ms";
     
     logUI(QString("System Latency: %1 ms").arg(offset));

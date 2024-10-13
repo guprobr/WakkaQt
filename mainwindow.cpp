@@ -653,12 +653,12 @@ void MainWindow::startRecording() {
 
             
             playVideo(currentVideoFile); // decode and load video src
+
+            connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onRecorderDurationChanged);
             
             mediaRecorder->record();
             audioRecorder->startRecording(audioRecorded);
-            recordingTimer.start();
-
-            connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onRecorderDurationChanged);
+            recordingTimer.start();           
             
         } else {
             qWarning() << "Failed to initialize camera, media recorder or player.";

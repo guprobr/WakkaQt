@@ -655,8 +655,8 @@ void MainWindow::startRecording() {
             
             camera->start(); // prep camera first
             
-            recordingTimer.start();
             audioRecorder->startRecording(audioRecorded); // start audio recorder
+            recordingTimer.start();
             mediaRecorder->record(); // start recording video            
             
         } else {

@@ -664,7 +664,6 @@ void MainWindow::stopRecording() {
 
         // OFFSETs
         qint64 lastPos = player->position();
-        qint64 duration = 1000 * getMediaDuration(currentVideoFile);
 
         if ( camera->isAvailable() && camera->isActive() )
             camera->stop();
@@ -677,15 +676,11 @@ void MainWindow::stopRecording() {
             audioRecorder->stopRecording();
 
         // mediaRecorder offset
-        offset = ( mediaRecorder->duration() + ( duration - lastPos )) -  duration;
+        offset = mediaRecorder->duration() - lastPos;
         qWarning() << "Camera Latency calc: " << offset << " ms";
         logTextEdit->append(QString("Camera Latency calc: %1 ms").arg(offset));
         // AudioRecorder offset
-        audioOffset = (1000 * getMediaDuration(audioRecorded) + ( duration - lastPos )) -  duration;
-        qWarning() << "audio duration: " << 1000 * getMediaDuration(audioRecorded)  << " ms";
-        qWarning() << "lastPos: " << lastPos << " ms";
-        qWarning() << "player duration: " << player->duration() << " ms";
-        qWarning() << "duration: " << duration << " ms";
+        audioOffset = 1000 * getMediaDuration(audioRecorded) - lastPos;
         qWarning() << "Audio Latency calc: " << audioOffset << " ms";
         logTextEdit->append(QString("Audio Latency calc: %1 ms").arg(audioOffset));
 

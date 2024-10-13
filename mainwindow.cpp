@@ -232,7 +232,8 @@ MainWindow::MainWindow(QWidget *parent)
     previewCheckbox->setToolTip("Toggle camera preview");
     offsetCheckbox = new QCheckBox("No offset");
     offsetCheckbox->setFont(QFont("Arial", 8));
-    offsetCheckbox->setToolTip("Disable automatic latency compensation (for debug)");
+    offsetCheckbox->setToolTip("Disable auto latency compensation");
+    offsetCheckbox->setChecked(false);
     indicatorLayout->addWidget(previewCheckbox);
     indicatorLayout->addWidget(offsetCheckbox);
 
@@ -608,6 +609,17 @@ void MainWindow::onPlayerPosChanged(qint64 position) {
         
 }
 
+void MainWindow::onRecorderDurationChanged(qint64 currentDuration) {
+    
+    if ( !offset ) {
+        // Calculate system latency offset
+        offset = recordingTimer.elapsed();
+        qWarning() << "Calculated system latency offset: " << offset << "ms";      
+        recordingTimer.invalidate();
+    }
+
+}
+
 void MainWindow::startRecording() {
     try {
         if (currentVideoFile.isEmpty()) {
@@ -636,14 +648,15 @@ void MainWindow::startRecording() {
         if (camera && mediaRecorder && player && vizPlayer) {
 
             //playVideo(currentVideoFile); // playback already loaded/decoded before, less overhead for low-end machines
-            //connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onRecorderDurationChanged);
             connect(player.data(), &QMediaPlayer::positionChanged, this, &MainWindow::onPlayerPosChanged);
             
             camera->start(); // prep camera first
-            recordingTimer.start(); // to measure system latency offset
+            
+            connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onRecorderDurationChanged);
             mediaRecorder->record(); // start recording video
             audioRecorder->startRecording(audioRecorded); // start audio recorder
-                
+            recordingTimer.start(); // this should be zero
+            
         } else {
             qWarning() << "Failed to initialize camera, media recorder or player.";
         }
@@ -662,10 +675,6 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
         singButton->setText("Finish!");
         singButton->setEnabled(true);
     
-        // Calculate system latency offset
-        offset = recordingTimer.elapsed();
-        qWarning() << "Calculated system latency offset: " << offset << "ms";      
-        recordingTimer.invalidate();
         vizPlayer->seek(0);
 #ifdef __linux__
         player->pause();
@@ -1429,7 +1438,7 @@ void MainWindow::disconnectAllSignals() {
     if (mediaRecorder) {
         disconnect(mediaRecorder.data(), &QMediaRecorder::recorderStateChanged, this, &MainWindow::onRecorderStateChanged);
         disconnect(mediaRecorder.data(), &QMediaRecorder::errorOccurred, this, &MainWindow::handleRecorderError);
-        ///disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onRecorderDurationChanged);
+        disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onRecorderDurationChanged);
     }
 
     if (player) {

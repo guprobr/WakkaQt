@@ -182,8 +182,8 @@ MainWindow::MainWindow(QWidget *parent)
     previewCheckbox->setToolTip("Toggle camera preview");
     offsetCheckbox = new QCheckBox("No offset");
     offsetCheckbox->setFont(QFont("Arial", 8));
-    offsetCheckbox->setToolTip("Disable automatic system latency compensation");
-    offsetCheckbox->setChecked(false);
+    offsetCheckbox->setToolTip("Disable automatic system latency compensation (experimental)");
+    offsetCheckbox->setChecked(true);
     
     QHBoxLayout *indicatorLayout = new QHBoxLayout();
     //indicatorLayout->addStretch();

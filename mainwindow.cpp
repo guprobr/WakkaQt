@@ -727,20 +727,7 @@ void MainWindow::stopRecording() {
         QFile fileAudio(audioRecorded);
         QFile fileCam(webcamRecorded);
         if (fileAudio.size() > 0 && fileCam.size() > 0 ) {
-
-            if ( offsetCheckbox->isChecked() ) {
-                qWarning() << "Disabling system latency offset!";
-                logTextEdit->append("System Latency offset disabled!");
-                offset = 0;
-            }
-
-            qWarning() << "Recording saved successfully";
-            videoOffset = offset + ((1000 * getMediaDuration(webcamRecorded)) - videoOffset);
-            qWarning() << "Camera Latency: " << videoOffset << " ms";
-            audioOffset = offset + ((1000 * getMediaDuration(audioRecorded)) - audioOffset);
-            qWarning() << "Audio Latency: " << audioOffset << " ms";
-            logTextEdit->append(QString("Audio Latency: %1 ms").arg(audioOffset));
-
+            
             renderAgain();
 
         } else {
@@ -826,6 +813,19 @@ void MainWindow::handleRecordingError() {
 // render //
 void MainWindow::renderAgain()
 {
+    qint64 n_offset = offset;
+    if ( offsetCheckbox->isChecked() ) {
+        qWarning() << "Disabling system latency offset!";
+        logTextEdit->append("System Latency offset disabled!");
+        n_offset = 0;
+    } 
+    // Calculate latency
+    qWarning() << "Recording saved successfully";
+    videoOffset = n_offset + ((1000 * getMediaDuration(webcamRecorded)) - videoOffset);
+    qWarning() << "Camera Latency: " << videoOffset << " ms";
+    audioOffset = n_offset + ((1000 * getMediaDuration(audioRecorded)) - audioOffset);
+    qWarning() << "Audio Latency: " << audioOffset << " ms";
+    logTextEdit->append(QString("Audio Latency: %1 ms").arg(audioOffset));
 
     playbackTimer->stop();
 

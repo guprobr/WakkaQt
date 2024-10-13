@@ -663,6 +663,7 @@ void MainWindow::startRecording() {
             camera->start(); // prep camera first
             
             audioRecorder->startRecording(audioRecorded); // start audio recorder
+            recordingTimer.restart();
             mediaRecorder->record(); // start recording video            
             
         } else {
@@ -678,8 +679,6 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
 
     if ( QMediaRecorder::RecordingState == state ) {
         
-        recordingTimer.restart();
-
         // Update UI to show recording status
         recordingIndicator->show();
         singButton->setText("Finish!");

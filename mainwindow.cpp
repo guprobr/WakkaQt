@@ -583,6 +583,8 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status) {
 
     if ( QMediaPlayer::MediaStatus::LoadedMedia == status ) {
         
+        recordingTimer.restart();
+
         setBanner(currentVideoName); // video loaded, set title
         banner->setToolTip(currentVideoName);
 
@@ -610,6 +612,11 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
             addProgressSong(scene, static_cast<int>(getMediaDuration(currentPlayback)));
 
         isPlayback = true; // enable seeking now
+
+        if ( isRecording ) {
+            offset = recordingTimer.elapsed();
+            qWarning() << "Media command delayed by" << offset << "ms!";
+        }
         
     }
 
@@ -656,7 +663,6 @@ void MainWindow::startRecording() {
             camera->start(); // prep camera first
             
             audioRecorder->startRecording(audioRecorded); // start audio recorder
-            recordingTimer.start();
             mediaRecorder->record(); // start recording video            
             
         } else {
@@ -671,13 +677,9 @@ void MainWindow::startRecording() {
 void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
 
     if ( QMediaRecorder::RecordingState == state ) {
-
-        qint64 delay = recordingTimer.elapsed();
-        if (delay ) {
-            qWarning() << "Media record command delayed by" << delay << "ms!";
-            offset = delay;
-        }
         
+        recordingTimer.restart();
+
         // Update UI to show recording status
         recordingIndicator->show();
         singButton->setText("Finish!");
@@ -708,11 +710,6 @@ void MainWindow::stopRecording() {
             return;
         }
 
-        if ( player ) {
-            vizPlayer->stop();
-            playbackTimer->stop();
-        }
-
         if ( camera->isAvailable() && camera->isActive() )
             camera->stop();
 
@@ -731,6 +728,12 @@ void MainWindow::stopRecording() {
         previewCheckbox->setChecked(false);
 
         isRecording = false;
+
+        if ( player ) {
+            vizPlayer->stop();
+            playbackTimer->stop();
+        }
+
         singButton->setText("♪ SING ♪");
         singAction->setText("SING");
         progressSongFull->setToolTip("Nothing to seek");

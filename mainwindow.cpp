@@ -606,11 +606,10 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
 
 void MainWindow::onDurationChanged(qint64 currentDuration) {
 
-    offset = currentDuration - player->position(); // MARK offset
+    offset = currentDuration; // MARK offset
     qWarning() << "Latency Duration: " << offset << " ms";
     logTextEdit->append(QString("Latency duration: %1 ms").arg(offset));
         
-    audioRecorder->startRecording(audioRecorded);
     disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);
         
 }
@@ -631,6 +630,7 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
         // Start listening for the first duration change
             connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);
             mediaRecorder->record(); // start media Recorder when playback starts
+            audioRecorder->startRecording(audioRecorded);
         }
 
     }

@@ -668,9 +668,11 @@ void MainWindow::stopRecording() {
             return;
         }
 
+        // mediaRecorder offset
         offset = ( mediaRecorder->duration() + ( player->duration() - player->position() )) -  player->duration();
-        qWarning() << "Latency calc: " << offset << " ms";
-        logTextEdit->append(QString("Latency calc: %1 ms").arg(offset));
+        qWarning() << "Camera Latency calc: " << offset << " ms";
+        logTextEdit->append(QString("Camera Latency calc: %1 ms").arg(offset));
+        
         
         if ( audioRecorder->isRecording() )
             audioRecorder->stopRecording();
@@ -688,9 +690,12 @@ void MainWindow::stopRecording() {
         }
 
         qWarning() << "Recording stopped.";
+        logTextEdit->append("Recording Stopped");
 
-        qWarning() << "Latency Offset: " << offset << " ms";
-        logTextEdit->append(QString("Recording stop: Latency offset: %1 ms").arg(offset));
+        // AudioRercorder offset
+        audioOffset = ( getMediaDuration(audioRecorded) + ( player->duration() - player->position() )) -  player->duration();
+        qWarning() << "Audio Latency calc: " << audioOffset << " ms";
+        logTextEdit->append(QString("Audio Latency calc: %1 ms").arg(audioOffset));
         
         recordingIndicator->hide();
         webcamPreviewWidget->hide();
@@ -929,7 +934,7 @@ void MainWindow::mixAndRender(double vocalVolume) {
                         afftdn=nf=-20:nr=10:nt=w,speechnorm,acompressor=threshold=0.5:ratio=4,highpass=f=200,%2 \
                         aecho=0.6:0.4:69|51:0.21|0.13,treble=g=12,volume=%3[vocals]; \
                         [2:a][vocals]amix=inputs=2:normalize=0,aresample=async=1[wakkamix];%4" 
-                        ).arg(offset)
+                        ).arg(audioOffset)
                         .arg(talent)
                         .arg(vocalVolume)
                         .arg(videorama);

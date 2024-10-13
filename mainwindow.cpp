@@ -593,8 +593,12 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
 
         isPlayback = true; // enable seeking
 
-        if ( isRecording )
+        if ( isRecording ) {
             connect(player.data(), &QMediaPlayer::positionChanged, this, &MainWindow::onPlayerPosChanged);
+            // start Recorders
+            mediaRecorder->record();
+            audioRecorder->startRecording(audioRecorded);
+        }
 
     }
 
@@ -606,7 +610,7 @@ void MainWindow::onPlayerPosChanged(qint64 pos) {
             // mediaRecorder offset
             offset = ( mediaRecorder->duration() + (player->duration() - pos)) - player->duration();
             // AudioRecorder offset
-            audioOffset = (player->duration() - pos) - player->duration();
+            audioOffset = (player->duration() - pos);
         }
         
 }
@@ -641,10 +645,7 @@ void MainWindow::startRecording() {
             // prep camera first
             camera->start();
             playVideo(currentVideoFile); // decode and load video src
-            // start Recorders
-            mediaRecorder->record();
-            audioRecorder->startRecording(audioRecorded);
-
+            
         } else {
             qWarning() << "Failed to initialize camera, media recorder or player.";
         }
@@ -710,7 +711,7 @@ void MainWindow::stopRecording() {
 
             qWarning() << "Recording saved successfully";
             qWarning() << "Camera Latency calc: " << offset << " ms";
-            audioOffset += 1000 * getMediaDuration(audioRecorded);
+            audioOffset = (1000 * getMediaDuration(audioRecorded) + audioOffset) - player->duration();
             qWarning() << "Audio Latency calc: " << audioOffset << " ms";
             logTextEdit->append(QString("Audio Latency calc: %1 ms").arg(audioOffset));
             renderAgain();

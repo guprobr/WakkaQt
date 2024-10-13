@@ -100,10 +100,12 @@ sudo zypper install qt6-qtbase-devel qt6-qtmultimedia-devel glib2-devel ffmpeg y
 ## Project Structure
 
 - **`mainwindow.cpp` / `mainwindow.h`:** Core application logic, including UI setup and media control, media downloads and rendering.
-- **`sndwidget.cpp` / `sndwidget.h`:** Custom widget for displaying sound levels from the current audio input source.
+- **`sndwidget.cpp` / `sndwidget.h`:** Custom widget for displaying sound levels from the current audio input source, the green audio visualizer at the top of the UI.
 - **`previewdialog.cpp` / `previewdialog.h`:** Preview dialog for reviewing and adjusting vocal levels before rendering.
 - **`audioamplifier.cpp` / `audioamplifier.h`:** Class to manipulate samples of preview volume adjustment.
 - **`audiorecorder.cpp` / `audiorecorder.h`:** Class to enable the configuration of different sample formats, channels and rates while recording sound, since QAudioInput with MediaCaptureSession don't do the job.
+- **`audiovizmediaplayer.cpp` / `audiovizmediaplayer.h`:** Class to mimic QMediaPlayer but extracting audio from playbacks and serve the AudioVisualizer widget.
+- **`audiovisualizerwidget.cpp` / `audiovisualizerwidget.h`:** Class that implements the bottom Yelloopy© audio visualizer widget.
 - **`videodisplaywidget.h`:** Class to serve as a proxy of the webcam preview, allowing multiple widgets for the webcam preview at the same time.
 - **`resources.qrc`:** Resource file for including images like the app logo.
 

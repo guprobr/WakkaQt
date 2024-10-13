@@ -540,7 +540,10 @@ void MainWindow::updateDeviceLabel(const QString &deviceLabelText) {
                 
         currentVideoName = QFileInfo(playbackVideoPath).completeBaseName();
         currentPlayback = playbackVideoPath;
-        vizPlayer->setMedia(playbackVideoPath);
+        if ( isRecording )
+            player->setSource(QUrl::fromLocalFile(playbackVideoPath));
+        else
+            vizPlayer->setMedia(playbackVideoPath);
     }
 
  }
@@ -576,7 +579,10 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status) {
         
         setBanner(currentVideoName); // video loaded, set title
         banner->setToolTip(currentVideoName);
-        vizPlayer->play(); // play as soon as video loads
+        if ( isRecording )
+            player->play();
+        else
+            vizPlayer->play(); // play as soon as video loads
         
     }
 }
@@ -631,7 +637,7 @@ void MainWindow::startRecording() {
 
             // prep camera first
             camera->start();
-            playVideo(currentVideoFile); // load video on AudioVizMediaPlayer, it will start decoding and loading
+            playVideo(currentVideoFile);
 
         } else {
             qWarning() << "Failed to initialize camera, media recorder or player.";
@@ -687,8 +693,8 @@ void MainWindow::stopRecording() {
         qWarning() << "Camera Latency calc: " << offset << " ms";
         logTextEdit->append(QString("Camera Latency calc: %1 ms").arg(offset));
 
-        if ( player && vizPlayer ) {
-            vizPlayer->stop();
+        if ( player ) {
+            player->stop();
             playbackTimer->stop();
         }
 

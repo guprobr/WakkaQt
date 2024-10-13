@@ -46,7 +46,7 @@ public:
 
 private slots:
     //void onAudioInputsChanged();
-    //void onDurationChanged(qint64 currentDuration);
+    void onRecorderDurationChanged(qint64 currentDuration);
     void onRecorderStateChanged(QMediaRecorder::RecorderState state);
     void onPlaybackStateChanged(QMediaPlayer::PlaybackState state);
     void onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status);

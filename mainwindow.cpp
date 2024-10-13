@@ -540,10 +540,7 @@ void MainWindow::updateDeviceLabel(const QString &deviceLabelText) {
                 
         currentVideoName = QFileInfo(playbackVideoPath).completeBaseName();
         currentPlayback = playbackVideoPath;
-        if ( isRecording )
-            player->setSource(QUrl::fromLocalFile(playbackVideoPath));
-        else
-            vizPlayer->setMedia(playbackVideoPath);
+        vizPlayer->setMedia(playbackVideoPath);
     }
 
  }
@@ -579,14 +576,10 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status) {
         
         setBanner(currentVideoName); // video loaded, set title
         banner->setToolTip(currentVideoName);
-        if ( isRecording )
-            player->play();
-        else
-            vizPlayer->play(); // play as soon as video loads
+        vizPlayer->play(); // video decoded and loaded into player, play it
         
     }
 }
-
 
 void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
 
@@ -600,11 +593,6 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
 
         isPlayback = true; // enable seeking
 
-        if ( isRecording ) {
-        // Start listening for the first duration change
-            connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);
-            mediaRecorder->record(); // start Recorder after playback is started
-        }
     }
 
 }
@@ -637,7 +625,12 @@ void MainWindow::startRecording() {
 
             // prep camera first
             camera->start();
-            playVideo(currentVideoFile);
+
+            // start Recorders
+            audioRecorder->startRecording(audioRecorded);
+            mediaRecorder->record();
+
+            playVideo(currentVideoFile); // decode and load video src
 
         } else {
             qWarning() << "Failed to initialize camera, media recorder or player.";
@@ -649,19 +642,14 @@ void MainWindow::startRecording() {
 }
 
 void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
+
     if ( QMediaRecorder::RecorderState::RecordingState == state ) {
        // Update UI to show recording status
         recordingIndicator->show();
         singButton->setText("Finish!");
         singButton->setEnabled(true);
-        // start audio recorder
-        audioRecorder->startRecording(audioRecorded);
     }
-}
 
-void MainWindow::onDurationChanged(qint64 currentDuration) {
-    // placeholder //
-    disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);    
 }
 
 // recording FINISH button
@@ -679,11 +667,7 @@ void MainWindow::stopRecording() {
 
         if ( camera->isAvailable() && camera->isActive() )
             camera->stop();
-        
-        if ( mediaRecorder->isAvailable() ) {
-            mediaRecorder->stop();
-        }
-        
+
         // OFFSETs
         qint64 lastPos = player->position();
         qint64 duration = player->duration();
@@ -692,6 +676,10 @@ void MainWindow::stopRecording() {
         offset = ( mediaRecorder->duration() + ( duration - lastPos )) -  duration;
         qWarning() << "Camera Latency calc: " << offset << " ms";
         logTextEdit->append(QString("Camera Latency calc: %1 ms").arg(offset));
+        
+        if ( mediaRecorder->isAvailable() ) {
+            mediaRecorder->stop();
+        }
 
         if ( player ) {
             player->stop();
@@ -712,8 +700,9 @@ void MainWindow::stopRecording() {
         videoWidget->hide();
         placeholderLabel->show();
 
-        QFile file(audioRecorded);
-        if (file.size() > 0) {
+        QFile fileAudio(audioRecorded);
+        QFile fileCam(webcamRecorded);
+        if (fileAudio.size() > 0 && fileCam.size() > 0 ) {
 
             // AudioRecorder offset
             audioOffset = (1000 * getMediaDuration(audioRecorded) + ( duration - lastPos )) -  duration;
@@ -1415,7 +1404,7 @@ void MainWindow::disconnectAllSignals() {
     if (mediaRecorder) {
         disconnect(mediaRecorder.data(), &QMediaRecorder::recorderStateChanged, this, &MainWindow::onRecorderStateChanged);
         disconnect(mediaRecorder.data(), &QMediaRecorder::errorOccurred, this, &MainWindow::handleRecorderError);
-        disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);
+        //disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);
     }
 
     if (player) {

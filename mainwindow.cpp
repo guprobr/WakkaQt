@@ -232,8 +232,8 @@ MainWindow::MainWindow(QWidget *parent)
     previewCheckbox->setToolTip("Toggle camera preview");
     offsetCheckbox = new QCheckBox("No offset");
     offsetCheckbox->setFont(QFont("Arial", 8));
-    offsetCheckbox->setToolTip("Disable auto latency compensation");
-    offsetCheckbox->setChecked(false);
+    offsetCheckbox->setToolTip("Disable automatic latency compensation");
+    offsetCheckbox->setChecked(true);
     indicatorLayout->addWidget(previewCheckbox);
     indicatorLayout->addWidget(offsetCheckbox);
 
@@ -609,17 +609,6 @@ void MainWindow::onPlayerPosChanged(qint64 position) {
         
 }
 
-void MainWindow::onRecorderDurationChanged(qint64 currentDuration) {
-    
-    if ( !offset ) {
-        // Calculate system latency offset
-        offset = recordingTimer.elapsed();
-        qWarning() << "Calculated system latency offset: " << offset << "ms";      
-        recordingTimer.invalidate();
-    }
-
-}
-
 void MainWindow::startRecording() {
     try {
         if (currentVideoFile.isEmpty()) {
@@ -655,7 +644,6 @@ void MainWindow::startRecording() {
             connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onRecorderDurationChanged);
             mediaRecorder->record(); // start recording video
             audioRecorder->startRecording(audioRecorded); // start audio recorder
-            recordingTimer.start(); // this should be zero
             
         } else {
             qWarning() << "Failed to initialize camera, media recorder or player.";
@@ -670,6 +658,8 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
 
     if ( QMediaRecorder::RecordingState == state ) {
         
+        
+
         // Update UI to show recording status
         recordingIndicator->show();
         singButton->setText("Finish!");
@@ -682,10 +672,23 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
         player->setAudioOutput(audioOutput.data());
         player->play();
 #endif
-        
+        recordingTimer.start(); // this should be near zero
     }
     
 }
+
+
+void MainWindow::onRecorderDurationChanged(qint64 currentDuration) {
+    
+    if ( !offset ) {
+        // Calculate system latency offset
+        offset = recordingTimer.elapsed();
+        qWarning() << "Calculated system latency offset: " << offset << "ms";      
+        recordingTimer.invalidate();
+    }
+
+}
+
 
 // recording FINISH button
 void MainWindow::stopRecording() {
@@ -827,6 +830,9 @@ void MainWindow::renderAgain()
     qWarning() << "Camera Latency: " << videoOffset << " ms";
     audioOffset = n_offset + ((1000 * getMediaDuration(audioRecorded)) - pos);
     qWarning() << "Audio Latency: " << audioOffset << " ms";
+    
+    logUI(QString("System Latency: %1 ms").arg(offset));
+    logUI(QString("Cam Latency: %1 ms").arg(videoOffset));
     logUI(QString("Audio Latency: %1 ms").arg(audioOffset));
 
     playbackTimer->stop();
@@ -1014,7 +1020,7 @@ void MainWindow::mixAndRender(double vocalVolume) {
             return;
         }
         else {
-            QMessageBox::information(this, "Rendering Done!", "Prepare to preview performance. You can press RenderAgain button to adjust volume again or select a different filename, file type or resolution.");
+            QMessageBox::information(this, "Rendering Done!", "Prepare to preview performance. You can press RenderAgain button to adjust volume again or select a different filename, file type or resolution. Depending on the platform it is required a latency compensation: You can also try checking NO OFFSET option, and render again, if the video is out-of-sync. ");
             logUI("FFmpeg finished.");
         }
 

@@ -575,7 +575,7 @@ void MainWindow::chooseVideo()
 
 void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status) {
 
-    if ( QMediaPlayer::LoadedMedia == status ) {
+    if ( QMediaPlayer::MediaStatus::LoadedMedia == status ) {
         
         setBanner(currentVideoName); // video loaded, set title
         banner->setToolTip(currentVideoName);
@@ -586,6 +586,14 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status) {
         vizPlayer->play();
                 
     }
+
+    if ( QMediaPlayer::MediaStatus::EndOfMedia == status ) {
+
+        if ( isRecording )
+            stopRecording();
+
+    }
+    
 }
 
 void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
@@ -606,7 +614,7 @@ void MainWindow::onPlayerPosChanged(qint64 position) {
         if ( player->playbackState() == QMediaPlayer::PlayingState && position ) {
             pos = position;
         }
-        
+       
 }
 
 void MainWindow::startRecording() {
@@ -684,9 +692,6 @@ void MainWindow::onRecorderDurationChanged(qint64 currentDuration) {
         qWarning() << "Calculated system latency offset: " << offset << "ms";      
         recordingTimer.invalidate();
     }
-
-    if ( player->position() >= player->duration() )
-        stopRecording(); // Let's not mess our offset system completely
 
 }
 

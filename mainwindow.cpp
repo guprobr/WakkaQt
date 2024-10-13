@@ -232,8 +232,8 @@ MainWindow::MainWindow(QWidget *parent)
     previewCheckbox->setToolTip("Toggle camera preview");
     offsetCheckbox = new QCheckBox("No offset");
     offsetCheckbox->setFont(QFont("Arial", 8));
-    offsetCheckbox->setToolTip("Disable automatic latency compensation");
-    offsetCheckbox->setChecked(true);
+    offsetCheckbox->setToolTip("Disable automatic latency compensation (Default is OFF, but on some platforms, if video is out-of-sync, this can help if you RenderAgain.)");
+    offsetCheckbox->setChecked(false);
     indicatorLayout->addWidget(previewCheckbox);
     indicatorLayout->addWidget(offsetCheckbox);
 

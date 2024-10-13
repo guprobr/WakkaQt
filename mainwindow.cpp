@@ -182,7 +182,7 @@ MainWindow::MainWindow(QWidget *parent)
     previewCheckbox->setToolTip("Toggle camera preview");
     offsetCheckbox = new QCheckBox("No offset");
     offsetCheckbox->setFont(QFont("Arial", 8));
-    offsetCheckbox->setToolTip("Disable automatic latency compensation (on Windows usually you want this checked before rendering)");
+    offsetCheckbox->setToolTip("Disable automatic system latency compensation");
     offsetCheckbox->setChecked(false);
     
     QHBoxLayout *indicatorLayout = new QHBoxLayout();
@@ -695,13 +695,14 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
     
         vizPlayer->seek(0);
         
-#ifdef __linux__
         player->pause();
+#ifdef __linux__
         player->setAudioOutput(nullptr);
         player->setAudioOutput(audioOutput.data());
+#endif
         recordingTimer.restart();
         player->play();
-#endif
+
 
     }
     

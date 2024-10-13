@@ -589,6 +589,18 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status) {
         if ( !playbackTimer->isActive())
             playbackTimer->start(1000);
 
+        recordingTimer.restart();
+
+        connect(player.data(), &QMediaPlayer::playbackStateChanged, this, [this](QMediaPlayer::PlaybackState state) {
+            if (state == QMediaPlayer::PlayingState) {
+                qint64 delay = recordingTimer.elapsed();
+                if (delay > 10) {
+                    qWarning() << "Playback command delayed by" << delay << "ms!";
+                    offset = delay;
+                }
+            }
+        });
+
         vizPlayer->play();
                 
     }
@@ -648,7 +660,7 @@ void MainWindow::startRecording() {
         // Set up the house for recording
         //resetMediaComponents(false); // we dont reset anymore, see below
         isRecording = true;
-        offset = 0;
+        //offset = 0;
 
         if (camera && mediaRecorder && player && vizPlayer) {
 
@@ -682,13 +694,15 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
         singAction->setEnabled(true);
     
         vizPlayer->seek(0);
+        
 #ifdef __linux__
         player->pause();
         player->setAudioOutput(nullptr);
         player->setAudioOutput(audioOutput.data());
+        recordingTimer.restart();
         player->play();
 #endif
-        recordingTimer.start(); // this should be near zero
+
     }
     
 }
@@ -696,12 +710,12 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
 
 void MainWindow::onRecorderDurationChanged(qint64 currentDuration) {
     
-    if ( !offset ) {
+   /* if ( !offset ) {
         // Calculate system latency offset
         offset = recordingTimer.elapsed();
         qWarning() << "Calculated system latency offset: " << offset << "ms";      
         recordingTimer.invalidate();
-    }
+    } */
 
 }
 

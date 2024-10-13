@@ -74,7 +74,7 @@ private:
     bool isRecording;
     bool isPlayback;
     
-    QElapsedTimer startTimer;
+    qint64 playbackStartTime;
     QElapsedTimer recordingTimer;
     qint64 offset = 0;
     qint64 pos = 0;

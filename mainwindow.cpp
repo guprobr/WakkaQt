@@ -401,7 +401,7 @@ void MainWindow::configureMediaComponents()
     qDebug() << "Configuring mediaCaptureSession..";
     mediaCaptureSession->setVideoOutput(videoSink.data());
     mediaCaptureSession->setCamera(camera.data());
-    //mediaCaptureSession->setAudioInput(nullptr);
+    mediaCaptureSession->setAudioInput(nullptr);
     mediaCaptureSession->setRecorder(mediaRecorder.data());
 
     connect(mediaRecorder.data(), &QMediaRecorder::recorderStateChanged, this, &MainWindow::onRecorderStateChanged);

@@ -595,7 +595,8 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
         isPlayback = true; // enable seeking
 
         if ( isRecording ) {
-            connect(player.data(), &QMediaPlayer::positionChanged, this, &MainWindow::onPlayerPosChanged);      
+            connect(player.data(), &QMediaPlayer::positionChanged, this, &MainWindow::onPlayerPosChanged);
+            
         }
 
     }
@@ -606,13 +607,12 @@ void MainWindow::onPlayerPosChanged(qint64 pos) {
 
         if ( player->playbackState() == QMediaPlayer::PlayingState && pos ) {
             // mediaRecorder offset
-            offset = ( mediaRecorder->duration() + (player->duration() - pos)) - player->duration();
+            videoOffset = ( mediaRecorder->duration() + (player->duration() - pos)) - player->duration() + offset;
             // AudioRecorder offset
-            audioOffset = (player->duration() - pos);
+            audioOffset = (player->duration() - pos) + offset;
         }
         
 }
-
 
 void MainWindow::startRecording() {
     try {
@@ -643,6 +643,10 @@ void MainWindow::startRecording() {
             // prep camera first
             camera->start();
             playVideo(currentVideoFile); // decode and load video src
+
+            // Start recording timer for synchronization
+            recordingTimer.start();  // Record the timestamp right before starting recording
+
             mediaRecorder->record();
             audioRecorder->startRecording(audioRecorded);
             connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onRecorderDurationChanged);
@@ -663,6 +667,10 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
         recordingIndicator->show();
         singButton->setText("Finish!");
         singButton->setEnabled(true);
+        // Calculate latency offset
+        offset = recordingTimer.elapsed();
+        qWarning() << "Calculated system latency offset: " << offset << "ms";      
+        recordingTimer.invalidate();
     }
 
 }
@@ -715,7 +723,7 @@ void MainWindow::stopRecording() {
         if (fileAudio.size() > 0 && fileCam.size() > 0 ) {
 
             qWarning() << "Recording saved successfully";
-            qWarning() << "Camera Latency calc: " << offset << " ms";
+            qWarning() << "Camera Latency calc: " << videoOffset << " ms";
             audioOffset = (1000 * getMediaDuration(audioRecorded) + audioOffset) - player->duration();
             qWarning() << "Audio Latency calc: " << audioOffset << " ms";
             logTextEdit->append(QString("Audio Latency calc: %1 ms").arg(audioOffset));
@@ -915,7 +923,7 @@ void MainWindow::mixAndRender(double vocalVolume) {
                 videorama = QString("[1:v]trim=%1ms,setpts=PTS-STARTPTS,scale=%2[webcam]; \
                                     [2:v]scale=%2[video]; \
                                     [video][webcam]vstack[videorama];")
-                                    .arg(offset)
+                                    .arg(videoOffset)
                                     .arg(setRez);
                                     
             } else {
@@ -924,7 +932,7 @@ void MainWindow::mixAndRender(double vocalVolume) {
                 // No video playback, work only with webcam video
                 videorama = QString("[1:v]trim=%1ms,setpts=PTS-STARTPTS, \
                                     scale=%2,tpad=stop_mode=clone:stop_duration=%3[videorama];")
-                                    .arg(offset)
+                                    .arg(videoOffset)
                                     .arg(fullRez)
                                     .arg(stopDuration);
             }
@@ -1025,7 +1033,7 @@ void MainWindow::mixAndRender(double vocalVolume) {
 
         playVideo(outputFilePath);
         this->logTextEdit->append("Playing mix!");
-        this->logTextEdit->append(QString("Latency offset: %1 ms").arg(offset));
+        this->logTextEdit->append(QString("Latency offset: %1 ms").arg(videoOffset));
 
     });
 

@@ -10,6 +10,7 @@
 #include <QMainWindow>
 #include <QScopedPointer>
 #include <QCloseEvent>
+#include <QElapsedTimer>
 
 #include <QMessageBox>
 #include <QFile>
@@ -45,7 +46,6 @@ public:
     void addVideoDisplayWidgetInDialog(); // Method to add a VideoDisplayWidget in a dialog
 
 private slots:
-    //void onAudioInputsChanged();
     void onRecorderDurationChanged(qint64 currentDuration);
     void onRecorderStateChanged(QMediaRecorder::RecorderState state);
     void onPlaybackStateChanged(QMediaPlayer::PlaybackState state);
@@ -73,9 +73,11 @@ private:
 
     bool isRecording;
     bool isPlayback;
-    qint64 startEventTime = 0;
-    qint64 recordingEventTime = 0;
+    
+    QElapsedTimer startTimer;
+    QElapsedTimer recordingTimer;
     qint64 offset = 0;
+    qint64 videoOffset = 0;
     qint64 audioOffset = 0;
 
     QAudioDevice selectedDevice;

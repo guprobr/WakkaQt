@@ -585,11 +585,15 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status) {
 void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
 
     if ( QMediaRecorder::RecorderState::RecordingState == state ) {
-       
+        
         // Update UI to show recording status
         recordingIndicator->show();
         singButton->setText("Finish!");
         singButton->setEnabled(true);
+
+        offset = -1 * player->position(); // MARK offset
+        qWarning() << "Latency Duration: " << offset << " ms";
+        logTextEdit->append(QString("Latency duration: %1 ms").arg(offset));
 
     }
 
@@ -606,10 +610,6 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
 
 void MainWindow::onDurationChanged(qint64 currentDuration) {
 
-    offset = currentDuration; // MARK offset
-    qWarning() << "Latency Duration: " << offset << " ms";
-    logTextEdit->append(QString("Latency duration: %1 ms").arg(offset));
-        
     disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);
         
 }
@@ -629,7 +629,7 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
         if ( isRecording ) {
         // Start listening for the first duration change
             connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);
-            mediaRecorder->record(); // start media Recorder when playback starts
+            mediaRecorder->record(); // start Recorder when playback starts
             audioRecorder->startRecording(audioRecorded);
         }
 
@@ -698,12 +698,9 @@ void MainWindow::stopRecording() {
 
         qWarning() << "Recording stopped.";
 
-        qWarning() << "Latency Duration: " << offset << " ms";
-        logTextEdit->append(QString("Recording stop: Latency duration: %1 ms").arg(offset));
-        audioOffset = (mediaRecorder->duration() - (1000 * getMediaDuration(audioRecorded))) - offset;
-        qWarning() << "Audio offset: " << audioOffset << " ms";
-        logTextEdit->append(QString("Audio offset: %1 ms").arg(audioOffset));
-
+        qWarning() << "Latency Offset: " << offset << " ms";
+        logTextEdit->append(QString("Recording stop: Latency offset: %1 ms").arg(offset));
+        
         recordingIndicator->hide();
         webcamPreviewWidget->hide();
         previewCheckbox->setChecked(false);
@@ -941,7 +938,7 @@ void MainWindow::mixAndRender(double vocalVolume) {
                         afftdn=nf=-20:nr=10:nt=w,speechnorm,acompressor=threshold=0.5:ratio=4,highpass=f=200,%2 \
                         aecho=0.6:0.4:69|51:0.21|0.13,treble=g=12,volume=%3[vocals]; \
                         [2:a][vocals]amix=inputs=2:normalize=0,aresample=async=1[wakkamix];%4" 
-                        ).arg(audioOffset)
+                        ).arg(offset)
                         .arg(talent)
                         .arg(vocalVolume)
                         .arg(videorama);

@@ -15,7 +15,6 @@
 #include <QProcess>
 #include <QTime>
 #include <QTimer>
-#include <QElapsedTimer>
 
 #include <QVBoxLayout>
 #include <QWidget>
@@ -607,9 +606,9 @@ void MainWindow::onPlayerPosChanged(qint64 pos) {
 
         if ( player->playbackState() == QMediaPlayer::PlayingState && pos ) {
             // mediaRecorder offset
-            videoOffset = ( mediaRecorder->duration() + (player->duration() - pos)) - player->duration() + offset;
+            videoOffset = offset + ( mediaRecorder->duration() + (player->duration() - pos)) - player->duration();
             // AudioRecorder offset
-            audioOffset = (player->duration() - pos) + offset;
+            audioOffset = (player->duration() - pos);
         }
         
 }
@@ -676,7 +675,7 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
 }
 
 void MainWindow::onRecorderDurationChanged(qint64 duration) {
-    vizPlayer->play();
+    player->play();
 }
 
 // recording FINISH button
@@ -724,7 +723,7 @@ void MainWindow::stopRecording() {
 
             qWarning() << "Recording saved successfully";
             qWarning() << "Camera Latency calc: " << videoOffset << " ms";
-            audioOffset = (1000 * getMediaDuration(audioRecorded) + audioOffset) - player->duration();
+            audioOffset = offset + (1000 * getMediaDuration(audioRecorded) + audioOffset) - (1000 * getMediaDuration(currentVideoFile));
             qWarning() << "Audio Latency calc: " << audioOffset << " ms";
             logTextEdit->append(QString("Audio Latency calc: %1 ms").arg(audioOffset));
             renderAgain();

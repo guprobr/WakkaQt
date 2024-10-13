@@ -579,10 +579,7 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status) {
         setBanner(currentVideoName); // video loaded, set title
         banner->setToolTip(currentVideoName);
         vizPlayer->play();
-        
-        if ( isRecording )
-            vizPlayer->pause();
-        
+                
     }
 }
 
@@ -682,9 +679,11 @@ void MainWindow::onRecorderDurationChanged(qint64 duration) {
         offset = recordingTimer.elapsed();
         qWarning() << "Calculated system latency offset: " << offset << "ms";      
         recordingTimer.invalidate();
+        vizPlayer->seek(0);
 #ifdef __linux__
-        player->setAudioOutput(nullptr); // first, detach the audio output 
-        player->setAudioOutput(audioOutput.data()); // now gimme back my sound mon
+        player->pause();
+        player->setAudioOutput(nullptr);
+        player->setAudioOutput(audioOutput.data());
 #endif
         vizPlayer->play();
     }

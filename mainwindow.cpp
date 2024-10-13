@@ -597,7 +597,7 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
         if ( isRecording ) {
         // Start listening for the first duration change
             connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);
-            mediaRecorder->record(); // start Recorder when playback is started
+            mediaRecorder->record(); // start Recorder after playback is started
         }
     }
 
@@ -648,11 +648,13 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
         recordingIndicator->show();
         singButton->setText("Finish!");
         singButton->setEnabled(true);
+        // start audio recorder
+        audioRecorder->startRecording(audioRecorded);
     }
 }
 
 void MainWindow::onDurationChanged(qint64 currentDuration) {
-    audioRecorder->startRecording(audioRecorded);
+    // placeholder //
     disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onDurationChanged);    
 }
 

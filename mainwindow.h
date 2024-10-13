@@ -37,7 +37,7 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    QString Wakka_versione = "v0.984a";
+    QString Wakka_versione = "v0.986a";
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
@@ -101,6 +101,7 @@ private:
     
     QAction *loadPlaybackAction;
     QAction *chooseInputAction;
+    QAction *singAction;
 
     QPushButton *singButton;
     QPushButton *chooseVideoButton;

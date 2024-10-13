@@ -61,6 +61,7 @@ MainWindow::MainWindow(QWidget *parent)
     QAction *aboutWakkaQtAction = new QAction("About WakkaQt", this);
     loadPlaybackAction = new QAction("Load playback", this);
     chooseInputAction = new QAction("Configure Audio Input", this);
+    singAction = new QAction("SING", this);
     QAction *exitAction = new QAction("Exit", this);
     menuBar->setFont(QFont("Arial", 8));
     
@@ -68,6 +69,7 @@ MainWindow::MainWindow(QWidget *parent)
     helpMenu->addAction(aboutWakkaQtAction);
     fileMenu->addAction(loadPlaybackAction);
     fileMenu->addAction(chooseInputAction);
+    fileMenu->addAction(singAction);
     fileMenu->addAction(exitAction);
     
     menuBar->addMenu(fileMenu);
@@ -128,7 +130,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Create the main VideoDisplayWidget
     webcamPreviewWidget = new VideoDisplayWidget(this);
-    webcamPreviewWidget->setFixedSize(320, 120);
+    webcamPreviewWidget->setFixedSize(240, 120);
     webcamPreviewWidget->setToolTip("Click to open large preview");
     QHBoxLayout *webcamPreviewLayout = new QHBoxLayout();
     webcamPreviewLayout->addStretch();
@@ -139,7 +141,7 @@ MainWindow::MainWindow(QWidget *parent)
     scene = new QGraphicsScene(this);
     previewView = new QGraphicsView(scene, this);
     previewView->setMinimumSize(640, 50);
-    previewView->setMaximumSize(1920, 50);
+    previewView->setMaximumHeight(50);
     previewView->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     previewView->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     previewView->setAlignment(Qt::AlignCenter);
@@ -159,30 +161,41 @@ MainWindow::MainWindow(QWidget *parent)
     banner->setTextFormat(Qt::TextFormat::RichText);
     banner->setFont(QFont("Arial", 11));
     banner->setAlignment(Qt::AlignCenter);
-    banner->setToolTip("Here be the song title, dargh!");
+    banner->setToolTip("Here be the song title!");
     setBanner(Wakka_welcome);
 
     // Create buttons
     QPushButton *exitButton = new QPushButton("Exit", this);
     chooseVideoButton = new QPushButton("Load playback from disk", this);
     singButton = new QPushButton("♪ SING ♪", this);
-    singButton->setFont(QFont("Arial", 21));
+    singButton->setFont(QFont("Arial", 16));
     chooseInputButton = new QPushButton("Choose Input Device", this);
     renderAgainButton = new QPushButton("RENDER AGAIN", this);
 
     // Recording indicator
     recordingIndicator = new QLabel("⦿ rec", this);
     recordingIndicator->setStyleSheet("color: red;");
-    recordingIndicator->setFixedSize(64, 16);
+    //recordingIndicator->setFixedSize(64, 16);
+    // custom options
+    previewCheckbox = new QCheckBox("Cam Preview");
+    previewCheckbox->setFont(QFont("Arial", 8));
+    previewCheckbox->setToolTip("Toggle camera preview");
+    offsetCheckbox = new QCheckBox("No offset");
+    offsetCheckbox->setFont(QFont("Arial", 8));
+    offsetCheckbox->setToolTip("Disable automatic latency compensation (on Windows usually you want this checked before rendering)");
+    offsetCheckbox->setChecked(false);
+    
     QHBoxLayout *indicatorLayout = new QHBoxLayout();
-    indicatorLayout->addStretch();
+    //indicatorLayout->addStretch();
+    indicatorLayout->addWidget(offsetCheckbox, 0, Qt::AlignLeft);
     indicatorLayout->addWidget(recordingIndicator, 0, Qt::AlignCenter);
-    indicatorLayout->addStretch();
+    indicatorLayout->addWidget(previewCheckbox, 0, Qt::AlignRight);
+    //indicatorLayout->addStretch();
 
     // Instantiate SndWidget
     soundLevelWidget = new SndWidget(this);
-    soundLevelWidget->setMinimumSize(200, 25);
-    soundLevelWidget->setMaximumHeight(50);
+    soundLevelWidget->setMinimumSize(640, 32);
+    soundLevelWidget->setMaximumHeight(32);
     soundLevelWidget->setToolTip("Sound input visualization widget");
 
     // Device label
@@ -196,7 +209,7 @@ MainWindow::MainWindow(QWidget *parent)
     urlInput->setFont(QFont("Arial", 10));
     urlInput->setToolTip("Paste a URL here to fetch your karaoke playback video");
     fetchButton = new QPushButton("FETCH", this);
-    fetchButton->setFont(QFont("Arial", 10));
+    fetchButton->setFont(QFont("Arial", 14));
     fetchButton->setToolTip("Click here to begin yt-dlp: video streaming service downloader");
     downloadStatusLabel = new QLabel("Download YouTube URL", this);
     downloadStatusLabel->setFont(QFont("Arial", 8));
@@ -210,8 +223,9 @@ MainWindow::MainWindow(QWidget *parent)
     logTextEdit = new QTextEdit(this);
     logTextEdit->setReadOnly(true);
     logUI(Wakka_welcome);
-    logTextEdit->setFixedHeight(75);
-    logTextEdit->setFont(QFont("Arial", 9));
+    logTextEdit->setMinimumHeight(45);
+    logTextEdit->setMaximumHeight(90);
+    logTextEdit->setFont(QFont("Arial", 10));
     logTextEdit->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     // Move cursor to the end of the text when text is appended
     connect(logTextEdit, &QTextEdit::textChanged, this, [=]() {
@@ -221,21 +235,10 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Instantiate Audio Visualizer
     vizWidget = new AudioVisualizerWidget(this);
-    vizWidget->setMinimumSize(200, 25);
-    vizWidget->setMaximumHeight(75);
+    vizWidget->setMinimumSize(200, 48);
+    vizWidget->setMaximumHeight(70);
     vizWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     vizWidget->setToolTip("Yelloopy© Audio Visualizer");
-
-    // custom options
-    previewCheckbox = new QCheckBox("Cam Preview");
-    previewCheckbox->setFont(QFont("Arial", 8));
-    previewCheckbox->setToolTip("Toggle camera preview");
-    offsetCheckbox = new QCheckBox("No offset");
-    offsetCheckbox->setFont(QFont("Arial", 8));
-    offsetCheckbox->setToolTip("Disable automatic latency compensation (Default is OFF, but on some platforms, if video is out-of-sync, this can help if you RenderAgain.)");
-    offsetCheckbox->setChecked(false);
-    indicatorLayout->addWidget(previewCheckbox);
-    indicatorLayout->addWidget(offsetCheckbox);
 
     // Layout
     QWidget *containerWidget = new QWidget(this);
@@ -260,12 +263,13 @@ MainWindow::MainWindow(QWidget *parent)
     setCentralWidget(containerWidget);
 
     // Widget visibility
-    chooseVideoButton->setVisible(false);
+    chooseVideoButton->setVisible(true);
     chooseInputButton->setVisible(false);
     soundLevelWidget->setVisible(true);
     recordingIndicator->hide();
     webcamPreviewWidget->hide();
     singButton->setEnabled(false);
+    singAction->setEnabled(false);
     renderAgainButton->setVisible(false);
     exitButton->setVisible(false);
     deviceLabel->setVisible(true);
@@ -279,6 +283,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(loadPlaybackAction, &QAction::triggered, this, &MainWindow::chooseVideo);
     connect(chooseInputAction, &QAction::triggered, this, &MainWindow::chooseInputDevice);
     connect(singButton, &QPushButton::clicked, this, &MainWindow::startRecording);
+    connect(singAction, &QAction::triggered, this, &MainWindow::startRecording);
     connect(fetchButton, &QPushButton::clicked, this, &MainWindow::fetchVideo);
     connect(renderAgainButton, &QPushButton::clicked, this, &MainWindow::renderAgain);
     connect(previewCheckbox, &QCheckBox::toggled, this, &MainWindow::onPreviewCheckboxToggled);
@@ -560,6 +565,7 @@ void MainWindow::chooseVideo()
             resetMediaComponents(false);
 
             singButton->setEnabled(true);
+            singAction->setEnabled(true);
             renderAgainButton->setVisible(false);
             placeholderLabel->hide();
             videoWidget->show();
@@ -589,11 +595,11 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status) {
 
     if ( QMediaPlayer::MediaStatus::EndOfMedia == status ) {
 
-        if ( isRecording )
+        if ( isRecording && mediaRecorder->duration() )
             stopRecording();
 
     }
-    
+
 }
 
 void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
@@ -622,6 +628,7 @@ void MainWindow::startRecording() {
         if (currentVideoFile.isEmpty()) {
             QMessageBox::warning(this, "No playback set", "No playback loaded! Please load a playback to sing.");
             singButton->setEnabled(false);
+            singAction->setEnabled(false);
             return;
         }
 
@@ -633,6 +640,7 @@ void MainWindow::startRecording() {
 
         // Disable buttons while recording starts
         singButton->setEnabled(false);
+        singAction->setEnabled(false);
         enable_playback(false);
 
         chooseInputDevice();  // User must select input device
@@ -669,7 +677,9 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
         // Update UI to show recording status
         recordingIndicator->show();
         singButton->setText("Finish!");
+        singAction->setText("Finish recording");
         singButton->setEnabled(true);
+        singAction->setEnabled(true);
     
         vizPlayer->seek(0);
 #ifdef __linux__
@@ -731,6 +741,7 @@ void MainWindow::stopRecording() {
 
         isRecording = false;
         singButton->setText("♪ SING ♪");
+        singAction->setText("SING");
         progressSongFull->setToolTip("Nothing to seek");
         
         videoWidget->hide();
@@ -751,6 +762,7 @@ void MainWindow::stopRecording() {
             chooseInputButton->setEnabled(true);
             chooseInputAction->setEnabled(true);
             singButton->setEnabled(false);
+            singAction->setEnabled(false);
             
             resetMediaComponents(false);
             QMessageBox::critical(this, "SORRY: mediaRecorder ERROR", "File size is zero.");
@@ -809,7 +821,9 @@ void MainWindow::handleRecordingError() {
     placeholderLabel->show();
 
     singButton->setEnabled(false);
+    singAction->setEnabled(false);
     singButton->setText("SING");
+    singAction->setText("SING");
     enable_playback(true);
     chooseInputButton->setEnabled(true);
     chooseInputAction->setEnabled(true);
@@ -895,6 +909,7 @@ void MainWindow::renderAgain()
             chooseInputButton->setEnabled(true);
             chooseInputAction->setEnabled(true);
             singButton->setEnabled(false);
+            singAction->setEnabled(false);
             QMessageBox::warning(this, "Performance cancelled", "Performance cancelled during volume adjustment.");
         }
     } else {
@@ -902,6 +917,7 @@ void MainWindow::renderAgain()
         chooseInputButton->setEnabled(true);
         chooseInputAction->setEnabled(true);
         singButton->setEnabled(false);
+        singAction->setEnabled(false);
         QMessageBox::warning(this, "Performance cancelled", "Performance cancelled!");
     }
 }
@@ -910,7 +926,8 @@ void MainWindow::mixAndRender(double vocalVolume) {
     
     videoWidget->hide();
     placeholderLabel->show();
-    singButton->setEnabled(false); 
+    singButton->setEnabled(false);
+    singAction->setEnabled(false);
     chooseInputButton->setEnabled(true);
     chooseInputAction->setEnabled(true);
 
@@ -1291,6 +1308,7 @@ void MainWindow::fetchVideo() {
 
                 downloadStatusLabel->setText("Download YouTube URL");
                 singButton->setEnabled(true); 
+                singAction->setEnabled(true);
                 logUI("Previewing playback. Press SING to start recording.");
             }
             
@@ -1385,9 +1403,9 @@ void MainWindow::addVideoDisplayWidgetInDialog() {
 
     webcamDialog = new QDialog(this);
     webcamDialog->setWindowTitle("Webcam Preview");
-    webcamDialog->setFixedSize(1024, 768); 
+    webcamDialog->setFixedSize(960, 544); 
     VideoDisplayWidget *newWidget = new VideoDisplayWidget(webcamDialog);
-    newWidget->setMinimumSize(1024, 768);
+    newWidget->setMinimumSize(960, 544);
     
     // Add to the list
     previewWidgets.append(newWidget);

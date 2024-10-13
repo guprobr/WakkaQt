@@ -157,7 +157,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     banner = new QLabel(Wakka_welcome, this);
     banner->setTextFormat(Qt::TextFormat::RichText);
-    banner->setFont(QFont("Arial", 10));
+    banner->setFont(QFont("Arial", 11));
     banner->setAlignment(Qt::AlignCenter);
     banner->setToolTip("Here be the song title, dargh!");
     setBanner(Wakka_welcome);
@@ -209,7 +209,7 @@ MainWindow::MainWindow(QWidget *parent)
     // Log text
     logTextEdit = new QTextEdit(this);
     logTextEdit->setReadOnly(true);
-    logTextEdit->append(Wakka_welcome);
+    logUI(Wakka_welcome);
     logTextEdit->setFixedHeight(50);
     logTextEdit->setFont(QFont("Arial", 9));
     logTextEdit->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
@@ -307,8 +307,8 @@ void MainWindow::resetMediaComponents(bool isStarting) {
         disconnectAllSignals(); // Ensure all signals are disconnected
 
     playbackTimer->stop();
-    // Reset multimedia components with null checks to avoid double free
 
+    // Reset multimedia components with null checks to avoid double free
     if ( vizPlayer ) {
         vizPlayer->stop();
         vizPlayer.reset();
@@ -353,7 +353,6 @@ void MainWindow::resetMediaComponents(bool isStarting) {
         }
         camera.reset();
     }
-
     // Reinitialize components
     configureMediaComponents();
 }
@@ -396,7 +395,7 @@ void MainWindow::configureMediaComponents()
     mediaRecorder->setMediaFormat(*format);
     mediaRecorder->setOutputLocation(QUrl::fromLocalFile(webcamRecorded));
     mediaRecorder->setQuality(QMediaRecorder::VeryHighQuality);
-    mediaRecorder->setVideoFrameRate(30); 
+    //mediaRecorder->setVideoFrameRate(30); 
     
     qDebug() << "Configuring mediaCaptureSession..";
     mediaCaptureSession->setVideoOutput(videoSink.data());
@@ -513,7 +512,8 @@ void MainWindow::chooseInputDevice() {
 }
 
 void MainWindow::updateDeviceLabel(const QString &deviceLabelText) {
-    if (deviceLabel) {
+    if (deviceLabel) { // this only works for selected devices within the app,
+                        // I could not figure a way to detect changes in the system default input src
         deviceLabel->setText(QString("Audio Input Device: %1").arg(deviceLabelText));
     }
 }
@@ -522,7 +522,7 @@ void MainWindow::updateDeviceLabel(const QString &deviceLabelText) {
 
     if ( player && vizPlayer ) {
 
-        isPlayback = false; // disable seeking while decoding/loading media
+        isPlayback = false; // disable seeking while decoding/loading new media
 
         vizPlayer->stop();
         playbackTimer->stop();
@@ -565,7 +565,7 @@ void MainWindow::chooseVideo()
 
             currentVideoFile = loadVideoFile;
             playVideo(currentVideoFile);
-            logTextEdit->append("Playback preview. Press SING to start recording.");
+            logUI("Playback preview. Press SING to start recording.");
 
         }
     }
@@ -578,6 +578,10 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status) {
         
         setBanner(currentVideoName); // video loaded, set title
         banner->setToolTip(currentVideoName);
+
+        if ( !playbackTimer->isActive())
+            playbackTimer->start(1000);
+
         vizPlayer->play();
                 
     }
@@ -587,25 +591,19 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
 
     if ( QMediaPlayer::PlayingState == state ) {
         
-        if ( !playbackTimer->isActive())
-            playbackTimer->start(1000);
-
-        if ( !isPlayback ) // if loading
+        if ( !isPlayback ) // only add progressSong when loading a new video
             addProgressSong(scene, static_cast<int>(getMediaDuration(currentPlayback)));
 
-        isPlayback = true; // enable seeking
+        isPlayback = true; // enable seeking now
 
     }
 
 }
 
-void MainWindow::onPlayerPosChanged(qint64 pos) {
+void MainWindow::onPlayerPosChanged(qint64 position) {
 
-        if ( player->playbackState() == QMediaPlayer::PlayingState && pos ) {
-            // mediaRecorder offset
-            videoOffset = pos;
-            // AudioRecorder offset
-            audioOffset = pos;
+        if ( player->playbackState() == QMediaPlayer::PlayingState && position ) {
+            pos = position;
         }
         
 }
@@ -626,32 +624,31 @@ void MainWindow::startRecording() {
 
         // Disable buttons while recording starts
         singButton->setEnabled(false);
-        chooseVideoButton->setEnabled(false);
+        enable_playback(false);
 
         chooseInputDevice();  // User must select input device
 
         // Set up the house for recording
-        //resetMediaComponents(false);
+        //resetMediaComponents(false); // we dont reset anymore, see below
         isRecording = true;
         offset = 0;
 
         if (camera && mediaRecorder && player && vizPlayer) {
 
-            // prep camera first
-            camera->start();
-            //playVideo(currentVideoFile); // decode and load video src
+            //playVideo(currentVideoFile); // playback already loaded/decoded before, less overhead for low-end machines
+            //connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onRecorderDurationChanged);
             connect(player.data(), &QMediaPlayer::positionChanged, this, &MainWindow::onPlayerPosChanged);
-            connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onRecorderDurationChanged);
-
-            recordingTimer.start();
-            mediaRecorder->record();
-            audioRecorder->startRecording(audioRecorded);
+            
+            camera->start(); // prep camera first
+            recordingTimer.start(); // to measure system latency offset
+            mediaRecorder->record(); // start recording video
+            audioRecorder->startRecording(audioRecorded); // start audio recorder
                 
         } else {
             qWarning() << "Failed to initialize camera, media recorder or player.";
         }
     } catch (const std::exception &e) {
-        logTextEdit->append("Error during startRecording: " + QString::fromStdString(e.what()));
+        logUI("Error during startRecording: " + QString::fromStdString(e.what()));
         handleRecordingError();
     }
 }
@@ -664,7 +661,8 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
         recordingIndicator->show();
         singButton->setText("Finish!");
         singButton->setEnabled(true);
-    // Calculate system latency offset
+    
+        // Calculate system latency offset
         offset = recordingTimer.elapsed();
         qWarning() << "Calculated system latency offset: " << offset << "ms";      
         recordingTimer.invalidate();
@@ -676,21 +674,17 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
         player->play();
 #endif
         
-
     }
     
 }
 
-void MainWindow::onRecorderDurationChanged(qint64 duration) {
-
-}
-
 // recording FINISH button
 void MainWindow::stopRecording() {
+
     try {
         if (!isRecording) {
             qWarning() << "Not recording.";
-            logTextEdit->append("Tried to stop Recording, but we are not recording. ERROR.");
+            logUI("Tried to stop Recording, but we are not recording. ERROR.");
             QMessageBox::critical(this, "ERROR.", "Tried to stop Recording, but we are not recording. ERROR.");
             return;
         }
@@ -711,7 +705,7 @@ void MainWindow::stopRecording() {
             audioRecorder->stopRecording();
 
         qWarning() << "Recording stopped.";
-        logTextEdit->append("Recording Stopped");
+        logUI("Recording Stopped");
 
         recordingIndicator->hide();
         webcamPreviewWidget->hide();
@@ -733,11 +727,9 @@ void MainWindow::stopRecording() {
         } else {
         // damn it we tought we were recording but we did not record anything!
             qWarning() << "*FAILURE* File size is zero.";
-            logTextEdit->append("Recording ERROR. File size is zero.");
+            logUI("Recording ERROR. File size is zero.");
 
-            chooseVideoButton->setEnabled(true);
-            loadPlaybackAction->setEnabled(true);
-            fetchButton->setEnabled(true);
+            enable_playback(true);
             chooseInputButton->setEnabled(true);
             chooseInputAction->setEnabled(true);
             singButton->setEnabled(false);
@@ -747,18 +739,18 @@ void MainWindow::stopRecording() {
         }
 
     } catch (const std::exception &e) {
-        logTextEdit->append("Error during stopRecording: " + QString::fromStdString(e.what()));
+        logUI("Error during stopRecording: " + QString::fromStdString(e.what()));
         handleRecordingError();
     }
+
 }
 
 void MainWindow::handleRecorderError(QMediaRecorder::Error error) {
 
-    qWarning() << "Detected a mediaRecorder error:" << error << mediaRecorder->errorString();
-    logTextEdit->append("Recorder Error: " + mediaRecorder->errorString());
+    qWarning() << "Detected camera error:" << error << mediaRecorder->errorString();
+    logUI("Camera Error: " + mediaRecorder->errorString());
 
     if ( !isRecording ) {
-        qWarning() << "Strange, because we are not recording!!";
         return;
     }
 
@@ -772,15 +764,17 @@ void MainWindow::handleRecorderError(QMediaRecorder::Error error) {
         }
         
     } catch (const std::exception &e) {
-        logTextEdit->append("Error during stopRecording (while handling error): " + QString::fromStdString(e.what()));
+        logUI("Error during stopRecording (while handling error): " + QString::fromStdString(e.what()));
     }
 
     handleRecordingError();
     QMessageBox::critical(this, "Recording Error", "An error occurred while recording: " + mediaRecorder->errorString());
+
 }
 
 void MainWindow::handleRecordingError() {
-    logTextEdit->append("Attempting to recover from recording error...");
+
+    logUI("Attempting to recover from recording error...");
 
     isRecording = false;
 
@@ -798,9 +792,7 @@ void MainWindow::handleRecordingError() {
 
     singButton->setEnabled(false);
     singButton->setText("SING");
-    chooseVideoButton->setEnabled(true);
-    loadPlaybackAction->setEnabled(true);
-    fetchButton->setEnabled(true);
+    enable_playback(true);
     chooseInputButton->setEnabled(true);
     chooseInputAction->setEnabled(true);
 
@@ -813,19 +805,20 @@ void MainWindow::handleRecordingError() {
 // render //
 void MainWindow::renderAgain()
 {
+
     qint64 n_offset = offset;
     if ( offsetCheckbox->isChecked() ) {
         qWarning() << "Disabling system latency offset!";
-        logTextEdit->append("System Latency offset disabled!");
+        logUI("System Latency offset disabled!");
         n_offset = 0;
     } 
     // Calculate latency
     qWarning() << "Recording saved successfully";
-    videoOffset = n_offset + ((1000 * getMediaDuration(webcamRecorded)) - videoOffset);
+    videoOffset = n_offset + ((1000 * getMediaDuration(webcamRecorded)) - pos);
     qWarning() << "Camera Latency: " << videoOffset << " ms";
-    audioOffset = n_offset + ((1000 * getMediaDuration(audioRecorded)) - audioOffset);
+    audioOffset = n_offset + ((1000 * getMediaDuration(audioRecorded)) - pos);
     qWarning() << "Audio Latency: " << audioOffset << " ms";
-    logTextEdit->append(QString("Audio Latency: %1 ms").arg(audioOffset));
+    logUI(QString("Audio Latency: %1 ms").arg(audioOffset));
 
     playbackTimer->stop();
 
@@ -834,9 +827,7 @@ void MainWindow::renderAgain()
     isPlayback = false; // to avoid seeking while rendering
 
     renderAgainButton->setVisible(false);
-    chooseVideoButton->setEnabled(false);
-    loadPlaybackAction->setEnabled(false);
-    fetchButton->setEnabled(false);
+    enable_playback(false);
     progressSongFull->setToolTip("Nothing to seek");
 
     // choose where to save rendered file
@@ -872,18 +863,14 @@ void MainWindow::renderAgain()
             mixAndRender(vocalVolume);
 
         } else {
-            chooseVideoButton->setEnabled(true);
-            loadPlaybackAction->setEnabled(true);
-            fetchButton->setEnabled(true);
+            enable_playback(true);
             chooseInputButton->setEnabled(true);
             chooseInputAction->setEnabled(true);
             singButton->setEnabled(false);
             QMessageBox::warning(this, "Performance cancelled", "Performance cancelled during volume adjustment.");
         }
     } else {
-        chooseVideoButton->setEnabled(true);
-        loadPlaybackAction->setEnabled(true);
-        fetchButton->setEnabled(true);
+        enable_playback(true);
         chooseInputButton->setEnabled(true);
         chooseInputAction->setEnabled(true);
         singButton->setEnabled(false);
@@ -961,7 +948,7 @@ void MainWindow::mixAndRender(double vocalVolume) {
           << "-filter_complex"      // masterization and vocal enhancement of recorded audio
           << QString("[0:a]aformat=channel_layouts=stereo,atrim=%1ms,asetpts=PTS-STARTPTS, \
                         afftdn=nf=-20:nr=10:nt=w,speechnorm,acompressor=threshold=0.5:ratio=4,highpass=f=200,%2 \
-                        aecho=0.6:0.4:69|51:0.21|0.13,treble=g=12,volume=%3[vocals]; \
+                        aecho=0.5:0.5:69|51:0.21|0.13,treble=g=12,volume=%3[vocals]; \
                         [2:a][vocals]amix=inputs=2:normalize=0,aresample=async=1[wakkamix];%4" 
                         ).arg(audioOffset)
                         .arg(talent)
@@ -985,7 +972,7 @@ void MainWindow::mixAndRender(double vocalVolume) {
         if (!output.isEmpty()) {
             qDebug() << "FFmpeg (stdout):" << output;
             progressLabel->setText("(FFmpeg is active)");
-            this->logTextEdit->append("FFmpeg: " + output);
+            logUI("FFmpeg: " + output);
         }
     });
     connect(process, &QProcess::readyReadStandardError, [process, progressLabel, totalDuration, this]() {
@@ -995,7 +982,7 @@ void MainWindow::mixAndRender(double vocalVolume) {
         if (!output.isEmpty()) {
             qDebug() << "FFmpeg (stderr):" << output;
             progressLabel->setText("(FFmpeg running)");
-            this->logTextEdit->append("FFmpeg: " + output);
+            logUI("FFmpeg: " + output);
             
             // Update progress based on FFmpeg output
             updateProgress(output, this->progressBar, totalDuration);
@@ -1010,17 +997,16 @@ void MainWindow::mixAndRender(double vocalVolume) {
         process->deleteLater(); // Clean up the process object
 
         if ( exitStatus == QProcess::CrashExit) {
-            this->logTextEdit->append("FFmpeg crashed!!");
-            chooseVideoButton->setEnabled(true);
-            loadPlaybackAction->setEnabled(true);
-            fetchButton->setEnabled(true);
+            logUI("FFmpeg crashed!!");
+            
+            enable_playback(true);
             renderAgainButton->setVisible(true);
             QMessageBox::critical(this, "FFmpeg crashed :(", "Aborting.. Verify if FFmpeg is correctly installed and in the PATH to be executed. Verify logs for FFmpeg error. This program requires a LV2 plugin callex X42 by Gareus.");
             return;
         }
         else {
             QMessageBox::information(this, "Rendering Done!", "Prepare to preview performance. You can press RenderAgain button to adjust volume again or select a different filename, file type or resolution.");
-            this->logTextEdit->append("FFmpeg finished.");
+            logUI("FFmpeg finished.");
         }
 
         QFile file(outputFilePath);
@@ -1034,9 +1020,7 @@ void MainWindow::mixAndRender(double vocalVolume) {
 
         isRecording = false; // to enable seeking on the progress bar to be great again
 
-        chooseVideoButton->setEnabled(true);
-        loadPlaybackAction->setEnabled(true);
-        fetchButton->setEnabled(true);
+        enable_playback(true);
         renderAgainButton->setVisible(true);
         placeholderLabel->hide();
         videoWidget->show();
@@ -1046,8 +1030,8 @@ void MainWindow::mixAndRender(double vocalVolume) {
         qDebug() << "Setting media source to" << outputFilePath;
 
         playVideo(outputFilePath);
-        this->logTextEdit->append("Playing mix!");
-        this->logTextEdit->append(QString("System Latency offset: %1 ms").arg(offset));
+        logUI("Playing mix!");
+        logUI(QString("System Latency offset: %1 ms").arg(offset));
 
     });
 
@@ -1057,7 +1041,7 @@ void MainWindow::mixAndRender(double vocalVolume) {
     if (!process->waitForStarted()) {
         qWarning() << "Failed to start FFmpeg process.";
         progressLabel->setText("Failed to start FFmpeg");
-        logTextEdit->append("Failed to start FFmpeg process.");
+        logUI("Failed to start FFmpeg process.");
         process->deleteLater();
         return;
     }
@@ -1232,12 +1216,12 @@ bool MainWindow::eventFilter(QObject *object, QEvent *event) {
             }
         }
     }
-
     // Pass the event on to the parent class if it was not handled
     return QMainWindow::eventFilter(object, event);
 }
 
 void MainWindow::fetchVideo() {
+
     QString url = urlInput->text();
     if (url.isEmpty()) {
         QMessageBox::warning(this, "Input Error", "Please enter a YouTube URL.");
@@ -1279,7 +1263,7 @@ void MainWindow::fetchVideo() {
 
                 downloadStatusLabel->setText("Download YouTube URL");
                 singButton->setEnabled(true); 
-                logTextEdit->append("Previewing playback. Press SING to start recording.");
+                logUI("Previewing playback. Press SING to start recording.");
             }
             
         }
@@ -1291,7 +1275,7 @@ void MainWindow::fetchVideo() {
         QString output = QString::fromUtf8(outputData).trimmed();  // Convert to QString
         if (!output.isEmpty()) {
             qDebug() << "yt-dlp:" << output;
-            this->logTextEdit->append("yt-dlp: " + output);
+            logUI("yt-dlp: " + output);
         }
     });
 
@@ -1301,14 +1285,16 @@ void MainWindow::fetchVideo() {
         QString error = QString::fromUtf8(errorData).trimmed();  // Convert to QString
         if (!error.isEmpty()) {
             qDebug() << "yt-dlp Error:" << error;
-            this->logTextEdit->append("yt-dlp: " + error);
+            logUI("yt-dlp: " + error);
         }
     });
 
     process->start("yt-dlp", arguments);
+
 }
 
 void MainWindow::onPreviewCheckboxToggled(bool enable) {
+
     if (enable) {
         qDebug() << "Camera preview will be enabled.";
         webcamPreviewWidget->show();
@@ -1318,18 +1304,22 @@ void MainWindow::onPreviewCheckboxToggled(bool enable) {
         webcamPreviewWidget->hide();
         qDebug() << "Camera preview hidden.";
     }
+
 }
 
 void MainWindow::onVideoFrameReceived(const QVideoFrame &frame) {
+
     // Forward the video frame to all widgets
     if (frame.isValid()) {
         // Create a mutable copy
         QVideoFrame mutableFrame = frame;
         proxyVideoFrame(mutableFrame); // Pass the mutable copy (maybe expensive, but safer)
     }
+
 }
 
 void MainWindow::proxyVideoFrame(QVideoFrame &frame) {
+
     if (!frame.isMapped()) {
         // Map the frame for reading
         if (!frame.map(QVideoFrame::ReadOnly)) {
@@ -1352,9 +1342,11 @@ void MainWindow::proxyVideoFrame(QVideoFrame &frame) {
     }
 
     frame.unmap();
+
 }
 
 void MainWindow::addVideoDisplayWidgetInDialog() {
+
     // is already open?
     if (webcamDialog && webcamDialog->isVisible() ) {
         // bring it to the front, captain
@@ -1384,6 +1376,7 @@ void MainWindow::addVideoDisplayWidgetInDialog() {
 
     // Show me show me show me
     webcamDialog->show();
+
 }
 
 MainWindow::~MainWindow() {
@@ -1423,6 +1416,7 @@ MainWindow::~MainWindow() {
         vizPlayer.reset();
     if ( vizWidget )
         delete vizWidget;
+
 }
 
 // Function to disconnect all signals
@@ -1435,7 +1429,7 @@ void MainWindow::disconnectAllSignals() {
     if (mediaRecorder) {
         disconnect(mediaRecorder.data(), &QMediaRecorder::recorderStateChanged, this, &MainWindow::onRecorderStateChanged);
         disconnect(mediaRecorder.data(), &QMediaRecorder::errorOccurred, this, &MainWindow::handleRecorderError);
-        disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onRecorderDurationChanged);
+        ///disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onRecorderDurationChanged);
     }
 
     if (player) {
@@ -1448,6 +1442,18 @@ void MainWindow::disconnectAllSignals() {
 
 void MainWindow::setBanner(const QString &msg) {
     banner->setText(msg);
+}
+
+void MainWindow::logUI(const QString &msg) {
+    this->logTextEdit->append(msg);
+}
+
+void MainWindow::enable_playback(bool flag) {
+
+    chooseVideoButton->setEnabled(flag);
+    loadPlaybackAction->setEnabled(flag);
+    fetchButton->setEnabled(flag);
+
 }
 
 void MainWindow::resizeEvent(QResizeEvent* event) {
@@ -1473,6 +1479,7 @@ void MainWindow::resizeEvent(QResizeEvent* event) {
 
 void MainWindow::closeEvent(QCloseEvent *event)
 {
+    // Here we would do something before closing window;
     // Now allow the window to close
     event->accept(); // Call the base class implementation
 }

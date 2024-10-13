@@ -46,11 +46,11 @@ public:
     void addVideoDisplayWidgetInDialog(); // Method to add a VideoDisplayWidget in a dialog
 
 private slots:
-    void onRecorderDurationChanged(qint64 currentDuration);
+    //void onRecorderDurationChanged(qint64 currentDuration);
     void onRecorderStateChanged(QMediaRecorder::RecorderState state);
     void onPlaybackStateChanged(QMediaPlayer::PlaybackState state);
     void onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status);
-    void onPlayerPosChanged(qint64 pos);
+    void onPlayerPosChanged(qint64 position);
     void handleRecorderError(QMediaRecorder::Error error);
     void onPreviewCheckboxToggled(bool checked);
     
@@ -77,6 +77,7 @@ private:
     QElapsedTimer startTimer;
     QElapsedTimer recordingTimer;
     qint64 offset = 0;
+    qint64 pos = 0;
     qint64 videoOffset = 0;
     qint64 audioOffset = 0;
 
@@ -151,11 +152,13 @@ private:
     void configureMediaComponents();
     void chooseInputDevice();
     void updateDeviceLabel(const QString &deviceLabelText);
+    void enable_playback(bool flag);
 
     void disconnectAllSignals();
     void resizeEvent(QResizeEvent* event) override;
     void closeEvent(QCloseEvent *event) override;
 
+    void logUI(const QString &msg);
     void setBanner(const QString &msg);
     bool eventFilter(QObject *object, QEvent *event) override;
     

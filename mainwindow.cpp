@@ -668,22 +668,25 @@ void MainWindow::stopRecording() {
             return;
         }
 
-        // mediaRecorder offset
-        offset = ( mediaRecorder->duration() + ( player->duration() - player->position() )) -  player->duration();
-        qWarning() << "Camera Latency calc: " << offset << " ms";
-        logTextEdit->append(QString("Camera Latency calc: %1 ms").arg(offset));
-        
-        
         if ( audioRecorder->isRecording() )
             audioRecorder->stopRecording();
 
         if ( camera->isAvailable() && camera->isActive() )
             camera->stop();
-
+        
         if ( mediaRecorder->isAvailable() ) {
             mediaRecorder->stop();
         }
         
+        // OFFSETs
+        qint64 lastPos = player->position();
+        qint64 duration = player->duration();
+
+        // mediaRecorder offset
+        offset = ( mediaRecorder->duration() + ( duration - lastPos )) -  duration;
+        qWarning() << "Camera Latency calc: " << offset << " ms";
+        logTextEdit->append(QString("Camera Latency calc: %1 ms").arg(offset));
+
         if ( player && vizPlayer ) {
             vizPlayer->stop();
             playbackTimer->stop();
@@ -692,11 +695,6 @@ void MainWindow::stopRecording() {
         qWarning() << "Recording stopped.";
         logTextEdit->append("Recording Stopped");
 
-        // AudioRercorder offset
-        audioOffset = ( getMediaDuration(audioRecorded) + ( player->duration() - player->position() )) -  player->duration();
-        qWarning() << "Audio Latency calc: " << audioOffset << " ms";
-        logTextEdit->append(QString("Audio Latency calc: %1 ms").arg(audioOffset));
-        
         recordingIndicator->hide();
         webcamPreviewWidget->hide();
         previewCheckbox->setChecked(false);
@@ -708,8 +706,13 @@ void MainWindow::stopRecording() {
         videoWidget->hide();
         placeholderLabel->show();
 
-        QFile file(webcamRecorded);
+        QFile file(audioRecorded);
         if (file.size() > 0) {
+
+            // AudioRecorder offset
+            audioOffset = (1000 * getMediaDuration(audioRecorded) + ( duration - lastPos )) -  duration;
+            qWarning() << "Audio Latency calc: " << audioOffset << " ms";
+            logTextEdit->append(QString("Audio Latency calc: %1 ms").arg(audioOffset));
 
             qWarning() << "Recording saved successfully";
             renderAgain();

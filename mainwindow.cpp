@@ -183,8 +183,9 @@ MainWindow::MainWindow(QWidget *parent)
     offsetCheckbox = new QCheckBox("No offset");
     offsetCheckbox->setFont(QFont("Arial", 8));
     offsetCheckbox->setToolTip("Disable automatic system latency compensation (experimental)");
-    offsetCheckbox->setChecked(true);
-    
+
+    offsetCheckbox->setChecked(false);
+   
     QHBoxLayout *indicatorLayout = new QHBoxLayout();
     //indicatorLayout->addStretch();
     indicatorLayout->addWidget(offsetCheckbox, 0, Qt::AlignLeft);
@@ -625,8 +626,9 @@ void MainWindow::onPlayerPosChanged(qint64 position) {
 
 void MainWindow::onRecorderDurationChanged(qint64 currentDuration) {
     
-    if ( player->playbackState() == QMediaPlayer::PlayingState && currentDuration ) {
-        offset = player->position() - currentDuration;
+    if ( player->playbackState() == QMediaPlayer::PlayingState && currentDuration && !offset ) {
+        offset = currentDuration;
+        disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onRecorderDurationChanged);
     }
 
 }
@@ -657,6 +659,7 @@ void MainWindow::startRecording() {
         // Set up the house for recording
         //resetMediaComponents(false); // we dont reset anymore, see below
         isRecording = true;
+        offset = 0;
 
         if (camera && mediaRecorder && player && vizPlayer) {
 
@@ -666,7 +669,6 @@ void MainWindow::startRecording() {
             camera->start(); // prep camera first
             mediaRecorder->record(); // start recording video            
             audioRecorder->startRecording(audioRecorded); // start audio recorder
-            
             
         } else {
             qWarning() << "Failed to initialize camera, media recorder or player.";

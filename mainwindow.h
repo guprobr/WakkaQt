@@ -37,7 +37,7 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    QString Wakka_versione = "v0.98666a";
+    QString Wakka_versione = "v0.9869a";
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
@@ -50,7 +50,6 @@ private slots:
     void onRecorderStateChanged(QMediaRecorder::RecorderState state);
     void onPlaybackStateChanged(QMediaPlayer::PlaybackState state);
     void onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status);
-    //void onPlayerPosChanged(qint64 position);
     void handleRecorderError(QMediaRecorder::Error error);
     void onPreviewCheckboxToggled(bool checked);
     
@@ -105,7 +104,7 @@ private:
     QPushButton *chooseVideoButton;
     QPushButton *chooseInputButton;
     QPushButton *renderAgainButton;
-    QLabel* placeholderLabel;   // logo
+    QLabel* placeholderLabel;
     QLabel *recordingIndicator; 
     QLabel *deviceLabel;
     QLabel *banner;
@@ -118,7 +117,7 @@ private:
     QPushButton *fetchButton;
     QLabel *downloadStatusLabel;
     
-    QTextEdit *logTextEdit; // logs
+    QTextEdit *logTextEdit;
     
     QString currentPlayback;
     QString currentVideoFile;

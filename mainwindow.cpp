@@ -40,7 +40,6 @@
 #include <QGraphicsView>
 #include <QGraphicsSceneMouseEvent>
 
-#include <QSysInfo> // For platform detection
 #include <QDebug>
 
 MainWindow::MainWindow(QWidget *parent)
@@ -150,7 +149,7 @@ MainWindow::MainWindow(QWidget *parent)
     // Create playback chronometer text item
     durationTextItem = new QGraphicsTextItem;
     durationTextItem->setDefaultTextColor(palette.color(QPalette::Text));
-    durationTextItem->setFont(QFont("Courier", 16, QFont::Bold));
+    durationTextItem->setFont(QFont("Courier", 14, QFont::Bold));
     durationTextItem->setY(previewView->height() - (durationTextItem->boundingRect().height()) +5 );
     durationTextItem->setPlainText("00:00:00 / 00:00:00");
         
@@ -159,7 +158,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     banner = new QLabel(Wakka_welcome, this);
     banner->setTextFormat(Qt::TextFormat::RichText);
-    banner->setFont(QFont("Arial", 11));
+    banner->setFont(QFont("Arial", 10));
     banner->setAlignment(Qt::AlignCenter);
     banner->setToolTip("Here be the song title!");
     setBanner(Wakka_welcome);
@@ -167,10 +166,13 @@ MainWindow::MainWindow(QWidget *parent)
     // Create buttons
     QPushButton *exitButton = new QPushButton("Exit", this);
     chooseVideoButton = new QPushButton("Load playback from disk", this);
+    chooseVideoButton->setToolTip("Load media files from disk");
     singButton = new QPushButton("♪ SING ♪", this);
-    singButton->setFont(QFont("Arial", 16));
+    singButton->setFont(QFont("Arial", 21));
+    singButton->setToolTip("Start/Stop recording after loaded playback");
     chooseInputButton = new QPushButton("Choose Input Device", this);
     renderAgainButton = new QPushButton("RENDER AGAIN", this);
+    renderAgainButton->setToolTip("Repeat render and adjustments without singing again");
 
     // Recording indicator
     recordingIndicator = new QLabel("⦿ rec", this);
@@ -201,20 +203,20 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Device label
     deviceLabel = new QLabel("Selected Device: None", this);
-    deviceLabel->setFont(QFont("Verdana", 8));
+    deviceLabel->setFont(QFont("Arial", 8));
     deviceLabel->setToolTip("Changing the default source input in the system cfg will not reflect the information here");
     
     // YT downloader
     urlInput = new QLineEdit(this);
-    urlInput->setPlaceholderText("https://www.youtube.com/?v=ABCCDFGETC");
+    urlInput->setPlaceholderText("https://www.youtube.com/?v=aBcDFgETc");
     urlInput->setFont(QFont("Arial", 10));
-    urlInput->setToolTip("Paste a URL here to fetch your karaoke playback video");
+    urlInput->setToolTip("Paste a URL here and fetch your karaoke media");
     fetchButton = new QPushButton("FETCH", this);
-    fetchButton->setFont(QFont("Arial", 14));
-    fetchButton->setToolTip("Click here to begin yt-dlp: video streaming service downloader");
-    downloadStatusLabel = new QLabel("Download YouTube URL", this);
+    fetchButton->setFont(QFont("Arial", 12));
+    fetchButton->setToolTip("Click here and download URL to disk");
+    downloadStatusLabel = new QLabel("Download media", this);
     downloadStatusLabel->setFont(QFont("Arial", 8));
-    downloadStatusLabel->setToolTip("Several streaming services URL besides YouTube may work here");
+    downloadStatusLabel->setToolTip("Several URL besides YouTube will work");
     QHBoxLayout *fetchLayout = new QHBoxLayout;
     fetchLayout->addWidget(urlInput);
     fetchLayout->addWidget(fetchButton);
@@ -226,7 +228,7 @@ MainWindow::MainWindow(QWidget *parent)
     logUI(Wakka_welcome);
     logTextEdit->setMinimumHeight(45);
     logTextEdit->setMaximumHeight(90);
-    logTextEdit->setFont(QFont("Arial", 10));
+    logTextEdit->setFont(QFont("Arial", 8));
     logTextEdit->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     // Move cursor to the end of the text when text is appended
     connect(logTextEdit, &QTextEdit::textChanged, this, [=]() {
@@ -627,7 +629,6 @@ void MainWindow::onRecorderDurationChanged(qint64 currentDuration) {
         player->setAudioOutput(audioOutput.data());
         player->play();
 #endif
-
         disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onRecorderDurationChanged);
 
     }
@@ -657,13 +658,11 @@ void MainWindow::startRecording() {
         chooseInputDevice();  // User must select input device
 
         // Set up the house for recording
-        //resetMediaComponents(false); // we dont reset anymore, see below
         isRecording = true;
         offset = 0;
 
         if (camera && mediaRecorder && player && vizPlayer) {
 
-            //connect(player.data(), &QMediaPlayer::positionChanged, this, &MainWindow::onPlayerPosChanged);
             connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onRecorderDurationChanged);
             
             camera->start(); // prep camera first
@@ -826,7 +825,8 @@ void MainWindow::handleRecordingError() {
     chooseInputButton->setEnabled(true);
     chooseInputAction->setEnabled(true);
 
-    progressSongFull->setToolTip("Nothing to seek");
+    if ( progressSongFull )
+        progressSongFull->setToolTip("Nothing to seek");
 
     resetMediaComponents(false);
 
@@ -1482,7 +1482,6 @@ void MainWindow::disconnectAllSignals() {
     if (player) {
         disconnect(player.data(), &QMediaPlayer::mediaStatusChanged, this, &MainWindow::onPlayerMediaStatusChanged);
         disconnect(player.data(), &QMediaPlayer::playbackStateChanged, this, &MainWindow::onPlaybackStateChanged);
-        //disconnect(player.data(), &QMediaPlayer::positionChanged, this, &MainWindow::onPlayerPosChanged);
     }
 
 }

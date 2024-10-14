@@ -50,7 +50,7 @@ private slots:
     void onRecorderStateChanged(QMediaRecorder::RecorderState state);
     void onPlaybackStateChanged(QMediaPlayer::PlaybackState state);
     void onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status);
-    void onPlayerPosChanged(qint64 position);
+    //void onPlayerPosChanged(qint64 position);
     void handleRecorderError(QMediaRecorder::Error error);
     void onPreviewCheckboxToggled(bool checked);
     

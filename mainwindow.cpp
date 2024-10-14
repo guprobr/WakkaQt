@@ -616,23 +616,23 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
 
 }
 
-void MainWindow::onPlayerPosChanged(qint64 position) {
-
-        if ( player->playbackState() == QMediaPlayer::PlayingState && position ) {
-            pos = position;
-        }
-       
-}
-
 void MainWindow::onRecorderDurationChanged(qint64 currentDuration) {
     
-    if ( player->playbackState() == QMediaPlayer::PlayingState && currentDuration && !offset ) {
-        offset = currentDuration;
+    if ( currentDuration ) {
+
+        vizPlayer->seek(0);
+#ifdef __linux__
+        player->pause();
+        player->setAudioOutput(nullptr);
+        player->setAudioOutput(audioOutput.data());
+        player->play();
+#endif
+
         disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onRecorderDurationChanged);
+
     }
 
 }
-
 
 void MainWindow::startRecording() {
     try {
@@ -663,12 +663,19 @@ void MainWindow::startRecording() {
 
         if (camera && mediaRecorder && player && vizPlayer) {
 
-            connect(player.data(), &QMediaPlayer::positionChanged, this, &MainWindow::onPlayerPosChanged);
+            //connect(player.data(), &QMediaPlayer::positionChanged, this, &MainWindow::onPlayerPosChanged);
             connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onRecorderDurationChanged);
             
             camera->start(); // prep camera first
-            mediaRecorder->record(); // start recording video            
-            audioRecorder->startRecording(audioRecorded); // start audio recorder
+            
+            QElapsedTimer sysLatency;
+            sysLatency.start();
+
+            audioRecorder->startRecording(audioRecorded); // start audio recorder first
+            mediaRecorder->record(); // start recording video
+
+            offset = sysLatency.elapsed();
+            sysLatency.invalidate();
             
         } else {
             qWarning() << "Failed to initialize camera, media recorder or player.";
@@ -690,20 +697,14 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
         singButton->setEnabled(true);
         singAction->setEnabled(true);
         
-        vizPlayer->seek(0);
-        player->pause();
-#ifdef __linux__
-        player->setAudioOutput(nullptr);
-        player->setAudioOutput(audioOutput.data());
-#endif
-        player->play();
-
     }
     
 }
 
 // recording FINISH button
 void MainWindow::stopRecording() {
+
+    pos = player->position();
 
     try {
         if (!isRecording) {
@@ -713,15 +714,15 @@ void MainWindow::stopRecording() {
             return;
         }
 
-        if ( camera->isAvailable() && camera->isActive() )
-            camera->stop();
-
         if ( mediaRecorder->isAvailable() ) {
             mediaRecorder->stop();
         }
 
         if ( audioRecorder->isRecording() )
             audioRecorder->stopRecording();
+        
+        if ( camera->isAvailable() && camera->isActive() )
+            camera->stop();
 
         qWarning() << "Recording stopped.";
         logUI("Recording Stopped");
@@ -1481,7 +1482,7 @@ void MainWindow::disconnectAllSignals() {
     if (player) {
         disconnect(player.data(), &QMediaPlayer::mediaStatusChanged, this, &MainWindow::onPlayerMediaStatusChanged);
         disconnect(player.data(), &QMediaPlayer::playbackStateChanged, this, &MainWindow::onPlaybackStateChanged);
-        disconnect(player.data(), &QMediaPlayer::positionChanged, this, &MainWindow::onPlayerPosChanged);
+        //disconnect(player.data(), &QMediaPlayer::positionChanged, this, &MainWindow::onPlayerPosChanged);
     }
 
 }

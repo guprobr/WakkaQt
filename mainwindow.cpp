@@ -628,7 +628,9 @@ void MainWindow::onRecorderDurationChanged(qint64 currentDuration) {
     
     if ( currentDuration ) {
 
-        sysLatency.restart();        
+#ifdef __linux__
+        sysLatency.restart();
+#endif      
         vizPlayer->seek(0);
         audioRecorder->startRecording(audioRecorded); // start audio recorder now
         player->pause();
@@ -690,6 +692,8 @@ void MainWindow::startRecording() {
 void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
 
     if ( QMediaRecorder::RecordingState == state ) {
+        
+        sysLatency.restart();
         
         // Update UI to show recording status
         recordingIndicator->show();

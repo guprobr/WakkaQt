@@ -624,29 +624,6 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
 
 }
 
-void MainWindow::onRecorderDurationChanged(qint64 currentDuration) {
-    
-    if ( currentDuration ) {
-
-#ifdef __linux__
-        sysLatency.restart();
-#endif      
-        vizPlayer->seek(0);
-        audioRecorder->startRecording(audioRecorded); // start audio recorder now
-        player->pause();
-
-#ifdef __linux__
-        player->setAudioOutput(nullptr);
-        player->setAudioOutput(audioOutput.data());
-#endif
-
-        player->play();
-        disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onRecorderDurationChanged);
-
-    }
-
-}
-
 void MainWindow::startRecording() {
     try {
         if (currentVideoFile.isEmpty()) {
@@ -693,8 +670,6 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
 
     if ( QMediaRecorder::RecordingState == state ) {
         
-        sysLatency.restart();
-        
         // Update UI to show recording status
         recordingIndicator->show();
         singButton->setText("Finish!");
@@ -704,6 +679,28 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
 
     }
     
+}
+
+void MainWindow::onRecorderDurationChanged(qint64 currentDuration) {
+    
+    if ( currentDuration ) {
+        
+        sysLatency.restart();
+        
+        vizPlayer->seek(0);
+        player->pause();
+
+#ifdef __linux__
+        player->setAudioOutput(nullptr);
+        player->setAudioOutput(audioOutput.data());
+#endif
+
+        audioRecorder->startRecording(audioRecorded); // start audio recorder now
+        player->play();
+        disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onRecorderDurationChanged);
+
+    }
+
 }
 
 // recording FINISH button

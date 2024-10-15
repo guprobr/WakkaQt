@@ -718,8 +718,9 @@ void MainWindow::onRecorderDurationChanged(qint64 currentDuration) {
 
 #ifdef __linux__
         player->setAudioOutput(nullptr);
-        player->setAudioOutput(audioOutput.data());
 #endif
+        player->setAudioOutput(audioOutput.data());
+
 
         audioRecorder->startRecording(audioRecorded); // start audio recorder now
         player->play();

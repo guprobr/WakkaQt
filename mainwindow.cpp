@@ -627,15 +627,14 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
 void MainWindow::onRecorderDurationChanged(qint64 currentDuration) {
     
     if ( currentDuration ) {
-
+        
         vizPlayer->seek(0);
-#ifdef __linux__
         player->pause();
+#ifdef __linux__
         player->setAudioOutput(nullptr);
         player->setAudioOutput(audioOutput.data());
-        player->play();
 #endif        
-
+        player->play();
         disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onRecorderDurationChanged);
 
     }
@@ -673,8 +672,6 @@ void MainWindow::startRecording() {
             connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onRecorderDurationChanged);
             
             camera->start(); // prep camera first
-            
-            audioRecorder->startRecording(audioRecorded); // start audio recorder first
             mediaRecorder->record(); // start recording video
 
         } else {
@@ -697,6 +694,7 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
         singButton->setEnabled(true);
         singAction->setEnabled(true);
 
+        audioRecorder->startRecording(audioRecorded); // start audio recorder now
         sysLatency.restart();
 
     }

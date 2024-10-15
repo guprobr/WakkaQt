@@ -585,7 +585,9 @@ void MainWindow::chooseVideo()
 void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status) {
 
     if ( QMediaPlayer::MediaStatus::LoadedMedia == status ) {
-        
+
+        sysLatency.restart();
+
         setBanner(currentVideoName); // video loaded, set title
         banner->setToolTip(currentVideoName);
 
@@ -613,6 +615,11 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
             addProgressSong(scene, static_cast<int>(getMediaDuration(currentPlayback)));
 
         isPlayback = true; // enable seeking now
+
+        if ( isRecording )
+            offset = sysLatency.elapsed();
+        qWarning() << "Calculated system latency: " << sysLatency.elapsed() << " ms";
+        sysLatency.invalidate();
        
     }
 
@@ -621,9 +628,6 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
 void MainWindow::onRecorderDurationChanged(qint64 currentDuration) {
     
     if ( currentDuration ) {
-        
-        offset = sysLatency.elapsed();
-        sysLatency.invalidate();
 
         vizPlayer->seek(0);
         player->pause();
@@ -687,14 +691,15 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
 
     if ( QMediaRecorder::RecordingState == state ) {
         
+        sysLatency.restart();
+
         // Update UI to show recording status
         recordingIndicator->show();
         singButton->setText("Finish!");
         singAction->setText("Finish recording");
         singButton->setEnabled(true);
         singAction->setEnabled(true);
-        
-        sysLatency.start();
+
     }
     
 }
@@ -1245,6 +1250,8 @@ bool MainWindow::eventFilter(QObject *object, QEvent *event) {
 
                     // Set the new position based on the click
                         qint64 newPosition = static_cast<qint64>(progress * player->duration());
+
+                        sysLatency.restart();
 
                         vizPlayer->seek(newPosition); // Seek the media player to the clicked position
 

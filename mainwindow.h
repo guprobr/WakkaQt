@@ -69,7 +69,8 @@ private:
     QGraphicsTextItem *durationTextItem;
 
     QTimer *playbackTimer;
-
+    QElapsedTimer sysLatency;
+    
     bool isRecording;
     bool isPlayback;
     

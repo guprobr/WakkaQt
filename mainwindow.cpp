@@ -623,12 +623,17 @@ void MainWindow::onRecorderDurationChanged(qint64 currentDuration) {
     if ( currentDuration ) {
 
         vizPlayer->seek(0);
-#ifdef __linux__
+
         player->pause();
+#ifdef __linux__
         player->setAudioOutput(nullptr);
         player->setAudioOutput(audioOutput.data());
-        player->play();
 #endif
+        player->play();
+
+        offset = sysLatency.elapsed();
+        sysLatency.invalidate();
+
         disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onRecorderDurationChanged);
 
     }
@@ -667,14 +672,11 @@ void MainWindow::startRecording() {
             
             camera->start(); // prep camera first
             
-            QElapsedTimer sysLatency;
-            sysLatency.start();
             audioRecorder->startRecording(audioRecorded); // start audio recorder first
-            offset = sysLatency.elapsed();
-            sysLatency.invalidate();
-
             mediaRecorder->record(); // start recording video
-            
+
+            sysLatency.start();
+
         } else {
             qWarning() << "Failed to initialize camera, media recorder or player.";
         }

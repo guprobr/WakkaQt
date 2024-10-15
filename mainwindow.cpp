@@ -586,8 +586,6 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status) {
 
     if ( QMediaPlayer::MediaStatus::LoadedMedia == status ) {
 
-        sysLatency.restart();
-
         setBanner(currentVideoName); // video loaded, set title
         banner->setToolTip(currentVideoName);
 
@@ -614,12 +612,13 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
         if ( !isPlayback ) // only add progressSong when loading a new video
             addProgressSong(scene, static_cast<int>(getMediaDuration(currentPlayback)));
 
-        isPlayback = true; // enable seeking now
-
-        if ( isRecording )
+        if ( sysLatency.isValid() && isRecording ) {
             offset = sysLatency.elapsed();
-        qWarning() << "Calculated system latency: " << sysLatency.elapsed() << " ms";
+            qWarning() << "Playback latency: " << sysLatency.elapsed() << " ms";
+        }
         sysLatency.invalidate();
+        
+        isPlayback = true; // enable seeking now
        
     }
 
@@ -630,12 +629,12 @@ void MainWindow::onRecorderDurationChanged(qint64 currentDuration) {
     if ( currentDuration ) {
 
         vizPlayer->seek(0);
-        player->pause();
 #ifdef __linux__
+        player->pause();
         player->setAudioOutput(nullptr);
         player->setAudioOutput(audioOutput.data());
-#endif
         player->play();
+#endif        
 
         disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onRecorderDurationChanged);
 
@@ -691,14 +690,14 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
 
     if ( QMediaRecorder::RecordingState == state ) {
         
-        sysLatency.restart();
-
         // Update UI to show recording status
         recordingIndicator->show();
         singButton->setText("Finish!");
         singAction->setText("Finish recording");
         singButton->setEnabled(true);
         singAction->setEnabled(true);
+
+        sysLatency.restart();
 
     }
     
@@ -717,12 +716,12 @@ void MainWindow::stopRecording() {
             return;
         }
 
+        if ( audioRecorder->isRecording() )
+            audioRecorder->stopRecording();
+
         if ( mediaRecorder->isAvailable() ) {
             mediaRecorder->stop();
         }
-
-        if ( audioRecorder->isRecording() )
-            audioRecorder->stopRecording();
         
         if ( camera->isAvailable() && camera->isActive() )
             camera->stop();
@@ -1250,8 +1249,6 @@ bool MainWindow::eventFilter(QObject *object, QEvent *event) {
 
                     // Set the new position based on the click
                         qint64 newPosition = static_cast<qint64>(progress * player->duration());
-
-                        sysLatency.restart();
 
                         vizPlayer->seek(newPosition); // Seek the media player to the clicked position
 

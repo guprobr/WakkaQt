@@ -675,8 +675,6 @@ void MainWindow::startRecording() {
             audioRecorder->startRecording(audioRecorded); // start audio recorder first
             mediaRecorder->record(); // start recording video
 
-            sysLatency.start();
-
         } else {
             qWarning() << "Failed to initialize camera, media recorder or player.";
         }
@@ -690,6 +688,7 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
 
     if ( QMediaRecorder::RecordingState == state ) {
         
+        sysLatency.start();
         // Update UI to show recording status
         recordingIndicator->show();
         singButton->setText("Finish!");

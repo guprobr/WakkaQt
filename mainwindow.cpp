@@ -669,12 +669,11 @@ void MainWindow::startRecording() {
             
             QElapsedTimer sysLatency;
             sysLatency.start();
-
             audioRecorder->startRecording(audioRecorded); // start audio recorder first
-            mediaRecorder->record(); // start recording video
-
             offset = sysLatency.elapsed();
             sysLatency.invalidate();
+
+            mediaRecorder->record(); // start recording video
             
         } else {
             qWarning() << "Failed to initialize camera, media recorder or player.";

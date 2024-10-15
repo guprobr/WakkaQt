@@ -627,13 +627,17 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
 void MainWindow::onRecorderDurationChanged(qint64 currentDuration) {
     
     if ( currentDuration ) {
-        
+
+        sysLatency.restart();        
         vizPlayer->seek(0);
+        audioRecorder->startRecording(audioRecorded); // start audio recorder now
         player->pause();
+
 #ifdef __linux__
         player->setAudioOutput(nullptr);
         player->setAudioOutput(audioOutput.data());
-#endif        
+#endif
+
         player->play();
         disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onRecorderDurationChanged);
 
@@ -693,9 +697,6 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
         singAction->setText("Finish recording");
         singButton->setEnabled(true);
         singAction->setEnabled(true);
-
-        audioRecorder->startRecording(audioRecorded); // start audio recorder now
-        sysLatency.restart();
 
     }
     

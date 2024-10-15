@@ -37,7 +37,7 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    QString Wakka_versione = "v0.9869a";
+    QString Wakka_versione = "v0.9888a";
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
@@ -80,6 +80,7 @@ private:
     qint64 audioOffset = 0;
 
     QAudioDevice selectedDevice;
+    QCameraDevice selectedCameraDevice;
 
     QProgressBar *progressBar;
     int totalDuration;

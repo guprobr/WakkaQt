@@ -384,7 +384,7 @@ void MainWindow::configureMediaComponents()
     audioOutput.reset(new QAudioOutput(this));
     videoSink.reset(new QVideoSink(this));
     format.reset(new QMediaFormat);
-    camera.reset(new QCamera(this));
+    camera.reset(new QCamera(selectedCameraDevice, this));
     mediaRecorder.reset(new QMediaRecorder(this));
     mediaCaptureSession.reset(new QMediaCaptureSession(this));
 
@@ -423,102 +423,128 @@ void MainWindow::configureMediaComponents()
 }
 
 void MainWindow::chooseInputDevice() {
+    selectedDevice = QMediaDevices::defaultAudioInput();  // Default to the default audio input device
 
-    selectedDevice = QMediaDevices::defaultAudioInput(); // default to the default!
-    // Find all available audio input devices
+    // Get available audio and video input devices
     QList<QAudioDevice> audioInputs = QMediaDevices::audioInputs();
+    QList<QCameraDevice> videoInputs = QMediaDevices::videoInputs();
     
-    // If no devices found, warn the user and return
-    if (audioInputs.isEmpty()) {
-        QMessageBox::warning(this, "No Input Device", "No audio input devices found.");
+    // Check if there are any devices available
+    if (audioInputs.isEmpty() && videoInputs.isEmpty()) {
+        QMessageBox::warning(this, "No Input Devices", "No audio or video input devices found.");
         return;
     }
 
-    // Create a dialog to show the list of devices
+    // Create a dialog to show the lists of devices
     QDialog *deviceDialog = new QDialog();
-    deviceDialog->setWindowTitle("Select Input Device");
-    deviceDialog->setFixedSize(300, 200);
+    deviceDialog->setWindowTitle("Select Input Devices");
+    deviceDialog->setFixedSize(400, 300);
 
     // Create a layout for the dialog
     QVBoxLayout *layout = new QVBoxLayout(deviceDialog);
 
-    // Create a list widget to display audio devices
-    QListWidget *deviceList = new QListWidget(deviceDialog);
+    // Create a tab widget to separate audio and video device selection
+    QTabWidget *tabWidget = new QTabWidget(deviceDialog);
+
+    // Create a widget for audio input devices
+    QWidget *audioTab = new QWidget();
+    QVBoxLayout *audioLayout = new QVBoxLayout(audioTab);
+    QListWidget *audioList = new QListWidget(audioTab);
+    
     for (const QAudioDevice &device : audioInputs) {
-        // Create a new item for the list
         QListWidgetItem *item = new QListWidgetItem(device.description());
-        // Store the unique ID as user data
         item->setData(Qt::UserRole, device.id());
-        deviceList->addItem(item);
+        audioList->addItem(item);
     }
-    layout->addWidget(deviceList);
+    audioLayout->addWidget(audioList);
+    tabWidget->addTab(audioTab, "Audio Devices");
+
+    // Create a widget for video input devices
+    QWidget *videoTab = new QWidget();
+    QVBoxLayout *videoLayout = new QVBoxLayout(videoTab);
+    QListWidget *videoList = new QListWidget(videoTab);
+
+    for (const QCameraDevice &device : videoInputs) {
+        QListWidgetItem *item = new QListWidgetItem(device.description());
+        item->setData(Qt::UserRole, device.id());
+        videoList->addItem(item);
+    }
+    videoLayout->addWidget(videoList);
+    tabWidget->addTab(videoTab, "Video Devices");
+
+    layout->addWidget(tabWidget);
 
     // Create a button to confirm the selection
     QPushButton *selectButton = new QPushButton("Select", deviceDialog);
     layout->addWidget(selectButton);
 
     // Connect the select button to handle selection
-    connect(selectButton, &QPushButton::clicked, this, [this, deviceList, deviceDialog]() {
-        // Get the selected item
-        QListWidgetItem *selectedItem = deviceList->currentItem();
-        if (selectedItem) {
-            // Find the corresponding device using its unique ID
-            QString selectedDeviceId = selectedItem->data(Qt::UserRole).toString();
+    connect(selectButton, &QPushButton::clicked, this, [this, audioList, videoList, deviceDialog]() {
+        // Handle audio device selection
+        QListWidgetItem *selectedAudioItem = audioList->currentItem();
+        if (selectedAudioItem) {
+            QString selectedAudioDeviceId = selectedAudioItem->data(Qt::UserRole).toString();
             QList<QAudioDevice> audioInputs = QMediaDevices::audioInputs();
-            selectedDevice = QAudioDevice(); // Reset selected device
+            selectedDevice = QAudioDevice();  // Reset the selected device
 
             for (const QAudioDevice &device : audioInputs) {
-                if (device.id() == selectedDeviceId) {
+                if (device.id() == selectedAudioDeviceId) {
                     selectedDevice = device;
                     break;
                 }
             }
+        }
 
-            // Close the dialog
-            deviceDialog->accept();
+        // Handle video device selection
+        QListWidgetItem *selectedVideoItem = videoList->currentItem();
+        if (selectedVideoItem) {
+            QString selectedVideoDeviceId = selectedVideoItem->data(Qt::UserRole).toString();
+            QList<QCameraDevice> videoInputs = QMediaDevices::videoInputs();
+            selectedCameraDevice = QCameraDevice();  // Reset the selected camera device
 
-            // Check if the selected device is valid
-            if (selectedDevice.isNull()) {
-                QMessageBox::warning(this, "Device Error", "The selected audio input device is invalid.");
-            } else {
-                
-                // Set a supported audio format (adjust as needed)
-                QAudioFormat format;
-                format.setSampleRate(44100);
-                format.setChannelCount(1);
-                format.setSampleFormat(QAudioFormat::Int16);
-
-                // Create an audio source to check if the device is working
-                QScopedPointer<QAudioSource> audioSource(new QAudioSource(selectedDevice, format));
-
-                if (!audioSource->start()) {
-                    QMessageBox::warning(this, "Device Error", "Failed to start audio source: " + audioSource->error());
-                    // Check specific error codes for more information
-                    if (audioSource->error() == QAudio::IOError) {
-                        QMessageBox::warning(this, "IO Error", "I/O error occurred while starting audio source.");
-                    } else if (audioSource->error() != QAudio::NoError) {
-                        QMessageBox::warning(this, "Error", "Error on input device.");
-                    }
+            for (const QCameraDevice &device : videoInputs) {
+                if (device.id() == selectedVideoDeviceId) {
+                    selectedCameraDevice = device;
+                    break;
                 }
-                audioSource->stop();
             }
+        }
+
+        // Close the dialog
+        deviceDialog->accept();
+
+        // Check if the selected devices are valid
+        if (selectedDevice.isNull()) {
+            QMessageBox::warning(this, "Audio Device Error", "The selected audio input device is invalid.");
         } else {
-            QMessageBox::warning(this, "No Selection", "Please select a device before proceeding.");
+            // Set up audio recording
+            audioRecorder.reset(new AudioRecorder(selectedDevice, this));
+            connect(audioRecorder.data(), &AudioRecorder::deviceLabelChanged, this, &MainWindow::updateDeviceLabel);
+            audioRecorder->initialize();
+            soundLevelWidget->setInputDevice(selectedDevice);
+        }
+
+        if (!selectedCameraDevice.isNull()) {
+            // Set up Video recording
+            mediaCaptureSession.reset(new QMediaCaptureSession(this)); // Set up media session
+            camera.reset(new QCamera(selectedCameraDevice, this)); // Set up camera
+            qDebug() << "Configuring mediaCaptureSession..";
+            mediaCaptureSession->setVideoOutput(videoSink.data());
+            mediaCaptureSession->setCamera(camera.data());
+            mediaCaptureSession->setAudioInput(nullptr);
+            mediaCaptureSession->setRecorder(mediaRecorder.data());
+            //camera->start();
         }
     });
 
-    // Execute the dialog and check if it was cancelled
+    // Execute the dialog
     if (deviceDialog->exec() == QDialog::Rejected) {
         QMessageBox::information(this, "Cancelled", "Device selection was cancelled.");
     }
 
-    audioRecorder.reset(new AudioRecorder(selectedDevice, this));
-    connect(audioRecorder.data(), &AudioRecorder::deviceLabelChanged, this, &MainWindow::updateDeviceLabel);
-    audioRecorder->initialize();
-    soundLevelWidget->setInputDevice(selectedDevice);
-
     delete deviceDialog; // Clean up the dialog after it is closed
 }
+
 
 void MainWindow::updateDeviceLabel(const QString &deviceLabelText) {
     if (deviceLabel) { // this only works for selected devices within the app,

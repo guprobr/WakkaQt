@@ -83,10 +83,6 @@ void AudioVizMediaPlayer::pause()
 void AudioVizMediaPlayer::stop()
 {
     m_audioPosition = 0;
-    m_decodedAudioData->detach();  
-    m_decodedAudioData->clear();  // Clear the audio buffer
-    m_framePositions->detach();    
-    m_framePositions->clear();    // Clear frame positions
     m_audioTimer->stop();
 
     if (m_mediaPlayer)

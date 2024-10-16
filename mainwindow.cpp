@@ -579,7 +579,8 @@ void MainWindow::updateDeviceLabel(const QString &deviceLabelText) {
 void MainWindow::chooseVideo()
 {
 
-    vizPlayer->stop();
+    qint64 lastPos = player->position();
+    vizPlayer->stop(); // stop to prevent "Unexpected FFmpeg behaviour"
 
     QFileDialog* fileDialog = new QFileDialog(this);
     fileDialog->setWindowTitle("Open Playback File");
@@ -601,7 +602,18 @@ void MainWindow::chooseVideo()
             logUI("Playback preview. Press SING to start recording.");
 
         }
-    } 
+    } else
+        QTimer::singleShot(500, this, [this, lastPos]() {
+            vizPlayer->seek(lastPos);
+            #if QT_VERSION < QT_VERSION_CHECK(6, 6, 2)
+            #ifdef __linux__
+                player->setAudioOutput(nullptr); // first, detach the audio output 
+                player->setAudioOutput(audioOutput.data()); // now gimme back my sound mon
+            #endif
+            #endif
+            vizPlayer->play();
+        }); // resume play
+
     delete fileDialog;
 }
 
@@ -786,6 +798,8 @@ void MainWindow::stopRecording() {
             logUI(QString("Calculated Camera Offset: %1 ms").arg(videoOffset));
             logUI(QString("Calculated Audio Offset: %1 ms").arg(audioOffset));
             
+            qWarning() << "Recording saved successfully";
+
             renderAgain();
 
         } else {
@@ -873,9 +887,7 @@ void MainWindow::handleRecordingError() {
 // render //
 void MainWindow::renderAgain()
 {
-
-    qWarning() << "Recording saved successfully";
-
+    vizPlayer->stop();
     playbackTimer->stop();
 
     resetMediaComponents(false);
@@ -885,7 +897,7 @@ void MainWindow::renderAgain()
     renderAgainButton->setVisible(false);
     enable_playback(false);
     progressSongFull->setToolTip("Nothing to seek");
-
+    
     // choose where to save rendered file
     outputFilePath = QFileDialog::getSaveFileName(this, "Mix destination (default .MP4)", "", "Video or Audio Files (*.mp4 *.mkv *.webm *.avi *.mp3 *.flac *.wav)");
     if (!outputFilePath.isEmpty()) {
@@ -1291,11 +1303,27 @@ void MainWindow::fetchVideo() {
         return;
     }
 
+    qint64 lastPos = player->position();
+    vizPlayer->stop(); // stop to prevent "Unexpected FFmpeg behaviour"
+
     QString directory = QFileDialog::getExistingDirectory(this, "Choose Directory to Save Video");
     if (directory.isEmpty()) {
+        
+        QTimer::singleShot(500, this, [this, lastPos]() {
+            vizPlayer->seek(lastPos);
+            #if QT_VERSION < QT_VERSION_CHECK(6, 6, 2)
+            #ifdef __linux__
+                    player->setAudioOutput(nullptr); // first, detach the audio output 
+                    player->setAudioOutput(audioOutput.data()); // now gimme back my sound mon
+            #endif
+            #endif
+            vizPlayer->play();
+        }); // resume play
+
         return;
     }
 
+    fetchButton->setEnabled(false);
     downloadStatusLabel->setText("Downloading...");
     QProcess *process = new QProcess(this);
     
@@ -1304,11 +1332,9 @@ void MainWindow::fetchVideo() {
     arguments << "--output" << (directory + "/%(title)s.%(ext)s")
               << url;
 
-    connect(process, &QProcess::finished, [this, directory, process]() {
+    connect(process, &QProcess::finished, [this, directory, process, lastPos]() {
         downloadStatusLabel->setText("Download complete.");
         process->deleteLater();
-
-        vizPlayer->stop();
 
         // Open the choose video dialog in the directory chosen to save video
         QString fetchVideoPath = QFileDialog::getOpenFileName(this, "Choose the downloaded playback or any another", directory, "Videos (*.mp4 *.mkv *.webm *.avi)");
@@ -1330,8 +1356,21 @@ void MainWindow::fetchVideo() {
                 singButton->setEnabled(true); 
                 singAction->setEnabled(true);
                 logUI("Previewing playback. Press SING to start recording.");
+                fetchButton->setEnabled(true);
             }
             
+        } else {
+            QTimer::singleShot(500, this, [this, lastPos]() {
+                vizPlayer->seek(lastPos);
+                #if QT_VERSION < QT_VERSION_CHECK(6, 6, 2)
+                #ifdef __linux__
+                        player->setAudioOutput(nullptr); // first, detach the audio output 
+                        player->setAudioOutput(audioOutput.data()); // now gimme back my sound mon
+                #endif
+                #endif
+                vizPlayer->play();
+                fetchButton->setEnabled(true);
+            }); // resume play
         }
     });
 

@@ -635,7 +635,7 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
         if ( !isPlayback ) { 
             addProgressSong(scene, static_cast<int>(getMediaDuration(currentPlayback)));
         }
-        
+
         if ( isRecording )
             audioRecorder->startRecording(audioRecorded); // start audio recorder now
 
@@ -841,6 +841,7 @@ void MainWindow::handleRecordingError() {
     logUI("Attempting to recover from recording error...");
 
     isRecording = false;
+    isPlayback = false;
 
     qDebug() << "Cleaning up..";
     if ( camera )

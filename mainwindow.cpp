@@ -59,7 +59,7 @@ MainWindow::MainWindow(QWidget *parent)
     QAction *aboutQtAction = new QAction("About Qt", this);
     QAction *aboutWakkaQtAction = new QAction("About WakkaQt", this);
     loadPlaybackAction = new QAction("Load playback", this);
-    chooseInputAction = new QAction("Configure Audio Input", this);
+    chooseInputAction = new QAction("Choose Input Devices", this);
     singAction = new QAction("SING", this);
     QAction *exitAction = new QAction("Exit", this);
     menuBar->setFont(QFont("Arial", 8));
@@ -170,7 +170,7 @@ MainWindow::MainWindow(QWidget *parent)
     singButton = new QPushButton("♪ SING ♪", this);
     singButton->setFont(QFont("Arial", 21));
     singButton->setToolTip("Start/Stop recording after loaded playback");
-    chooseInputButton = new QPushButton("Choose Input Device", this);
+    chooseInputButton = new QPushButton("Choose Input Devices", this);
     renderAgainButton = new QPushButton("RENDER AGAIN", this);
     renderAgainButton->setToolTip("Repeat render and adjustments without singing again");
 

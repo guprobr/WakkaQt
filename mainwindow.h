@@ -37,7 +37,7 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    QString Wakka_versione = "v0.9888a";
+    QString Wakka_versione = "v0.989a";
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 

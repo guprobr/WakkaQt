@@ -110,13 +110,13 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Create video widget
     videoWidget = new QVideoWidget(this);
-    videoWidget->setMinimumSize(320, 160);
+    videoWidget->setMinimumSize(320, 240);
     videoWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     videoWidget->hide();
     
     // Create a QLabel to display the placeholder image
     placeholderLabel = new QLabel(this);
-    placeholderLabel->setMinimumSize(320, 160);
+    placeholderLabel->setMinimumSize(320, 240);
     QPixmap placeholderPixmap(":/images/logo.jpg");
     if (placeholderPixmap.isNull()) {
         qWarning() << "Failed to load placeholder image!";
@@ -129,7 +129,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Create the main VideoDisplayWidget
     webcamPreviewWidget = new VideoDisplayWidget(this);
-    webcamPreviewWidget->setFixedSize(240, 120);
+    webcamPreviewWidget->setFixedSize(520, 140);
     webcamPreviewWidget->setToolTip("Click to open large preview");
     QHBoxLayout *webcamPreviewLayout = new QHBoxLayout();
     webcamPreviewLayout->addStretch();

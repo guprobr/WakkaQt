@@ -19,6 +19,9 @@ AudioRecorder::AudioRecorder(QAudioDevice selectedDevice, QObject* parent)
         m_audioFormat.setChannelCount(1);
         m_audioFormat.setSampleFormat(QAudioFormat::SampleFormat::Int32);
     }
+
+    if (m_audioFormat.sampleFormat() == QAudioFormat::Float) // also after Qt 6.4 it bugs on Windows always returning float
+        m_audioFormat.setSampleFormat(QAudioFormat::Int16); // we force 16 bit :(
     
     if ( !selectedDevice.isFormatSupported(m_audioFormat) ) {
         qDebug() << "Preferred format is bogus.";

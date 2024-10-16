@@ -533,7 +533,7 @@ void MainWindow::chooseInputDevice() {
             mediaCaptureSession->setCamera(camera.data());
             mediaCaptureSession->setAudioInput(nullptr);
             mediaCaptureSession->setRecorder(mediaRecorder.data());
-            //camera->start();
+            camera->start();
         }
     });
 

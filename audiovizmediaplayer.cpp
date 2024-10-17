@@ -10,12 +10,14 @@
 #include <QThread>
 #include <QDebug>
 
-AudioVizMediaPlayer::AudioVizMediaPlayer(QMediaPlayer *m_player, AudioVisualizerWidget *visualizer, QObject *parent)
+AudioVizMediaPlayer::AudioVizMediaPlayer(QMediaPlayer *m_player, AudioVisualizerWidget *visualizer, AudioVisualizerWidget *vizLeft, AudioVisualizerWidget *vizRight, QObject *parent)
     : QObject(parent)
     , m_mediaPlayer(m_player)
     , m_audioPosition(0)
     , m_audioTimer(new QTimer(this))
     , m_visualizer(visualizer)
+    , m_visualizer_left(vizLeft)
+    , m_visualizer_right(vizRight)
     , m_decodedAudioData(new QByteArray)  
     , m_framePositions(new QVector<qint64>)
 {
@@ -36,6 +38,8 @@ AudioVizMediaPlayer::~AudioVizMediaPlayer()
     }
 
     m_visualizer->clear();
+    m_visualizer_left->clear();
+    m_visualizer_right->clear();
     m_decodedAudioData->detach();
     m_decodedAudioData->clear(); // Clear the audio data buffer
     m_framePositions->detach();
@@ -90,6 +94,12 @@ void AudioVizMediaPlayer::stop()
     
     if (m_visualizer)
         m_visualizer->clear();  // Clear visualizations
+
+    if (m_visualizer_left)
+        m_visualizer_left->clear();  // Clear visualizations
+    
+    if (m_visualizer_right)
+        m_visualizer_right->clear();  // Clear visualizations
 }
 
 void AudioVizMediaPlayer::seek(qint64 position)
@@ -107,6 +117,8 @@ void AudioVizMediaPlayer::seek(qint64 position)
 
     // Clear the visualizer before updating the new position
     m_visualizer->clear();
+    m_visualizer_left->clear();
+    m_visualizer_right->clear();
 
     // Calculate the frame position corresponding to the seek position
     qint64 targetFrame = position * m_framePositions->size() / m_mediaPlayer->duration();
@@ -174,7 +186,7 @@ qint64 AudioVizMediaPlayer::findClosestFramePosition(qint64 targetFrame)
 
 void AudioVizMediaPlayer::updateVisualizer()
 {
-    if (!m_visualizer || m_decodedAudioData->isEmpty()) {
+    if (!m_visualizer || !m_visualizer_left || !m_visualizer_right || m_decodedAudioData->isEmpty()) {
         return;
     }
 
@@ -182,6 +194,8 @@ void AudioVizMediaPlayer::updateVisualizer()
     if (m_audioPosition < 0 || m_audioPosition >= m_decodedAudioData->size()) {
         m_audioPosition = 0;  // Reset audio position if out of bounds
         m_visualizer->clear();  // Clear visualizations when out of bounds
+        m_visualizer_left->clear(); 
+        m_visualizer_right->clear(); 
         return;
     }
 
@@ -191,16 +205,21 @@ void AudioVizMediaPlayer::updateVisualizer()
     if (bytesToVisualize > 0) {
         QByteArray audioChunk = m_decodedAudioData->mid(m_audioPosition, bytesToVisualize);
         m_visualizer->updateVisualization(audioChunk, m_audioFormat);  // Send data to visualizer
+        m_visualizer_left->updateVisualization(audioChunk, m_audioFormat);  
+        m_visualizer_right->updateVisualization(audioChunk, m_audioFormat);  
+
 
         m_audioPosition += bytesToVisualize;
 
         // Ensure audioPosition doesn't exceed the audio data size
         if (m_audioPosition >= m_decodedAudioData->size()) {
             m_audioPosition = 0;  // Reset if we reach the end
-            //pause(); 
+            m_audioTimer->stop();
         }
     } else {
         m_visualizer->clear();  // Clear visualization if no data to visualize
+        m_visualizer_left->clear();
+        m_visualizer_right->clear();
     }
 }
 

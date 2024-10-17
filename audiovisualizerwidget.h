@@ -2,11 +2,12 @@
 #define AUDIOVISUALIZERWIDGET_H
 
 #include <QWidget>
+#include <QFrame>
 #include <QAudioFormat>
 #include <QByteArray>
 #include <QTimer>
 
-class AudioVisualizerWidget : public QWidget
+class AudioVisualizerWidget : public QFrame
 {
     Q_OBJECT
 public:
@@ -20,6 +21,8 @@ protected:
 private:
     QByteArray m_visualizationData;
     QAudioFormat m_format;
+    QBrush m_brush;
+    QColor bgColor;
 
 public slots:
     void updateVisualization(const QByteArray &audioData, const QAudioFormat &format);

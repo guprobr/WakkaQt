@@ -110,13 +110,13 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Create video widget
     videoWidget = new QVideoWidget(this);
-    videoWidget->setMinimumSize(320, 320);
+    videoWidget->setMinimumSize(320, 248);
     videoWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     videoWidget->hide();
     
     // Create a QLabel to display the placeholder image
     placeholderLabel = new QLabel(this);
-    placeholderLabel->setMinimumSize(320, 320);
+    placeholderLabel->setMinimumSize(320, 248);
     QPixmap placeholderPixmap(":/images/logo.jpg");
     if (placeholderPixmap.isNull()) {
         qWarning() << "Failed to load placeholder image!";
@@ -129,17 +129,15 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Create the main VideoDisplayWidget
     webcamPreviewWidget = new VideoDisplayWidget(this);
-    webcamPreviewWidget->setFixedSize(480, 160);
+    webcamPreviewWidget->setFixedSize(196, 84);
     webcamPreviewWidget->setToolTip("Click to open large preview");
     QHBoxLayout *webcamPreviewLayout = new QHBoxLayout();
-    webcamPreviewLayout->addStretch();
     webcamPreviewLayout->addWidget(webcamPreviewWidget, 0, Qt::AlignCenter);
-    webcamPreviewLayout->addStretch();
-
+   
     // Create the scene and view
     scene = new QGraphicsScene(this);
     previewView = new QGraphicsView(scene, this);
-    previewView->setMinimumSize(640, 50);
+    previewView->setMinimumSize(640, 45);
     previewView->setMaximumHeight(50);
     previewView->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     previewView->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
@@ -149,7 +147,7 @@ MainWindow::MainWindow(QWidget *parent)
     // Create playback chronometer text item
     durationTextItem = new QGraphicsTextItem;
     durationTextItem->setDefaultTextColor(palette.color(QPalette::Text));
-    durationTextItem->setFont(QFont("Courier", 14, QFont::Bold));
+    durationTextItem->setFont(QFont("Courier", 12, QFont::Bold));
     durationTextItem->setY(previewView->height() - (durationTextItem->boundingRect().height()) +5 );
     durationTextItem->setPlainText("00:00:00 / 00:00:00");
         
@@ -168,7 +166,7 @@ MainWindow::MainWindow(QWidget *parent)
     chooseVideoButton = new QPushButton("Load playback from disk", this);
     chooseVideoButton->setToolTip("Load media files from disk");
     singButton = new QPushButton("♪ SING ♪", this);
-    singButton->setFont(QFont("Arial", 21));
+    singButton->setFont(QFont("Arial", 16));
     singButton->setToolTip("Start/Stop recording after loaded playback");
     chooseInputButton = new QPushButton("Choose Input Devices", this);
     renderAgainButton = new QPushButton("RENDER AGAIN", this);
@@ -191,8 +189,8 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Instantiate SndWidget
     soundLevelWidget = new SndWidget(this);
-    soundLevelWidget->setMinimumSize(640, 32);
-    soundLevelWidget->setMaximumHeight(32);
+    soundLevelWidget->setMinimumSize(640, 25);
+    soundLevelWidget->setMaximumHeight(64);
     soundLevelWidget->setToolTip("Sound input visualization widget");
 
     // Device label
@@ -220,7 +218,7 @@ MainWindow::MainWindow(QWidget *parent)
     logTextEdit = new QTextEdit(this);
     logTextEdit->setReadOnly(true);
     logUI(Wakka_welcome);
-    logTextEdit->setMinimumHeight(45);
+    logTextEdit->setMinimumHeight(25);
     logTextEdit->setMaximumHeight(90);
     logTextEdit->setFont(QFont("Arial", 8));
     logTextEdit->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
@@ -230,18 +228,32 @@ MainWindow::MainWindow(QWidget *parent)
         logTextEdit->ensureCursorVisible();
     });
 
-    // Instantiate Audio Visualizer
+    // Instantiate Audio Visualizers
     vizWidget = new AudioVisualizerWidget(this);
-    vizWidget->setMinimumSize(200, 48);
-    vizWidget->setMaximumHeight(70);
+    vizWidget->setMinimumSize(200, 25);
+    vizWidget->setMaximumHeight(64);
     vizWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     vizWidget->setToolTip("Yelloopy© Audio Visualizer");
+    
+    QHBoxLayout *vizLayout = new QHBoxLayout();
+    vizUpperLeft = new AudioVisualizerWidget(this);
+    vizUpperRight = new AudioVisualizerWidget(this);
+    vizUpperLeft->setMinimumHeight(32);
+    vizUpperRight->setMinimumHeight(32);
+    vizUpperLeft->setMaximumHeight(64);
+    vizUpperRight->setMaximumHeight(64);
+    vizUpperLeft->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    vizUpperRight->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    
+    vizLayout->addWidget(vizUpperLeft);
+    vizLayout->addLayout(webcamPreviewLayout);
+    vizLayout->addWidget(vizUpperRight);
 
     // Layout
     QWidget *containerWidget = new QWidget(this);
     QVBoxLayout *layout = new QVBoxLayout(containerWidget);
     layout->addLayout(indicatorLayout);
-    layout->addLayout(webcamPreviewLayout);
+    layout->addLayout(vizLayout);
     layout->addWidget(banner);
     layout->addWidget(previewView);
     layout->addWidget(soundLevelWidget);
@@ -385,7 +397,7 @@ void MainWindow::configureMediaComponents()
     // Setup Media player
     player->setVideoOutput(videoWidget);
     player->setAudioOutput(audioOutput.data());
-    vizPlayer.reset(new AudioVizMediaPlayer(player.data(), vizWidget, this));
+    vizPlayer.reset(new AudioVizMediaPlayer(player.data(), vizWidget, vizUpperLeft, vizUpperRight, this));
     
     // Setup SndWidget
     soundLevelWidget->setInputDevice(selectedDevice);

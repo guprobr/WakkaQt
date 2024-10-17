@@ -37,7 +37,7 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    QString Wakka_versione = "v0.9.9.1 alpha";
+    QString Wakka_versione = "v0.9.9.2 alpha";
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
@@ -86,6 +86,8 @@ private:
 
     QVideoWidget *videoWidget;
     AudioVisualizerWidget *vizWidget;
+    AudioVisualizerWidget *vizUpperLeft;
+    AudioVisualizerWidget *vizUpperRight;
 
     QScopedPointer<QMediaPlayer> player;
     QScopedPointer<AudioVizMediaPlayer> vizPlayer;

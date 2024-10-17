@@ -4,15 +4,37 @@
 #include <QPainter>
 #include <QPen>
 #include <QBrush>
+#include <QRandomGenerator>
 #include <QDebug>
 
 AudioVisualizerWidget::AudioVisualizerWidget(QWidget *parent)
-    : QWidget(parent)
+    : QFrame(parent)
 {
-    
+    setFrameStyle(QFrame::Raised);
+    setLineWidth(5);  
+    setMidLineWidth(3);
+
+    QPalette palette = this->palette();
+    bgColor = palette.color(QPalette::Window);
+
+    // change the brush color every six seconds
+    QTimer *colorTimer = new QTimer(this);
+    connect(colorTimer, &QTimer::timeout, this, [this]() {
+        // Generate random RGB values :)
+        int red = QRandomGenerator::global()->bounded(256);
+        int green = QRandomGenerator::global()->bounded(256);
+        int blue = QRandomGenerator::global()->bounded(256);
+
+        // Set a random brush color
+        m_brush = QBrush(QColor(red, green, blue));
+    });
+
+    colorTimer->start(6000);
     QTimer *timer = new QTimer(this);
     connect(timer, &QTimer::timeout, this, &AudioVisualizerWidget::updatePainter);
     timer->start(25);
+
+
 }
 
 AudioVisualizerWidget::~AudioVisualizerWidget()
@@ -43,32 +65,50 @@ void AudioVisualizerWidget::paintEvent(QPaintEvent *event)
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing);
 
-    painter.fillRect(rect(), Qt::black);
+    // Fill the background with black
+    painter.fillRect(rect(), bgColor);
 
-    QPen pen(Qt::yellow); // Color of the visualization
+    // Ensure that the brush is set for filling
+    painter.setBrush(m_brush);
+
+    QPen pen(Qt::yellow); // Color of the rectangle border
     pen.setStyle(Qt::PenStyle::DotLine);
     painter.setPen(pen);
-    painter.setBrush(QBrush(Qt::darkGreen));
 
-    // Calculate the width of each sample
-    int width = this->width();
-    int height = this->height();
-    int bytesPerSample = m_format.bytesPerSample();
-    
-    // Check for valid bytes per sample
-    if (bytesPerSample <= 0) {
-        //qDebug() << "Invalid bytes per sample:" << bytesPerSample;
-        return; // Exit if invalid
+    // Get widget dimensions
+    int widgetWidth = this->width();
+    int widgetHeight = this->height();
+
+    // Check if dimensions are valid
+    if (widgetWidth <= 0 || widgetHeight <= 0) {
+        return; // Exit if invalid widget size
     }
 
-    int numSamples = m_visualizationData.size() / bytesPerSample; // Calculate number of samples
-    int step = qMax(1, numSamples / width); // Determine the step size for visualization
+    // Get the number of bytes per sample
+    int bytesPerSample = m_format.bytesPerSample();
 
-    // Draw the visualization
+    // Check for valid audio data and bytes per sample
+    if (m_visualizationData.isEmpty() || bytesPerSample <= 0) {
+        return; // Exit if there's no audio data or invalid format
+    }
+
+    // Calculate number of samples
+    int numSamples = m_visualizationData.size() / bytesPerSample;
+
+    // Check if there are samples to visualize
+    if (numSamples <= 0) {
+        return; // Exit if no samples
+    }
+
+    // Determine step size for visualization
+    int step = qMax(1, numSamples / widgetWidth);
+    int barWidth = qMax(1, widgetWidth / numSamples);
+
+    // Draw filled rectangles (bars) for each audio sample
     for (int i = 0; i < numSamples; i += step) {
         int sampleValue = 0;
 
-        // Read the sample value based on the sample format
+        // Read sample value based on the format
         switch (m_format.sampleFormat()) {
             case QAudioFormat::Int16: {
                 qint16 sample = *reinterpret_cast<const qint16*>(m_visualizationData.constData() + i * bytesPerSample);
@@ -77,7 +117,7 @@ void AudioVisualizerWidget::paintEvent(QPaintEvent *event)
             }
             case QAudioFormat::UInt8: {
                 quint8 sample = *reinterpret_cast<const quint8*>(m_visualizationData.constData() + i * bytesPerSample);
-                sampleValue = static_cast<int>(sample) - 128; // Center the 8-bit sample
+                sampleValue = static_cast<int>(sample) - 128; // Center 8-bit sample
                 break;
             }
             case QAudioFormat::Int32: {
@@ -85,26 +125,28 @@ void AudioVisualizerWidget::paintEvent(QPaintEvent *event)
                 sampleValue = static_cast<int>(sample);
                 break;
             }
-            
             default:
                 continue; // Skip if format is not handled
         }
 
-        // Normalize sample value to height of the widget using bytesPerSample
+        // Normalize sample value
         int normalizationFactor = (1 << (8 * bytesPerSample - 1));
-        
-        if (normalizationFactor == 0) {
-            qDebug() << "Normalization factor is zero!";
-            continue; // Skip if normalization factor is invalid
-        }
-        
-        // Calculate the Y position based on the normalized value
-        int y = height / 2 - (sampleValue * height / normalizationFactor);
 
-        // Draw a vertical line for the sample
-        painter.drawLine(i / step, height / 2, i / step, y);
+        if (normalizationFactor == 0) {
+            continue; // Skip invalid normalization factor
+        }
+
+        // Calculate height of the bar based on normalized value
+        int barHeight = (sampleValue * widgetHeight / normalizationFactor) / 2;
+
+        // Draw a filled rectangle representing the sample
+        int x = (i / step) * barWidth;
+        int y = (widgetHeight / 2) - barHeight;
+        painter.drawRect(x, y, barWidth, barHeight * 2); // Draw rectangle symmetrically
     }
 }
+
+
 
 void AudioVisualizerWidget::updatePainter() {
     // Trigger a repaint to update the visualization

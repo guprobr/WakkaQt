@@ -70,11 +70,13 @@ private:
     QGraphicsTextItem *durationTextItem;
 
     QTimer *playbackTimer;
+    QElapsedTimer sysLatency;
     
     bool isRecording;
     bool isPlayback;
     
     qint64 pos = 0;
+    qint64 offset = 0;
     qint64 videoOffset = 0;
     qint64 audioOffset = 0;
 

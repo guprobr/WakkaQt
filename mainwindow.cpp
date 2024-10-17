@@ -678,10 +678,7 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
         
         if ( !isPlayback ) { 
             addProgressSong(scene, static_cast<int>(getMediaDuration(currentPlayback)));
-        }
-
-        if ( isRecording )
-            audioRecorder->startRecording(audioRecorded); // start audio recorder now
+        }            
 
         isPlayback = true; // enable seeking now
 
@@ -691,7 +688,8 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
 
 void MainWindow::onPlayerPositionChanged(qint64 position) {
     if ( isRecording ) {
-        pos = position;
+        pos = position - offset;
+        sysLatency.restart();
     }
 }
 
@@ -718,16 +716,17 @@ void MainWindow::startRecording() {
         //chooseInputDevice();  // User must select input device
 
         // Set up the house for recording
+        offset = 0;
         isRecording = true;
 
         if (camera && mediaRecorder && player && vizPlayer) {
 
-            //connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onRecorderDurationChanged);
             connect(player.data(), &QMediaPlayer::positionChanged, this, &MainWindow::onPlayerPositionChanged);
+            connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onRecorderDurationChanged);
 
             camera->start(); // prep camera first
 
-            // rewind playback to start performance
+            // rewind current playback to start performance
             vizPlayer->seek(0);
             player->pause();
 
@@ -737,8 +736,10 @@ void MainWindow::startRecording() {
             player->setAudioOutput(audioOutput.data());
     #endif
 #endif
+            audioRecorder->startRecording(audioRecorded); // start audio recorder
             mediaRecorder->record(); // start recording video
-            player->play(); // resume
+            
+            player->play(); // start the show
                        
         } else {
             qWarning() << "Failed to initialize camera, media recorder or player.";
@@ -767,8 +768,12 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
 
 void MainWindow::onRecorderDurationChanged(qint64 currentDuration) {
     
-    //disconnect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onRecorderDurationChanged);
-
+    if ( sysLatency.isValid() ) {
+        if ( sysLatency.elapsed() > offset )
+            offset = sysLatency.elapsed();
+        sysLatency.invalidate();
+    }
+    
 }
 
 // recording FINISH button
@@ -825,8 +830,10 @@ void MainWindow::stopRecording() {
             recDuration = 1000 * getMediaDuration(audioRecorded);
             audioOffset = recDuration - pos;
 
+            qWarning() << "System Latency: " << offset << " ms";
             qWarning() << "Audio Gap: " << audioOffset << " ms";
             qWarning() << "Video Gap: " << videoOffset << " ms";
+            logUI(QString("System Latency: %1 ms").arg(offset));
             logUI(QString("Calculated Camera Offset: %1 ms").arg(videoOffset));
             logUI(QString("Calculated Audio Offset: %1 ms").arg(audioOffset));
             
@@ -999,6 +1006,7 @@ void MainWindow::mixAndRender(double vocalVolume) {
     QFileInfo videofileInfo(currentVideoFile);
     QString videorama = "";
 
+            // if OUTPUT is video and playback song is not AUDIO only...
         if ((outputFilePath.endsWith(".mp4", Qt::CaseInsensitive)                       \
         || outputFilePath.endsWith(".avi", Qt::CaseInsensitive)                         \
         || outputFilePath.endsWith(".mkv", Qt::CaseInsensitive)                         \
@@ -1006,17 +1014,17 @@ void MainWindow::mixAndRender(double vocalVolume) {
             if ( !( (currentVideoFile.endsWith("mp3", Qt::CaseInsensitive))             \
                 ||  (currentVideoFile.endsWith("wav", Qt::CaseInsensitive))             \
                 ||  (currentVideoFile.endsWith("flac", Qt::CaseInsensitive)) )) {
-                // Combine both recorded and playback videos
+                // ...Combine both recorded and playback videos
                 videorama = QString("[1:v]trim=%1ms,setpts=PTS-STARTPTS,scale=%2[webcam]; \
                                     [2:v]scale=%2[video]; \
                                     [video][webcam]vstack[videorama];")
                                     .arg(videoOffset)
                                     .arg(setRez);
                                     
-            } else {
+            } else { // output is VIDEO but input playback is AUDIO only
                 QStringList partsRez = setRez.split("x");
                 QString fullRez = QString("%1x%2").arg(partsRez[0].toInt()).arg(partsRez[1].toInt() * 2);
-                // No video playback, work only with webcam video
+                // No video on playback, work only with webcam recorded video
                 videorama = QString("[1:v]trim=%1ms,setpts=PTS-STARTPTS, \
                                     scale=%2,tpad=stop_mode=clone:stop_duration=%3[videorama];")
                                     .arg(videoOffset)
@@ -1030,26 +1038,40 @@ void MainWindow::mixAndRender(double vocalVolume) {
     arguments << "-y"               // Overwrite output file if it exists
           << "-i" << audioRecorded  // audio vocals INPUT file
           << "-i" << webcamRecorded // recorded camera INPUT file
-          << "-i" << currentVideoFile // playback file INPUT file
-          << "-filter_complex"      // masterization and vocal enhancement of recorded audio
+          << "-i" << currentVideoFile // playback song INPUT file
+          << "-filter_complex"      // NOW, masterization and vocal enhancement of recorded audio
           << QString("[0:a]aformat=channel_layouts=stereo,atrim=%1ms,asetpts=PTS-STARTPTS, \
                         afftdn=nf=-20:nr=10:nt=w,speechnorm,acompressor=threshold=0.5:ratio=4,highpass=f=200,%2 \
-                        aecho=0.9:0.5:69|51:0.21|0.13,treble=g=12,volume=%3[vocals]; \
+                        aecho=0.9:0.7:69|51:0.21|0.13,treble=g=12,volume=%3[vocals]; \
                         [2:a][vocals]amix=inputs=2:normalize=0,aresample=async=1[wakkamix];%4" 
                         ).arg(audioOffset)
                         .arg(talent)
                         .arg(vocalVolume)
                         .arg(videorama);
 
-    // Map audio output
-    arguments  << "-ac" << "2"                 // Force stereo
-                << "-map" << "[wakkamix]";      // ensure audio mix goes on the pack
     if ( !videorama.isEmpty() ) {
         arguments << "-map" << "[videorama]";    // ensure video mix goes on the pack
     }
+    // Map audio output
+    arguments  << "-map" << "[wakkamix]"          // ensure audio mix goes on the pack
+                << "-ac" << "2";                 // Force stereo
 
-    arguments << outputFilePath;              // OUTPUT mix
+    // Audio switch per container format to set the best options
+    if (outputFilePath.endsWith(".mp4", Qt::CaseInsensitive)) {
+        // MP4 container: use AAC for audio, with higher bitrate
+        arguments << "-c:a" << "aac" << "-b:a" << "320k";
+    } else if (outputFilePath.endsWith(".mkv", Qt::CaseInsensitive)) {
+        // MKV container: use FLAC for lossless audio
+        arguments << "-c:a" << "flac";
+    } else if (outputFilePath.endsWith(".avi", Qt::CaseInsensitive)) {
+        // AVI container: use PCM for uncompressed audio
+        arguments << "-c:a" << "pcm_s16le";
+    } else if (outputFilePath.endsWith(".webm", Qt::CaseInsensitive)) {
+        // WebM container: use Opus
+        arguments << "-c:a" << "libopus" << "-b:a" << "128k";
+    }
 
+    arguments << outputFilePath;              // OUTPUT!
     
     // Connect signals to display output and errors
     connect(process, &QProcess::readyReadStandardOutput, [process, progressLabel, this]() {
@@ -1117,6 +1139,7 @@ void MainWindow::mixAndRender(double vocalVolume) {
 
         playVideo(outputFilePath);
         logUI("Playing mix!");
+        logUI(QString("System Latency: %1 ms").arg(offset));
         logUI(QString("Cam Offset: %1 ms").arg(videoOffset));
         logUI(QString("Audio Offset: %1 ms").arg(audioOffset));
 

@@ -85,7 +85,7 @@ PreviewDialog::PreviewDialog(QWidget *parent)
 
     chronosTimer = new QTimer(this);
     connect(chronosTimer, &QTimer::timeout, this, &PreviewDialog::updateChronos);
-    chronosTimer->start();
+    chronosTimer->start(500);
 
     // Initialize the volume change timer
     volumeChangeTimer = new QTimer(this);

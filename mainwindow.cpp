@@ -863,6 +863,12 @@ void MainWindow::handleRecordingError() {
     if ( audioRecorder->isRecording() )
         audioRecorder->stopRecording();
 
+    if ( progressSong )
+        delete progressSong;
+
+    if ( progressSongFull )
+        delete progressSongFull;
+
     recordingIndicator->hide();
     webcamPreviewWidget->hide();
     previewCheckbox->setChecked(false);

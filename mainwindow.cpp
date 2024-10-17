@@ -603,16 +603,17 @@ void MainWindow::chooseVideo()
 
         }
     } else
-        QTimer::singleShot(500, this, [this, lastPos]() {
-            vizPlayer->seek(lastPos);
-            #if QT_VERSION < QT_VERSION_CHECK(6, 6, 2)
-            #ifdef __linux__
-                player->setAudioOutput(nullptr); // first, detach the audio output 
-                player->setAudioOutput(audioOutput.data()); // now gimme back my sound mon
-            #endif
-            #endif
-            vizPlayer->play();
-        }); // resume play
+        if ( isPlayback )
+            QTimer::singleShot(500, this, [this, lastPos]() {
+                vizPlayer->seek(lastPos);
+                #if QT_VERSION < QT_VERSION_CHECK(6, 6, 2)
+                #ifdef __linux__
+                    player->setAudioOutput(nullptr); // first, detach the audio output 
+                    player->setAudioOutput(audioOutput.data()); // now gimme back my sound mon
+                #endif
+                #endif
+                vizPlayer->play();
+            }); // resume play
 
     delete fileDialog;
 }
@@ -832,19 +833,6 @@ void MainWindow::handleRecorderError(QMediaRecorder::Error error) {
         return;
     }
 
-    try {
-        if (mediaRecorder ) {
-            qWarning() << "Stopping media due to error...";
-            if ( player && vizPlayer )
-                vizPlayer->stop();
-                playbackTimer->stop();
-                mediaRecorder->stop();
-        }
-        
-    } catch (const std::exception &e) {
-        logUI("Error during stopRecording (while handling error): " + QString::fromStdString(e.what()));
-    }
-
     handleRecordingError();
     QMessageBox::critical(this, "Recording Error", "An error occurred while recording: " + mediaRecorder->errorString());
 
@@ -855,19 +843,14 @@ void MainWindow::handleRecordingError() {
     logUI("Attempting to recover from recording error...");
 
     isRecording = false;
-    isPlayback = false;
 
-    qDebug() << "Cleaning up..";
-    if ( camera )
-        camera->stop();
+    qWarning() << "Cleaning up..";
+
+    if ( vizPlayer && player )
+        vizPlayer->stop();
+
     if ( audioRecorder->isRecording() )
         audioRecorder->stopRecording();
-
-    if ( progressSong )
-        delete progressSong;
-
-    if ( progressSongFull )
-        delete progressSongFull;
 
     recordingIndicator->hide();
     webcamPreviewWidget->hide();
@@ -882,11 +865,6 @@ void MainWindow::handleRecordingError() {
     enable_playback(true);
     chooseInputButton->setEnabled(true);
     chooseInputAction->setEnabled(true);
-
-    if ( progressSongFull )
-        progressSongFull->setToolTip("Nothing to seek");
-
-    resetMediaComponents(false);
 
 }
 
@@ -1314,17 +1292,17 @@ void MainWindow::fetchVideo() {
 
     QString directory = QFileDialog::getExistingDirectory(this, "Choose Directory to Save Video");
     if (directory.isEmpty()) {
-        
-        QTimer::singleShot(500, this, [this, lastPos]() {
-            vizPlayer->seek(lastPos);
-            #if QT_VERSION < QT_VERSION_CHECK(6, 6, 2)
-            #ifdef __linux__
-                    player->setAudioOutput(nullptr); // first, detach the audio output 
-                    player->setAudioOutput(audioOutput.data()); // now gimme back my sound mon
-            #endif
-            #endif
-            vizPlayer->play();
-        }); // resume play
+        if ( isPlayback )
+            QTimer::singleShot(500, this, [this, lastPos]() {
+                vizPlayer->seek(lastPos);
+                #if QT_VERSION < QT_VERSION_CHECK(6, 6, 2)
+                #ifdef __linux__
+                        player->setAudioOutput(nullptr); // first, detach the audio output 
+                        player->setAudioOutput(audioOutput.data()); // now gimme back my sound mon
+                #endif
+                #endif
+                vizPlayer->play();
+            }); // resume play
 
         return;
     }
@@ -1366,17 +1344,18 @@ void MainWindow::fetchVideo() {
             }
             
         } else {
-            QTimer::singleShot(500, this, [this, lastPos]() {
-                vizPlayer->seek(lastPos);
-                #if QT_VERSION < QT_VERSION_CHECK(6, 6, 2)
-                #ifdef __linux__
-                        player->setAudioOutput(nullptr); // first, detach the audio output 
-                        player->setAudioOutput(audioOutput.data()); // now gimme back my sound mon
-                #endif
-                #endif
-                vizPlayer->play();
-                fetchButton->setEnabled(true);
-            }); // resume play
+            if ( isPlayback )
+                QTimer::singleShot(500, this, [this, lastPos]() {
+                    vizPlayer->seek(lastPos);
+                    #if QT_VERSION < QT_VERSION_CHECK(6, 6, 2)
+                    #ifdef __linux__
+                            player->setAudioOutput(nullptr); // first, detach the audio output 
+                            player->setAudioOutput(audioOutput.data()); // now gimme back my sound mon
+                    #endif
+                    #endif
+                    vizPlayer->play();
+                    fetchButton->setEnabled(true);
+                }); // resume play
         }
     });
 

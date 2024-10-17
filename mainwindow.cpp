@@ -184,7 +184,7 @@ MainWindow::MainWindow(QWidget *parent)
     previewCheckbox->setToolTip("Toggle camera preview");
    
     QHBoxLayout *indicatorLayout = new QHBoxLayout();
-    //indicatorLayout->addStretch();
+    indicatorLayout->addStretch();
     indicatorLayout->addWidget(recordingIndicator, 0, Qt::AlignCenter);
     indicatorLayout->addWidget(previewCheckbox, 0, Qt::AlignRight);
     //indicatorLayout->addStretch();

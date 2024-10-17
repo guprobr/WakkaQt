@@ -110,13 +110,13 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Create video widget
     videoWidget = new QVideoWidget(this);
-    videoWidget->setMinimumSize(320, 240);
+    videoWidget->setMinimumSize(320, 320);
     videoWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     videoWidget->hide();
     
     // Create a QLabel to display the placeholder image
     placeholderLabel = new QLabel(this);
-    placeholderLabel->setMinimumSize(320, 240);
+    placeholderLabel->setMinimumSize(320, 320);
     QPixmap placeholderPixmap(":/images/logo.jpg");
     if (placeholderPixmap.isNull()) {
         qWarning() << "Failed to load placeholder image!";
@@ -129,7 +129,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Create the main VideoDisplayWidget
     webcamPreviewWidget = new VideoDisplayWidget(this);
-    webcamPreviewWidget->setFixedSize(520, 140);
+    webcamPreviewWidget->setFixedSize(480, 160);
     webcamPreviewWidget->setToolTip("Click to open large preview");
     QHBoxLayout *webcamPreviewLayout = new QHBoxLayout();
     webcamPreviewLayout->addStretch();
@@ -406,6 +406,8 @@ void MainWindow::configureMediaComponents()
     mediaCaptureSession->setAudioInput(nullptr);
     mediaCaptureSession->setRecorder(mediaRecorder.data());
 
+    camera->start();
+
     connect(mediaRecorder.data(), &QMediaRecorder::recorderStateChanged, this, &MainWindow::onRecorderStateChanged);
     connect(mediaRecorder.data(), &QMediaRecorder::errorOccurred, this, &MainWindow::handleRecorderError);
     connect(player.data(), &QMediaPlayer::mediaStatusChanged, this, &MainWindow::onPlayerMediaStatusChanged);
@@ -422,17 +424,26 @@ void MainWindow::chooseInputDevice() {
     // Get available audio and video input devices
     QList<QAudioDevice> audioInputs = QMediaDevices::audioInputs();
     QList<QCameraDevice> videoInputs = QMediaDevices::videoInputs();
-    
+
     // Check if there are any devices available
-    if (audioInputs.isEmpty() && videoInputs.isEmpty()) {
-        QMessageBox::warning(this, "No Input Devices", "No audio or video input devices found.");
+    if (audioInputs.isEmpty() || videoInputs.isEmpty()) {
+        QString missingDevices;
+        if (audioInputs.isEmpty()) {
+            missingDevices.append("No audio devices available.\n");
+        }
+        if (videoInputs.isEmpty()) {
+            missingDevices.append("No video devices available.");
+        }
+
+        QMessageBox::critical(this, "Device Error", missingDevices);
+        exit(-1);  // Abort the program if devices are missing
         return;
     }
 
     // Create a dialog to show the lists of devices
     QDialog *deviceDialog = new QDialog();
-    deviceDialog->setWindowTitle("Select Input Devices");
-    deviceDialog->setFixedSize(400, 300);
+    deviceDialog->setWindowTitle("WakkaQt - Select Input Devices");
+    deviceDialog->setFixedSize(400, 250);
 
     // Create a layout for the dialog
     QVBoxLayout *layout = new QVBoxLayout(deviceDialog);
@@ -444,7 +455,7 @@ void MainWindow::chooseInputDevice() {
     QWidget *audioTab = new QWidget();
     QVBoxLayout *audioLayout = new QVBoxLayout(audioTab);
     QListWidget *audioList = new QListWidget(audioTab);
-    
+
     for (const QAudioDevice &device : audioInputs) {
         QListWidgetItem *item = new QListWidgetItem(device.description());
         item->setData(Qt::UserRole, device.id());
@@ -471,6 +482,10 @@ void MainWindow::chooseInputDevice() {
     // Create a button to confirm the selection
     QPushButton *selectButton = new QPushButton("Select", deviceDialog);
     layout->addWidget(selectButton);
+
+    // Create a button to exit the program
+    QPushButton *exitButton = new QPushButton("Exit", deviceDialog);
+    layout->addWidget(exitButton);
 
     // Connect the select button to handle selection
     connect(selectButton, &QPushButton::clicked, this, [this, audioList, videoList, deviceDialog]() {
@@ -520,9 +535,8 @@ void MainWindow::chooseInputDevice() {
 
         if (!selectedCameraDevice.isNull()) {
             // Set up Video recording
-            mediaCaptureSession.reset(new QMediaCaptureSession(this)); // Set up media session
-            camera.reset(new QCamera(selectedCameraDevice, this)); // Set up camera
-            qDebug() << "Configuring mediaCaptureSession..";
+            mediaCaptureSession.reset(new QMediaCaptureSession(this));  // Set up media session
+            camera.reset(new QCamera(selectedCameraDevice, this));  // Set up camera
             mediaCaptureSession->setVideoOutput(videoSink.data());
             mediaCaptureSession->setCamera(camera.data());
             mediaCaptureSession->setAudioInput(nullptr);
@@ -531,12 +545,17 @@ void MainWindow::chooseInputDevice() {
         }
     });
 
+    // Connect the exit button to close the program
+    connect(exitButton, &QPushButton::clicked, this, []() {
+        exit(0);
+    });
+
     // Execute the dialog
     if (deviceDialog->exec() == QDialog::Rejected) {
         QMessageBox::information(this, "Cancelled", "Device selection was cancelled.");
     }
 
-    delete deviceDialog; // Clean up the dialog after it is closed
+    delete deviceDialog;  // Clean up the dialog after it is closed
 }
 
 

@@ -949,7 +949,16 @@ void MainWindow::renderAgain()
         dialog.setAudioFile(audioRecorded);
         if (dialog.exec() == QDialog::Accepted)
         {
+
             double vocalVolume = dialog.getVolume();
+
+            echo_option = dialog.getEcho();
+
+            if ( !dialog.getTalent() )
+                gareus_intensity = 0;
+            else
+                gareus_intensity = 1.0;
+
             mixAndRender(vocalVolume);
 
         } else {
@@ -1031,9 +1040,14 @@ void MainWindow::mixAndRender(double vocalVolume) {
                                     .arg(fullRez)
                                     .arg(stopDuration);
             }
+    
+    QString echo_filter = "aecho=0.9:0.7:69|151:0.33|0.13,";
+
+    if ( !echo_option )
+        echo_filter = "";
 
     // we Configure autotalent plugin here:
-    QString talent = "lv2=http\\\\://gareus.org/oss/lv2/fat1,";
+    QString talent = QString("lv2=http\\\\://gareus.org/oss/lv2/fat1:c=corr=%1|filter=0.1,%2").arg(gareus_intensity).arg(echo_filter);
 
     arguments << "-y"               // Overwrite output file if it exists
           << "-i" << audioRecorded  // audio vocals INPUT file
@@ -1042,7 +1056,7 @@ void MainWindow::mixAndRender(double vocalVolume) {
           << "-filter_complex"      // NOW, masterization and vocal enhancement of recorded audio
           << QString("[0:a]aformat=channel_layouts=stereo,atrim=%1ms,asetpts=PTS-STARTPTS, \
                         afftdn=nf=-20:nr=10:nt=w,speechnorm,acompressor=threshold=0.5:ratio=4,highpass=f=200,%2 \
-                        aecho=0.9:0.7:69|51:0.21|0.13,treble=g=12,volume=%3[vocals]; \
+                        treble=g=12,volume=%3[vocals]; \
                         [2:a][vocals]amix=inputs=2:normalize=0,aresample=async=1[wakkamix];%4" 
                         ).arg(audioOffset)
                         .arg(talent)

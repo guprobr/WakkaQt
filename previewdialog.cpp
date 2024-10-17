@@ -15,18 +15,23 @@ PreviewDialog::PreviewDialog(QWidget *parent)
     // Setup UI
     QVBoxLayout *layout = new QVBoxLayout(this);
     QHBoxLayout *controls = new QHBoxLayout();
+    QHBoxLayout *optz = new QHBoxLayout();
 
     volumeDial = new QDial(this);  // Change from QSlider to QDial
     volumeDial->setRange(0, 1000);   // 0% to 1000% amplification
     volumeDial->setValue(100);       // Default 100% volume (no amplification)
     volumeDial->setNotchesVisible(true); // Show notches for better precision
     volumeDial->setToolTip("Adjust the knob to amplify or lower volume level");
-
+    volumeDial->setFixedSize(200, 100);
+    
     // Initialize UI elements
-    QLabel *volumeBanner = new QLabel("Volume Amplification: This is a low-quality preview. Final render will sound much better.", this);
+    QLabel *volumeBanner = new QLabel("Volume Amplification: This is a low-quality preview. This is how the vocals sound without any masterization or effects. Final render will sound much better. You can change the volume of the final render here, and enable/disable effects on the checkboxes.\n These apply only after rendering.", this);
     volumeBanner->setToolTip("While you review your performance you can adjust the volume of the final output.");
+    volumeBanner->setFont(QFont("Arial", 10));
+    volumeBanner->setWordWrap(true);
     volumeLabel = new QLabel("Current Volume: 100\%", this);
-    volumeLabel->setToolTip("This is an approximation of what the final render will sound.");
+    volumeLabel->setToolTip("Values above 100\% amplifies, while values below reduce volume");
+    volumeLabel->setFont(QFont("Courier", 12, QFont::Bold));
     startButton = new QPushButton("REWIND", this);
     startButton->setToolTip("Restart recording preview");
     stopButton = new QPushButton("Render Mix", this);
@@ -35,24 +40,38 @@ PreviewDialog::PreviewDialog(QWidget *parent)
     seekForwardButton->setToolTip("Seek forward");
     seekBackwardButton = new QPushButton("<<", this);
     seekBackwardButton->setToolTip("Seek backwards");
+    echo_option = new QCheckBox("Echo effect", this);
+    echo_option->setToolTip("Check to enable echo effect on vocals, when rendering. This has no effect during preview.");
+    echo_option->setChecked(true);
+
+    talent_option = new QCheckBox("X42 AutoTune", this);
+    talent_option->setToolTip("Check to enable X42 pitch correction LV2 plugin by Gareus");
+    talent_option->setChecked(true);
+
     controls->addWidget(seekBackwardButton);
+    controls->addWidget(volumeDial);
     controls->addWidget(seekForwardButton);
 
+    optz->addWidget(echo_option);
+    optz->addWidget(talent_option);
+
     layout->addWidget(volumeBanner);
-    layout->addWidget(volumeDial);
     layout->addWidget(volumeLabel);
     layout->addWidget(startButton);
     layout->addLayout(controls);
     layout->addWidget(stopButton);
+    layout->addLayout(optz);
 
-    //setLayout(layout);
-    setFixedSize(800, 240);
+    optz->setAlignment(Qt::AlignCenter);
+    layout->setAlignment(Qt::AlignHCenter);
+    
+    setFixedSize(800, 480);
 
     // Setup audio format
     QAudioFormat format;
     format.setSampleRate(44100);
     format.setChannelCount(2);
-    format.setSampleFormat(QAudioFormat::SampleFormat::Int16);  // Set sample format to Int16
+    format.setSampleFormat(QAudioFormat::SampleFormat::Int16);  // Set sample format to 16 bit
 
     // Initialize Audio Amplifier
     amplifier = new AudioAmplifier(format, this);
@@ -63,6 +82,10 @@ PreviewDialog::PreviewDialog(QWidget *parent)
     connect(seekBackwardButton, &QPushButton::clicked, amplifier, &AudioAmplifier::seekBackward);
     connect(seekForwardButton, &QPushButton::clicked, amplifier, &AudioAmplifier::seekForward);
     connect(volumeDial, &QDial::valueChanged, this, &PreviewDialog::onDialValueChanged);
+
+    chronosTimer = new QTimer(this);
+    connect(chronosTimer, &QTimer::timeout, this, &PreviewDialog::updateChronos);
+    chronosTimer->start();
 
     // Initialize the volume change timer
     volumeChangeTimer = new QTimer(this);
@@ -130,6 +153,14 @@ double PreviewDialog::getVolume() const {
     return volume;  // Returns the current volume level (we send this to render function)
 }
 
+bool PreviewDialog::getEcho() const {
+    return echo_option->isChecked(); 
+}
+
+bool PreviewDialog::getTalent() const {
+    return talent_option->isChecked();
+}
+
 void PreviewDialog::replayAudioPreview() {
     // Check if amplifier is playing
     if (amplifier->isPlaying()) {
@@ -164,5 +195,11 @@ void PreviewDialog::updateVolume() {
     amplifier->setVolumeFactor(volume);
 
     // Update the volume label to inform the user
-    volumeLabel->setText(QString("Current Volume: %1\%").arg(pendingVolumeValue));
+    volumeLabel->setText(QString("Current Volume: %1\% Elapsed Time: %2").arg(pendingVolumeValue).arg(chronos));
+}
+
+void PreviewDialog::updateChronos() {
+    chronos = amplifier->checkBufferState();
+     // Update the volume label to inform the user
+    volumeLabel->setText(QString("Current Volume: %1\% Elapsed Time: %2").arg(pendingVolumeValue).arg(chronos));
 }

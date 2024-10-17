@@ -62,6 +62,8 @@ private:
 
     QColor highlightColor;
     QString setRez = "1920x540"; // its a vstack, same width, half the height
+    bool echo_option = true;
+    qreal gareus_intensity = 1.0;
 
     QGraphicsScene *scene;
     QGraphicsView *previewView;

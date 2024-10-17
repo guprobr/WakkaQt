@@ -27,12 +27,12 @@ public:
     void rewind();
     void seekForward();
     void seekBackward();
+    QString checkBufferState();
 
     void resetAudioComponents(); 
 
 private:
     void applyAmplification();  
-    void checkBufferState();  
     void handleStateChanged(QAudio::State newState); 
 
     QAudioFormat audioFormat;  

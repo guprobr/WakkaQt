@@ -1,6 +1,7 @@
 #include "audioamplifier.h"
 
 #include <QDebug>
+#include <QTime>
 #include <QTimer>
 #include <QAudioSink>
 #include <cmath>  // Amplification logic
@@ -28,8 +29,8 @@ AudioAmplifier::~AudioAmplifier() {
     stop();  // Ensure audio stops and resources are cleaned up
 }
 
-void AudioAmplifier::checkBufferState() {
-    if (!audioBuffer->isOpen() || !audioSink || audioSink->isNull()) return;
+QString AudioAmplifier::checkBufferState() {
+    if (!audioBuffer->isOpen() || !audioSink || audioSink->isNull()) return "NaN";
 
     // Total duration based on the original audio size
     qint64 totalDuration = originalAudioData.size() * 1000000 / (audioSink->format().sampleRate() * 
@@ -51,8 +52,10 @@ void AudioAmplifier::checkBufferState() {
         resetAudioComponents();
         rewind();
         start();
-        return;
+        return "00:00:00";
     }
+
+
 
     // When close to the end, restart playback
     if (processedDuration >= totalDuration - threshold) {
@@ -61,8 +64,17 @@ void AudioAmplifier::checkBufferState() {
         resetAudioComponents();
         rewind();
         start();
-        return;
+        return "00:00:00";
     }
+
+    long long totalSeconds = processedDuration / 1000000; // Convert microseconds to seconds
+    int hours = totalSeconds / 3600;
+    int minutes = (totalSeconds % 3600) / 60;
+    int seconds = totalSeconds % 60;
+
+    QTime time(hours, minutes, seconds);
+    return time.toString("hh:mm:ss");
+
 }
 
 void AudioAmplifier::start() {
@@ -115,19 +127,19 @@ void AudioAmplifier::stop() {
 }
 
 void AudioAmplifier::seekForward() {
-    if (audioBuffer->bytesAvailable() > 102400) {
+    if (audioBuffer->bytesAvailable() > 256000) {
         stop();
         resetAudioComponents();
-        playbackPosition += 102400;
+        playbackPosition += 256000;
         start();
     }  
 }
 
 void AudioAmplifier::seekBackward() {
-    if ( audioBuffer->pos() - 102400 > 0 ) {
+    if ( audioBuffer->pos() - 256000 > 0 ) {
         stop();
         resetAudioComponents();
-        playbackPosition -= 102400;
+        playbackPosition -= 256000;
         start();
     }
 }

@@ -5,6 +5,7 @@
 #include <QAudioFormat>
 #include <QDial>
 #include <QPushButton>
+#include <QCheckBox>
 #include <QLabel>
 #include <QProcess>
 #include <QTimer>
@@ -20,6 +21,9 @@ public:
 
     void setAudioFile(const QString &filePath);
     double getVolume() const;
+    bool getEcho() const;
+    bool getTalent() const;
+    void updateChronos();
 
 private slots:
     void replayAudioPreview();
@@ -34,11 +38,17 @@ private:
     QPushButton *stopButton;
     QPushButton *seekForwardButton;
     QPushButton *seekBackwardButton;
+    QCheckBox *echo_option;
+    QCheckBox *talent_option;
+
     QLabel *volumeLabel;           
     QTimer *volumeChangeTimer;
+    QTimer *chronosTimer;
     QString audioFilePath;
     double volume;
-    int pendingVolumeValue;        
+    int pendingVolumeValue;
+
+    QString chronos;       
 };
 
 #endif // PREVIEWDIALOG_H

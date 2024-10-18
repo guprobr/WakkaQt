@@ -26,7 +26,7 @@ AudioVizMediaPlayer::AudioVizMediaPlayer(QMediaPlayer *m_player, AudioVisualizer
 
     // Set a default audio format
     m_audioFormat.setSampleRate(44100);
-    m_audioFormat.setChannelCount(1);
+    m_audioFormat.setChannelCount(2);
     m_audioFormat.setSampleFormat(QAudioFormat::Int16);
 }
 
@@ -257,7 +257,7 @@ void AudioVizMediaPlayer::extractAudio(const QString &source, const QString &out
     connect(ffmpegThread, &QThread::started, [ffmpegProcess, source, outputFile]() {
         QStringList ffmpegArgs;
         ffmpegArgs << "-y" << "-i" << source 
-                    << "-vn" << "-ac" << "1" 
+                    << "-vn" << "-ac" << "2" 
                     << "-acodec" << "pcm_s16le" << "-ar" << "44100" << outputFile;
 
         ffmpegProcess->start("ffmpeg", ffmpegArgs);

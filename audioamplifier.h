@@ -8,6 +8,7 @@
 #include <QScopedPointer>
 #include <QByteArray>
 #include <QTimer>
+#include <QFile>
 
 class QAudioSink;
 
@@ -36,12 +37,17 @@ private:
     void handleStateChanged(QAudio::State newState); 
 
     QAudioFormat audioFormat;  
-    QScopedPointer<QAudioSink> audioSink;  
+    QScopedPointer<QAudioSink> audioSink;
+    QScopedPointer<QAudioSink> playbackSink;
     QScopedPointer<QTimer> dataPushTimer; 
-    QScopedPointer<QBuffer> audioBuffer;  
+    QScopedPointer<QBuffer> audioBuffer; 
+    QScopedPointer<QBuffer> playbackBuffer; 
 
     QByteArray originalAudioData;  
-    QByteArray amplifiedAudioData;  
+    QByteArray amplifiedAudioData;
+    QByteArray playbackData;
+
+    QFile playbackFile;
 
     double volumeFactor;  
     qint64 playbackPosition;  

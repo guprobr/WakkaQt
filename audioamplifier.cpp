@@ -1,6 +1,7 @@
 #include "audioamplifier.h"
 
 #include <QDebug>
+#include <QDir>
 #include <QTime>
 #include <QTimer>
 #include <QAudioSink>
@@ -13,12 +14,18 @@ AudioAmplifier::AudioAmplifier(const QAudioFormat &format, QObject *parent)
       playbackPosition(0)
 {
     // Initialize audio sink with scoped pointer
+    playbackSink.reset(new QAudioSink(format, this));
     audioSink.reset(new QAudioSink(format, this));
     connect(audioSink.data(), &QAudioSink::stateChanged, this, &AudioAmplifier::handleStateChanged);
+    
+    playbackFile.setFileName(QDir::tempPath() + QDir::separator() + "WakkaQt_extracted_playback.wav");
 
     // Initialize QBuffer
     audioBuffer.reset(new QBuffer());
     audioBuffer->setBuffer(new QByteArray());
+
+    playbackBuffer.reset(new QBuffer());
+    playbackBuffer->setBuffer(new QByteArray());
 
     // Initialize timer for probing end of stream
     dataPushTimer.reset(new QTimer(this));
@@ -27,6 +34,8 @@ AudioAmplifier::AudioAmplifier(const QAudioFormat &format, QObject *parent)
 
 AudioAmplifier::~AudioAmplifier() {
     stop();  // Ensure audio stops and resources are cleaned up
+    playbackBuffer->reset();
+    playbackSink->reset();
 }
 
 QString AudioAmplifier::checkBufferState() {
@@ -90,15 +99,25 @@ void AudioAmplifier::start() {
         if (audioBuffer->isOpen()) {
             audioBuffer->close();
         }
-
+        
         // Configure QBuffer data and open for reading
         audioBuffer->setData(amplifiedAudioData);
         audioBuffer->open(QIODevice::ReadOnly);
-
         // Resume prior position
         audioBuffer->seek(playbackPosition);
 
-        audioSink->start(audioBuffer.data()); // playback
+        if (playbackBuffer->isOpen()) {
+            playbackBuffer->close();
+        }
+
+        playbackBuffer->setData(playbackData);
+        playbackBuffer->open(QIODevice::ReadOnly); // Open the buffer for reading
+        playbackBuffer->seek(playbackPosition);
+        playbackSink->start(playbackBuffer.data());
+
+        ////////////////////////
+        // now the vocals
+        audioSink->start(audioBuffer.data()); // play amplified vocals
         dataPushTimer->start(25); // Probe buffer state paranoia style
         checkBufferState();
 
@@ -120,6 +139,10 @@ void AudioAmplifier::stop() {
         audioBuffer->close();
         qDebug() << "Closed audio buffer.";
     }
+    /*if (playbackBuffer->isOpen() && !isPlaying()) {
+        playbackBuffer->close();
+        qDebug() << "Closed audio buffer.";
+    }*/
 
     dataPushTimer->stop();  // Stop the timer when playback stops
 }
@@ -179,6 +202,20 @@ void AudioAmplifier::applyAmplification() {
         amplifiedAudioData.append(static_cast<char>((amplifiedSample >> 8) & 0xFF));
     }
 
+    // Open the playback extracted .WAV
+    if ( playbackFile.isOpen() )
+        playbackFile.close();
+
+    if (!playbackFile.open(QIODevice::ReadOnly)) {
+        qWarning() << "Failed to open playback file!";
+        return;
+    }
+
+    playbackData.clear();
+    // Read the entire contents of the file into a QByteArray
+    playbackData = playbackFile.readAll();
+    
+
     if (amplifiedAudioData.isEmpty()) {
         qWarning() << "Amplified audio data is empty!";
     }
@@ -191,6 +228,7 @@ bool AudioAmplifier::isPlaying() const {
 void AudioAmplifier::rewind() {
     if (audioBuffer->isOpen()) {
         audioBuffer->seek(0);  // Seek the buffer to the start
+        playbackBuffer->seek(0);
     } else {
         qDebug() << "Audio buffer is not open. Cannot rewind.";
     }
@@ -219,8 +257,16 @@ void AudioAmplifier::resetAudioComponents() {
     audioBuffer->setData(amplifiedAudioData);
     audioBuffer->open(QIODevice::ReadOnly);
 
+    //if (playbackBuffer && playbackBuffer->isOpen()) {
+    //    playbackBuffer->close();
+    //}
+
+    //playbackBuffer.reset(new QBuffer(this));
+    //playbackBuffer->setData(playbackData);
+    //playbackBuffer->open(QIODevice::ReadOnly);
+
+    playbackSink.reset(new QAudioSink(audioFormat, this));
     audioSink.reset(new QAudioSink(audioFormat, this));
     connect(audioSink.data(), &QAudioSink::stateChanged, this, &AudioAmplifier::handleStateChanged);
-    //audioSink->setBufferSize(8192); 
-
+    
 }

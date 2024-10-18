@@ -1,6 +1,8 @@
 #ifndef PREVIEWDIALOG_H
 #define PREVIEWDIALOG_H
 
+#include "complexes.h"
+
 #include <QDialog>
 #include <QAudioFormat>
 #include <QDial>
@@ -45,7 +47,7 @@ private:
     QCheckBox *talent_option;
     QCheckBox *rubberband_option;
     QCheckBox *auburn_option;
-    QString echo_filter = "aecho=0.84:0.48:69|96:0.21|0.13,";
+    QString echo_filter = _echo_filter;
     QString talent_filter = "";
     QString rubberband_filter = "";
     QString auburn_filter = "";

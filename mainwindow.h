@@ -37,7 +37,7 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    QString Wakka_versione = "v0.9.9.3 alpha";
+    QString Wakka_versione = "v0.9.9.5 alpha";
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
@@ -63,7 +63,9 @@ private:
     QColor highlightColor;
     QString setRez = "1920x540"; // its a vstack, same width, half the height
     bool echo_option = true;
-    qreal gareus_intensity = 1.0;
+    bool rubberband_option = false;
+    bool auburn_option = false;
+    bool gareus_option = false;
 
     QGraphicsScene *scene;
     QGraphicsView *previewView;

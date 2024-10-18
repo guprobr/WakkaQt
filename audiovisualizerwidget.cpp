@@ -10,12 +10,10 @@
 AudioVisualizerWidget::AudioVisualizerWidget(QWidget *parent)
     : QFrame(parent)
 {
-    setFrameStyle(QFrame::Raised);
-    setLineWidth(5);  
-    setMidLineWidth(3);
+    setFrameShape(QFrame::Shape::HLine);
 
-    QPalette palette = this->palette();
-    bgColor = palette.color(QPalette::Window);
+    //QPalette palette = this->palette();
+    //bgColor = palette.color(QPalette::Alternate);
 
     // change the brush color every six seconds
     QTimer *colorTimer = new QTimer(this);
@@ -27,12 +25,14 @@ AudioVisualizerWidget::AudioVisualizerWidget(QWidget *parent)
 
         // Set a random brush color
         m_brush = QBrush(QColor(red, green, blue));
+
+        update();
     });
 
-    colorTimer->start(6000);
+    colorTimer->start(3333);
     QTimer *timer = new QTimer(this);
     connect(timer, &QTimer::timeout, this, &AudioVisualizerWidget::updatePainter);
-    timer->start(25);
+    timer->start(11);
 
 
 }
@@ -60,13 +60,11 @@ void AudioVisualizerWidget::clear()
 
 void AudioVisualizerWidget::paintEvent(QPaintEvent *event)
 {
-    QWidget::paintEvent(event);
+    QFrame::paintEvent(event);
 
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing);
-
-    // Fill the background with black
-    painter.fillRect(rect(), bgColor);
+    //painter.fillRect(rect(), bgColor);
 
     // Ensure that the brush is set for filling
     painter.setBrush(m_brush);

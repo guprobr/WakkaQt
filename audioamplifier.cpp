@@ -52,7 +52,7 @@ QString AudioAmplifier::checkBufferState() {
         resetAudioComponents();
         rewind();
         start();
-        return "00:00:00";
+        return "Decoding. . .";
     }
 
 
@@ -64,7 +64,7 @@ QString AudioAmplifier::checkBufferState() {
         resetAudioComponents();
         rewind();
         start();
-        return "00:00:00";
+        return "Decoding. . .";
     }
 
     long long totalSeconds = processedDuration / 1000000; // Convert microseconds to seconds
@@ -127,19 +127,19 @@ void AudioAmplifier::stop() {
 }
 
 void AudioAmplifier::seekForward() {
-    if (audioBuffer->bytesAvailable() > 256000) {
+    if (audioBuffer->bytesAvailable() > 514000) {
         stop();
         resetAudioComponents();
-        playbackPosition += 256000;
+        playbackPosition += 514000;
         start();
     }  
 }
 
 void AudioAmplifier::seekBackward() {
-    if ( audioBuffer->pos() - 256000 > 0 ) {
+    if ( audioBuffer->pos() - 514000 > 0 ) {
         stop();
         resetAudioComponents();
-        playbackPosition -= 256000;
+        playbackPosition -= 514000;
         start();
     }
 }

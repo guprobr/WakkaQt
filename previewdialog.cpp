@@ -1,3 +1,4 @@
+#include "complexes.h"
 #include "previewdialog.h"
 #include "audioamplifier.h"
 
@@ -25,28 +26,38 @@ PreviewDialog::PreviewDialog(QWidget *parent)
     volumeDial->setFixedSize(200, 100);
     
     // Initialize UI elements
-    QLabel *volumeBanner = new QLabel("Volume Amplification: This is a low-quality preview. This is how the vocals sound without any masterization or effects. Final render will sound much better. You can change the volume of the final render here, and enable/disable effects on the checkboxes.\n These apply only after rendering.", this);
-    volumeBanner->setToolTip("While you review your performance you can adjust the volume of the final output.");
+    QLabel *volumeBanner = new QLabel("Volume Amplification: This is a low-quality preview. Choose effects if you have the plugins and click REWIND to apply for previewing. Rewind takes a while, to encode the new preview. Avoid rewinding and use SEEK instead. ", this);
+    volumeBanner->setToolTip("While you review your performance you can adjust the volume for the render output.");
     volumeBanner->setFont(QFont("Arial", 10));
     volumeBanner->setWordWrap(true);
     volumeLabel = new QLabel("Current Volume: 100\%", this);
     volumeLabel->setToolTip("Values above 100\% amplifies, while values below reduce volume");
     volumeLabel->setFont(QFont("Courier", 12, QFont::Bold));
     startButton = new QPushButton("REWIND", this);
-    startButton->setToolTip("Restart recording preview");
+    startButton->setToolTip("Apply chosen effects and restart rec preview");
     stopButton = new QPushButton("Render Mix", this);
     stopButton->setToolTip("Apply changes and begin rendering");
     seekForwardButton = new QPushButton(">>", this);
     seekForwardButton->setToolTip("Seek forward");
     seekBackwardButton = new QPushButton("<<", this);
     seekBackwardButton->setToolTip("Seek backwards");
-    echo_option = new QCheckBox("Echo effect", this);
-    echo_option->setToolTip("Check to enable echo effect on vocals, when rendering. This has no effect during preview.");
-    echo_option->setChecked(true);
 
+    echo_option = new QCheckBox("Echo effect", this);
+    echo_option->setToolTip("Check to render with echo effect on vocals");
+    echo_option->setChecked(true);
+    echo_option->setFont(QFont("Arial", 9));
     talent_option = new QCheckBox("X42 AutoTune", this);
-    talent_option->setToolTip("Check to enable X42 pitch correction LV2 plugin by Gareus");
-    talent_option->setChecked(true);
+    talent_option->setToolTip("Check to render X42 very subtle pitch correction");
+    talent_option->setChecked(false);
+    talent_option->setFont(QFont("Arial", 9));
+    rubberband_option = new QCheckBox("RubberBand pitch UP (slow!!)", this);
+    rubberband_option->setToolTip("Check to enable wacko rubberband (this renders very slowly)");
+    rubberband_option->setChecked(false);
+    rubberband_option->setFont(QFont("Arial", 9));
+    auburn_option = new QCheckBox("Auburn Graillon FREE edition", this);
+    auburn_option->setToolTip("Very nice Auburn Graillon AutoTuner (you must download LV2 plugin on their website if you're not on WakkaQt-mswinX64 ZIP bundle)");
+    auburn_option->setChecked(false);
+    auburn_option->setFont(QFont("Arial", 9));
 
     controls->addWidget(seekBackwardButton);
     controls->addWidget(volumeDial);
@@ -54,6 +65,8 @@ PreviewDialog::PreviewDialog(QWidget *parent)
 
     optz->addWidget(echo_option);
     optz->addWidget(talent_option);
+    optz->addWidget(rubberband_option);
+    optz->addWidget(auburn_option);
 
     layout->addWidget(volumeBanner);
     layout->addWidget(volumeLabel);
@@ -83,6 +96,40 @@ PreviewDialog::PreviewDialog(QWidget *parent)
     connect(seekForwardButton, &QPushButton::clicked, amplifier, &AudioAmplifier::seekForward);
     connect(volumeDial, &QDial::valueChanged, this, &PreviewDialog::onDialValueChanged);
 
+     connect(echo_option, &QCheckBox::stateChanged, this, [this]() {
+        
+        if ( echo_option->isChecked() )
+            echo_filter = _echo_filter;
+        else
+            echo_filter = "";
+        
+     });
+     connect(talent_option, &QCheckBox::stateChanged, this, [this]() {
+        
+        if ( talent_option->isChecked() )
+            talent_filter = _talent_filter;
+        else
+            talent_filter = "";
+        
+     });
+    connect(rubberband_option, &QCheckBox::stateChanged, this, [this]() {
+
+        if ( rubberband_option->isChecked() )
+            rubberband_filter = _rubberband_filter;
+        else
+            rubberband_filter = "";
+        
+     });
+    connect(auburn_option, &QCheckBox::stateChanged, this, [this]() {
+
+        if ( auburn_option->isChecked() )
+            auburn_filter = _auburn_filter;
+        else
+            auburn_filter = "";
+
+     });
+
+
     chronosTimer = new QTimer(this);
     connect(chronosTimer, &QTimer::timeout, this, &PreviewDialog::updateChronos);
     chronosTimer->start(500);
@@ -101,6 +148,13 @@ PreviewDialog::~PreviewDialog() {
 void PreviewDialog::setAudioFile(const QString &filePath) {
     audioFilePath = filePath;
     qDebug() << "Audio file set to:" << audioFilePath;
+    
+    // disable all controls while encoding
+    startButton->setEnabled(false);
+    stopButton->setEnabled(false);
+    seekBackwardButton->setEnabled(false);
+    seekForwardButton->setEnabled(false);
+    volumeDial->setEnabled(false);
 
     // Initialize the QProcess
     QProcess *ffmpegProcess = new QProcess(this);
@@ -111,7 +165,15 @@ void PreviewDialog::setAudioFile(const QString &filePath) {
     // Prepare FFmpeg command
     QStringList arguments;
     arguments   << "-y" << "-i" << audioFilePath 
-                << "-vn" << "-ac" << "2" 
+                << "-vn" << "-filter_complex" 
+                << QString("%1 %2 %3 %4 %5 %6 volume=1.0;").arg(_audioMasterization)
+                                                .arg(rubberband_filter)
+                                                .arg(talent_filter)
+                                                .arg(auburn_filter)
+                                                .arg(echo_filter)
+                                                .arg(_audioTreble)
+                
+                << "-ac" << "2" 
                 << "-acodec" << "pcm_s16le" << "-ar" << "44100" << tempAudioFile;
 
     // Connect the finished signal
@@ -133,6 +195,13 @@ void PreviewDialog::setAudioFile(const QString &filePath) {
 
             // Start playback
             amplifier->start();
+
+            startButton->setEnabled(true);
+            stopButton->setEnabled(true);
+            seekBackwardButton->setEnabled(true);
+            seekForwardButton->setEnabled(true);
+            volumeDial->setEnabled(true);
+
         } else {
             qWarning() << "Audio extraction failed or file is empty.";
         }
@@ -161,15 +230,27 @@ bool PreviewDialog::getTalent() const {
     return talent_option->isChecked();
 }
 
+bool PreviewDialog::getRubberband() const {
+    return rubberband_option->isChecked();
+}
+
+bool PreviewDialog::getAuburn() const {
+    return auburn_option->isChecked();
+}
+
 void PreviewDialog::replayAudioPreview() {
+    
+
     // Check if amplifier is playing
     if (amplifier->isPlaying()) {
         // Stop playback and reset the audio components before replaying
         amplifier->stop();
         amplifier->resetAudioComponents();  // Reset the amplifier components
     }
+        // regen preview
         amplifier->rewind();
-        amplifier->start();
+        setAudioFile(audioFilePath);
+
 }
 
 void PreviewDialog::stopAudioPreview() {
@@ -186,7 +267,7 @@ void PreviewDialog::onDialValueChanged(int value) {
     pendingVolumeValue = value;
 
     // Start the timer to update volume after a delay (500 ms)
-    volumeChangeTimer->start(500);
+    volumeChangeTimer->start(250);
 }
 
 void PreviewDialog::updateVolume() {

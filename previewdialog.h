@@ -23,6 +23,8 @@ public:
     double getVolume() const;
     bool getEcho() const;
     bool getTalent() const;
+    bool getRubberband() const;
+    bool getAuburn() const;
     void updateChronos();
 
 private slots:
@@ -38,8 +40,15 @@ private:
     QPushButton *stopButton;
     QPushButton *seekForwardButton;
     QPushButton *seekBackwardButton;
+
     QCheckBox *echo_option;
     QCheckBox *talent_option;
+    QCheckBox *rubberband_option;
+    QCheckBox *auburn_option;
+    QString echo_filter = "aecho=0.84:0.48:69|96:0.21|0.13,";
+    QString talent_filter = "";
+    QString rubberband_filter = "";
+    QString auburn_filter = "";
 
     QLabel *volumeLabel;           
     QTimer *volumeChangeTimer;

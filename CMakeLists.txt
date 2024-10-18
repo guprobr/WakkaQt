@@ -34,6 +34,7 @@ message(STATUS "Resources added: ${resources}")
 add_executable(${PROJECT_NAME}
     main.cpp
     mainwindow.cpp
+    complexes.cpp
     sndwidget.cpp
     previewdialog.cpp
     audioamplifier.cpp
@@ -41,6 +42,7 @@ add_executable(${PROJECT_NAME}
     audiovizmediaplayer.cpp
     audiovisualizerwidget.cpp
     mainwindow.h
+    complexes.h
     sndwidget.h
     previewdialog.h
     audioamplifier.h

@@ -1,6 +1,8 @@
 #include "mainwindow.h"
+#include "complexes.h"
 #include "sndwidget.h"
 #include "previewdialog.h"
+
 
 #include <QCoreApplication>
 #include <QMenu>
@@ -175,7 +177,7 @@ MainWindow::MainWindow(QWidget *parent)
     // Recording indicator
     recordingIndicator = new QLabel("⦿ rec", this);
     recordingIndicator->setStyleSheet("color: red;");
-    //recordingIndicator->setFixedSize(64, 16);
+ 
     // custom options
     previewCheckbox = new QCheckBox("Cam Preview");
     previewCheckbox->setFont(QFont("Arial", 8));
@@ -189,8 +191,9 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Instantiate SndWidget
     soundLevelWidget = new SndWidget(this);
-    soundLevelWidget->setMinimumSize(640, 25);
+    soundLevelWidget->setMinimumSize(640, 48);
     soundLevelWidget->setMaximumHeight(64);
+    soundLevelWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     soundLevelWidget->setToolTip("Sound input visualization widget");
 
     // Device label
@@ -937,7 +940,7 @@ void MainWindow::renderAgain()
         int response = QMessageBox::question(
             this, 
             "Resolution", 
-            "Do you want high-resolution video? Low resolution renders much faster.", 
+            "Do you want 1920x1080 high-resolution video? Low resolution 640x480 renders much more faster.", 
             QMessageBox::Yes | QMessageBox::No, 
             QMessageBox::No
         );
@@ -953,12 +956,10 @@ void MainWindow::renderAgain()
             double vocalVolume = dialog.getVolume();
 
             echo_option = dialog.getEcho();
-
-            if ( !dialog.getTalent() )
-                gareus_intensity = 0;
-            else
-                gareus_intensity = 1.0;
-
+            rubberband_option = dialog.getRubberband();
+            auburn_option = dialog.getAuburn();
+            gareus_option = dialog.getTalent();
+            
             mixAndRender(vocalVolume);
 
         } else {
@@ -1041,13 +1042,26 @@ void MainWindow::mixAndRender(double vocalVolume) {
                                     .arg(stopDuration);
             }
     
-    QString echo_filter = "aecho=0.9:0.7:69|151:0.33|0.13,";
+    QString echo_filter = _echo_filter;
+    QString rubberband_filter = _rubberband_filter;
+    QString gareus_filter = _talent_filter;
+    QString auburn_filter = _auburn_filter;
 
     if ( !echo_option )
         echo_filter = "";
+    if ( !rubberband_option )
+        rubberband_filter = "";
+    if ( !auburn_option )
+        auburn_filter = "";
+    if ( !gareus_option )
+        gareus_filter = "";
 
     // we Configure autotalent plugin here:
-    QString talent = QString("lv2=http\\\\://gareus.org/oss/lv2/fat1:c=corr=%1|filter=0.1,%2").arg(gareus_intensity).arg(echo_filter);
+    QString talent = QString("%1%2%3%4")
+                            .arg(rubberband_filter)
+                            .arg(gareus_filter)
+                            .arg(auburn_filter)
+                            .arg(echo_filter);
 
     arguments << "-y"               // Overwrite output file if it exists
           << "-i" << audioRecorded  // audio vocals INPUT file
@@ -1055,11 +1069,12 @@ void MainWindow::mixAndRender(double vocalVolume) {
           << "-i" << currentVideoFile // playback song INPUT file
           << "-filter_complex"      // NOW, masterization and vocal enhancement of recorded audio
           << QString("[0:a]aformat=channel_layouts=stereo,atrim=%1ms,asetpts=PTS-STARTPTS, \
-                        afftdn=nf=-20:nr=10:nt=w,speechnorm,acompressor=threshold=0.5:ratio=4,highpass=f=200,%2 \
-                        treble=g=12,volume=%3[vocals]; \
-                        [2:a][vocals]amix=inputs=2:normalize=0,aresample=async=1[wakkamix];%4" 
+                        %2 %3 %4 volume=%5[vocals]; \
+                        [2:a][vocals]amix=inputs=2:normalize=0,aresample=async=1[wakkamix];%6" 
                         ).arg(audioOffset)
+                        .arg(_audioMasterization)
                         .arg(talent)
+                        .arg(_audioTreble)
                         .arg(vocalVolume)
                         .arg(videorama);
 

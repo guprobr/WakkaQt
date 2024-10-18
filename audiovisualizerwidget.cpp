@@ -12,8 +12,8 @@ AudioVisualizerWidget::AudioVisualizerWidget(QWidget *parent)
 {
     setFrameShape(QFrame::Shape::HLine);
 
-    //QPalette palette = this->palette();
-    //bgColor = palette.color(QPalette::Alternate);
+    QPalette palette = this->palette();
+    bgColor = palette.color(QPalette::AlternateBase);
 
     // change the brush color every six seconds
     QTimer *colorTimer = new QTimer(this);
@@ -69,7 +69,7 @@ void AudioVisualizerWidget::paintEvent(QPaintEvent *event)
     // Ensure that the brush is set for filling
     painter.setBrush(m_brush);
 
-    QPen pen(Qt::yellow); // Color of the rectangle border
+    QPen pen(Qt::darkYellow); // Color of the rectangle border
     pen.setStyle(Qt::PenStyle::DotLine);
     painter.setPen(pen);
 

@@ -948,7 +948,7 @@ void MainWindow::renderAgain()
         qDebug() << "Will vstack each video with resolution:" << setRez;
 
         // Show the preview dialog
-        PreviewDialog dialog(this);
+        PreviewDialog dialog(audioOffset, this);
         dialog.setAudioFile(audioRecorded);
         if (dialog.exec() == QDialog::Accepted)
         {

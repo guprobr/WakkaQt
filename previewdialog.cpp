@@ -10,8 +10,8 @@
 #include <QTimer>
 #include <QString>
 
-PreviewDialog::PreviewDialog(QWidget *parent)
-    : QDialog(parent), amplifier(nullptr), volume(1.0), pendingVolumeValue(100) {
+PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
+    : QDialog(parent), audioOffset(offset), amplifier(nullptr), volume(1.0), pendingVolumeValue(100) {
     setWindowTitle("Audio Preview with Amplification");
 
     // Setup UI
@@ -59,6 +59,10 @@ PreviewDialog::PreviewDialog(QWidget *parent)
     auburn_option->setToolTip("Very nice Auburn Graillon AutoTuner (you must download LV2 plugin on their website if you're not on WakkaQt-mswinX64 ZIP bundle)");
     auburn_option->setChecked(false);
     auburn_option->setFont(QFont("Arial", 9));
+    playbackMute_option = new QCheckBox("Preview vocals only", this);
+    playbackMute_option->setToolTip("Check to mute playback and hear vocals only");
+    playbackMute_option->setChecked(false);
+    playbackMute_option->setFont(QFont("Arial", 8));
 
     controls->addWidget(seekBackwardButton);
     controls->addWidget(volumeDial);
@@ -72,6 +76,7 @@ PreviewDialog::PreviewDialog(QWidget *parent)
     layout->addWidget(volumeBanner);
     layout->addWidget(volumeLabel);
     layout->addWidget(startButton);
+    layout->addWidget(playbackMute_option);
     layout->addLayout(controls);
     layout->addWidget(stopButton);
     layout->addLayout(optz);
@@ -93,11 +98,20 @@ PreviewDialog::PreviewDialog(QWidget *parent)
     // Connect UI elements
     connect(startButton, &QPushButton::clicked, this, &PreviewDialog::replayAudioPreview);
     connect(stopButton, &QPushButton::clicked, this, &PreviewDialog::stopAudioPreview);
-    connect(seekBackwardButton, &QPushButton::clicked, amplifier, &AudioAmplifier::seekBackward);
-    connect(seekForwardButton, &QPushButton::clicked, amplifier, &AudioAmplifier::seekForward);
+    connect(seekBackwardButton, &QPushButton::clicked, this, &PreviewDialog::seekBackward);
+    connect(seekForwardButton, &QPushButton::clicked, this, &PreviewDialog::seekForward);
     connect(volumeDial, &QDial::valueChanged, this, &PreviewDialog::onDialValueChanged);
 
-     connect(echo_option, &QCheckBox::stateChanged, this, [this]() {
+    connect(playbackMute_option, &QCheckBox::stateChanged, this, [this]() {
+        
+        if ( playbackMute_option->isChecked() )
+            amplifier->setPlaybackVol(false);
+        else
+            amplifier->setPlaybackVol(true);
+        
+     });
+
+    connect(echo_option, &QCheckBox::stateChanged, this, [this]() {
         
         if ( echo_option->isChecked() )
             echo_filter = _echo_filter;
@@ -167,12 +181,14 @@ void PreviewDialog::setAudioFile(const QString &filePath) {
     QStringList arguments;
     arguments   << "-y" << "-i" << audioFilePath 
                 << "-vn" << "-filter_complex" 
-                << QString("%1 %2 %3 %4 %5 %6 volume=1.0;").arg(_audioMasterization)
+                << QString("%1 %2 %3 %4 %5 %6 atrim=%7ms;")
+                                                .arg(_audioMasterization)
                                                 .arg(rubberband_filter)
                                                 .arg(talent_filter)
                                                 .arg(auburn_filter)
                                                 .arg(echo_filter)
                                                 .arg(_audioTreble)
+                                                .arg(audioOffset)
                 
                 << "-ac" << "2" 
                 << "-acodec" << "pcm_s16le" << "-ar" << "44100" << tempAudioFile;
@@ -257,12 +273,24 @@ void PreviewDialog::replayAudioPreview() {
         chronos = "Encoding. . please wait.";
         setAudioFile(audioFilePath);
 
+        amplifier->setPlaybackVol(!playbackMute_option->isChecked());
+
 }
 
 void PreviewDialog::stopAudioPreview() {
     amplifier->stop();
     qWarning() << "Set Volume factor to:" << volume;
     accept();
+}
+
+void PreviewDialog::seekForward() {
+    amplifier->seekForward();
+    amplifier->setPlaybackVol(!playbackMute_option->isChecked());
+}
+
+void PreviewDialog::seekBackward() {
+    amplifier->seekBackward();
+    amplifier->setPlaybackVol(!playbackMute_option->isChecked());
 }
 
 void PreviewDialog::onDialValueChanged(int value) {
@@ -280,6 +308,7 @@ void PreviewDialog::updateVolume() {
     // Scale the dial value to a volume factor, where 100% = 1.0 (no amplification) and zero = mute
     volume = static_cast<double>(pendingVolumeValue) / 100.0;
     amplifier->setVolumeFactor(volume);
+    amplifier->setPlaybackVol(!playbackMute_option->isChecked());
 
     // Update the volume label to inform the user
     volumeLabel->setText(QString("Current Volume: %1\% Elapsed Time: %2").arg(pendingVolumeValue).arg(chronos));

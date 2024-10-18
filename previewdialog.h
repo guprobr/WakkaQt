@@ -18,7 +18,7 @@ class PreviewDialog : public QDialog {
     Q_OBJECT
 
 public:
-    explicit PreviewDialog(QWidget *parent = nullptr);
+    explicit PreviewDialog(qint64 offset, QWidget *parent = nullptr);
     ~PreviewDialog();
 
     void setAudioFile(const QString &filePath);
@@ -27,8 +27,7 @@ public:
     bool getTalent() const;
     bool getRubberband() const;
     bool getAuburn() const;
-    void updateChronos();
-
+    
 private slots:
     void replayAudioPreview();
     void stopAudioPreview();
@@ -47,6 +46,8 @@ private:
     QCheckBox *talent_option;
     QCheckBox *rubberband_option;
     QCheckBox *auburn_option;
+    QCheckBox *playbackMute_option;
+
     QString echo_filter = _echo_filter;
     QString talent_filter = "";
     QString rubberband_filter = "";
@@ -58,8 +59,13 @@ private:
     QString audioFilePath;
     double volume;
     int pendingVolumeValue;
+    qint64 audioOffset;
 
-    QString chronos;       
+    QString chronos;
+
+    void updateChronos();
+    void seekForward();
+    void seekBackward();
 };
 
 #endif // PREVIEWDIALOG_H

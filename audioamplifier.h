@@ -23,7 +23,8 @@ public:
     void start();  
     void stop();   
     void setVolumeFactor(double factor);  
-    void setAudioData(const QByteArray &data);  
+    void setAudioData(const QByteArray &data);
+    void setPlaybackVol(bool flag);
     bool isPlaying() const;  
     void rewind();
     void seekForward();

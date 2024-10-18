@@ -182,6 +182,10 @@ void AudioAmplifier::setAudioData(const QByteArray &data) {
     originalAudioData = data;  // Store the new audio data
 }
 
+ void AudioAmplifier::setPlaybackVol(bool flag) {
+    playbackSink->setVolume(flag);
+ }
+
 void AudioAmplifier::applyAmplification() {
     
     amplifiedAudioData.clear();

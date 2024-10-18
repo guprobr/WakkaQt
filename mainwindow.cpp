@@ -1068,7 +1068,7 @@ void MainWindow::mixAndRender(double vocalVolume) {
           << "-i" << webcamRecorded // recorded camera INPUT file
           << "-i" << currentVideoFile // playback song INPUT file
           << "-filter_complex"      // NOW, masterization and vocal enhancement of recorded audio
-          << QString("[0:a]aformat=channel_layouts=stereo,atrim=%1ms,asetpts=PTS-STARTPTS, \
+          << QString("[0:a]atrim=%1ms,asetpts=PTS-STARTPTS, \
                         %2 %3 %4 volume=%5[vocals]; \
                         [2:a][vocals]amix=inputs=2:normalize=0,aresample=async=1[wakkamix];%6" 
                         ).arg(audioOffset)

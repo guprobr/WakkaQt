@@ -714,9 +714,9 @@ void MainWindow::startRecording() {
         // Disable buttons while recording starts
         singButton->setEnabled(false);
         singAction->setEnabled(false);
+        chooseInputButton->setEnabled(false);
+        chooseInputAction->setEnabled(false);
         enable_playback(false);
-
-        //chooseInputDevice();  // User must select input device
 
         // Set up the house for recording
         offset = 0;

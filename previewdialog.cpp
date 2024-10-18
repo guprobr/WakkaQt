@@ -2,6 +2,7 @@
 #include "previewdialog.h"
 #include "audioamplifier.h"
 
+#include <QMessageBox>
 #include <QVBoxLayout>
 #include <QProcess>
 #include <QFile>
@@ -132,7 +133,7 @@ PreviewDialog::PreviewDialog(QWidget *parent)
 
     chronosTimer = new QTimer(this);
     connect(chronosTimer, &QTimer::timeout, this, &PreviewDialog::updateChronos);
-    chronosTimer->start(500);
+    chronosTimer->start(250);
 
     // Initialize the volume change timer
     volumeChangeTimer = new QTimer(this);
@@ -180,6 +181,9 @@ void PreviewDialog::setAudioFile(const QString &filePath) {
     connect(ffmpegProcess, &QProcess::finished, this, [this, tempAudioFile, ffmpegProcess](int exitCode, QProcess::ExitStatus exitStatus) {
         if (exitStatus == QProcess::CrashExit || exitCode != 0) {
             qWarning() << "FFmpeg process crashed or exited with error code:" << exitCode;
+            QMessageBox::critical(this, "FFmpeg crashed", "FFmpeg process crashed!");
+            startButton->setEnabled(true);
+            stopButton->setEnabled(true);
             return;
         }
 
@@ -204,6 +208,7 @@ void PreviewDialog::setAudioFile(const QString &filePath) {
 
         } else {
             qWarning() << "Audio extraction failed or file is empty.";
+            QMessageBox::critical(this, "Extraction failed", "Audio extraction failed or file is empty.");
         }
 
         ffmpegProcess->deleteLater(); // Clean up FFmpeg process object
@@ -249,6 +254,7 @@ void PreviewDialog::replayAudioPreview() {
     }
         // regen preview
         amplifier->rewind();
+        chronos = "Encoding. . please wait.";
         setAudioFile(audioFilePath);
 
 }

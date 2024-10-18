@@ -52,10 +52,8 @@ QString AudioAmplifier::checkBufferState() {
         resetAudioComponents();
         rewind();
         start();
-        return "Decoding. . .";
+        return "NaN";
     }
-
-
 
     // When close to the end, restart playback
     if (processedDuration >= totalDuration - threshold) {
@@ -64,7 +62,7 @@ QString AudioAmplifier::checkBufferState() {
         resetAudioComponents();
         rewind();
         start();
-        return "Decoding. . .";
+        return "NaN";
     }
 
     long long totalSeconds = processedDuration / 1000000; // Convert microseconds to seconds

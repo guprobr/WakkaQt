@@ -271,7 +271,6 @@ void PreviewDialog::replayAudioPreview() {
     }
         // regen preview
         amplifier->rewind();
-        chronos = "Encoding vocals.. . .";
         setAudioFile(audioFilePath);
         chronosTimer->start();
         amplifier->setPlaybackVol(!playbackMute_option->isChecked());
@@ -279,6 +278,7 @@ void PreviewDialog::replayAudioPreview() {
 }
 
 void PreviewDialog::stopAudioPreview() {
+    chronosTimer->stop();
     amplifier->stop();
     qWarning() << "Set Volume factor to:" << volume;
     accept();

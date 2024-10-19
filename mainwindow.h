@@ -50,7 +50,8 @@ private slots:
     void onPlayerPositionChanged(qint64 position);
     void handleRecorderError(QMediaRecorder::Error error);
     void onPreviewCheckboxToggled(bool checked);
-    
+    void onVizCheckboxToggled(bool enable);
+
 private:
 
     QVideoWidget *webcamPreviewWidget;
@@ -87,7 +88,7 @@ private:
     int totalDuration;
 
     QVideoWidget *videoWidget;
-    AudioVisualizerWidget *vizWidget;
+    
     AudioVisualizerWidget *vizUpperLeft;
     AudioVisualizerWidget *vizUpperRight;
 
@@ -115,6 +116,7 @@ private:
     QLabel *banner;
 
     QCheckBox *previewCheckbox;
+    QCheckBox *vizCheckbox;
 
     // yt-dlp
     QLineEdit *urlInput;

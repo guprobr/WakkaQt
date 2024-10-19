@@ -182,10 +182,15 @@ MainWindow::MainWindow(QWidget *parent)
     previewCheckbox = new QCheckBox("Cam Preview");
     previewCheckbox->setFont(QFont("Arial", 8));
     previewCheckbox->setToolTip("Toggle camera preview");
-   
+    vizCheckbox = new QCheckBox("Audio Visualizer");
+    vizCheckbox->setFont(QFont("Arial", 8));
+    vizCheckbox->setToolTip("Freeze Audio Visualizer");
+    vizCheckbox->setChecked(true);
+    
     QHBoxLayout *indicatorLayout = new QHBoxLayout();
     indicatorLayout->addStretch();
     indicatorLayout->addWidget(recordingIndicator, 0, Qt::AlignCenter);
+    indicatorLayout->addWidget(vizCheckbox, 0, Qt::AlignRight);
     indicatorLayout->addWidget(previewCheckbox, 0, Qt::AlignRight);
     //indicatorLayout->addStretch();
 
@@ -232,12 +237,6 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     // Instantiate Audio Visualizers
-    vizWidget = new AudioVisualizerWidget(this);
-    vizWidget->setMinimumSize(200, 25);
-    vizWidget->setMaximumHeight(64);
-    vizWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    vizWidget->setToolTip("Yelloopy© Audio Visualizer");
-    
     QHBoxLayout *vizLayout = new QHBoxLayout();
     vizUpperLeft = new AudioVisualizerWidget(this);
     vizUpperRight = new AudioVisualizerWidget(this);
@@ -270,7 +269,6 @@ MainWindow::MainWindow(QWidget *parent)
     layout->addWidget(deviceLabel);
     layout->addLayout(fetchLayout);
     layout->addWidget(logTextEdit);
-    layout->addWidget(vizWidget);
 
     setCentralWidget(containerWidget);
 
@@ -285,7 +283,6 @@ MainWindow::MainWindow(QWidget *parent)
     renderAgainButton->setVisible(false);
     exitButton->setVisible(false);
     deviceLabel->setVisible(true);
-    vizWidget->show();
 
     // Connections
     connect(exitButton, &QPushButton::clicked, this, &QMainWindow::close);
@@ -299,6 +296,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(fetchButton, &QPushButton::clicked, this, &MainWindow::fetchVideo);
     connect(renderAgainButton, &QPushButton::clicked, this, &MainWindow::renderAgain);
     connect(previewCheckbox, &QCheckBox::toggled, this, &MainWindow::onPreviewCheckboxToggled);
+    connect(vizCheckbox, &QCheckBox::toggled, this, &MainWindow::onVizCheckboxToggled);
 
     playbackTimer = new QTimer(this);
     connect(playbackTimer, &QTimer::timeout, this, &MainWindow::updatePlaybackDuration);
@@ -399,7 +397,7 @@ void MainWindow::configureMediaComponents()
     // Setup Media player
     player->setVideoOutput(videoWidget);
     player->setAudioOutput(audioOutput.data());
-    vizPlayer.reset(new AudioVizMediaPlayer(player.data(), vizWidget, vizUpperLeft, vizUpperRight, this));
+    vizPlayer.reset(new AudioVizMediaPlayer(player.data(), vizUpperLeft, vizUpperRight, this));
     
     // Setup SndWidget
     soundLevelWidget->setInputDevice(selectedDevice);
@@ -1488,6 +1486,18 @@ void MainWindow::onPreviewCheckboxToggled(bool enable) {
 
 }
 
+void MainWindow::onVizCheckboxToggled(bool enable) {
+
+    if (enable) {
+        qDebug() << "Audio viz enabled.";
+        vizPlayer->mute(false);
+    } else {
+        vizPlayer->mute(true);
+        qDebug() << "Audio viz muted";  
+    }
+
+}
+
 void MainWindow::addVideoDisplayWidgetInDialog() {
     if (webcamDialog && webcamDialog->isVisible()) {
         webcamDialog->raise();
@@ -1559,8 +1569,6 @@ MainWindow::~MainWindow() {
         delete progressSong;
     if ( vizPlayer )
         vizPlayer.reset();
-    if ( vizWidget )
-        delete vizWidget;
 
 }
 

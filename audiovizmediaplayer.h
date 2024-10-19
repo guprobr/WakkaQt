@@ -16,13 +16,14 @@ class AudioVizMediaPlayer : public QObject
     Q_OBJECT
 
 public:
-    explicit AudioVizMediaPlayer(QMediaPlayer *m_player, AudioVisualizerWidget *visualizer, AudioVisualizerWidget *vizLeft, AudioVisualizerWidget *vizRight, QObject *parent = nullptr);
+    explicit AudioVizMediaPlayer(QMediaPlayer *m_player, AudioVisualizerWidget *vizLeft, AudioVisualizerWidget *vizRight, QObject *parent = nullptr);
     ~AudioVizMediaPlayer();
 
     void setMedia(const QString &source);
     void play();
     void pause();
     void stop();
+    void mute(bool toggle);
     void seek(qint64 position);
 
 signals:
@@ -38,7 +39,6 @@ private:
 
     QMediaPlayer *m_mediaPlayer;
     
-    AudioVisualizerWidget *m_visualizer;
     AudioVisualizerWidget *m_visualizer_left;
     AudioVisualizerWidget *m_visualizer_right;
 

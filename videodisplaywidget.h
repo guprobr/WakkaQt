@@ -18,14 +18,15 @@ public:
             m_image = QImage(); 
         }
         
-        m_image = image; // Set the new image
-
-        if (!repaintScheduled) {
-            repaintScheduled = true;
-            QTimer::singleShot(33, this, [this]() {
-                update(); // Trigger a repaint, limit to ~30 FPS
-                repaintScheduled = false;
-            });
+        if (m_image != image) { // Only update if the image is different
+            m_image = image; 
+            if (!repaintScheduled) {
+                repaintScheduled = true;
+                QTimer::singleShot(33, this, [this]() {
+                    update(); 
+                    repaintScheduled = false;
+                });
+            }
         }
     }
 

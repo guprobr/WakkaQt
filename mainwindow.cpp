@@ -1490,59 +1490,44 @@ void MainWindow::onVideoFrameReceived(const QVideoFrame &frame) {
 }
 
 void MainWindow::proxyVideoFrame(const QVideoFrame &frame) {
-    // Check if the frame is in a displayable format
-    QVideoFrameFormat::PixelFormat format = frame.pixelFormat();
+    if (frame.isValid()) {
+        QVideoFrameFormat::PixelFormat format = frame.pixelFormat();
 
-    if (format == QVideoFrameFormat::Format_BGRA8888 ||
-        format == QVideoFrameFormat::Format_ARGB8888 ||
-        format == QVideoFrameFormat::Format_RGBX8888 ||
-        format == QVideoFrameFormat::Format_BGRX8888) {
+        if (format == QVideoFrameFormat::Format_BGRA8888 || format == QVideoFrameFormat::Format_ARGB8888 ||
+            format == QVideoFrameFormat::Format_RGBX8888 || format == QVideoFrameFormat::Format_BGRX8888) {
+            
+            const uchar *bits = frame.bits(0);
+            if (bits) {
+                QImage::Format imageFormat = (format == QVideoFrameFormat::Format_BGRA8888 || format == QVideoFrameFormat::Format_ARGB8888) ?
+                                              QImage::Format_ARGB32 : QImage::Format_RGB32;
 
-        // Directly access the pixel data without conversion
-        const uchar *bits = frame.bits(0);  // Use plane 0 for standard RGB/ARGB formats
-        if (bits) {
-            // Map pixel formats to corresponding QImage::Format
-            QImage::Format imageFormat = QImage::Format_Invalid;
-
-            if (format == QVideoFrameFormat::Format_BGRA8888 || format == QVideoFrameFormat::Format_ARGB8888) {
-                imageFormat = QImage::Format_ARGB32;
-            } else if (format == QVideoFrameFormat::Format_RGBX8888 || format == QVideoFrameFormat::Format_BGRX8888) {
-                imageFormat = QImage::Format_RGB32;
-            }
-
-            if (imageFormat != QImage::Format_Invalid) {
-                // Create the QImage from the raw pixel data, using plane 0
                 QImage img(bits, frame.width(), frame.height(), frame.bytesPerLine(0), imageFormat);
-
                 if (!img.isNull()) {
-                    // Update the main VideoDisplayWidget
+                    // Set the image only if it is not the same as the previous one
                     if (webcamPreviewWidget) {
                         webcamPreviewWidget->setImage(img);
                     }
 
-                    // Update each VideoDisplayWidget in the list
                     for (VideoDisplayWidget* widget : previewWidgets) {
                         widget->setImage(img);
                     }
                 }
             }
-        }
-    } else {
-        // Fallback: Use frame.toImage() for unsupported formats
-        QImage img = frame.toImage();
-        if (!img.isNull()) {
-            // Update the main VideoDisplayWidget
-            if (webcamPreviewWidget) {
-                webcamPreviewWidget->setImage(img);
-            }
-
-            // Update each VideoDisplayWidget in the list
-            for (VideoDisplayWidget* widget : previewWidgets) {
-                widget->setImage(img);
+        } else {
+            // Use frame.toImage() for unsupported formats
+            QImage img = frame.toImage();
+            if (!img.isNull()) {
+                if (webcamPreviewWidget) {
+                    webcamPreviewWidget->setImage(img);
+                }
+                for (VideoDisplayWidget* widget : previewWidgets) {
+                    widget->setImage(img);
+                }
             }
         }
     }
 }
+
 
 
 

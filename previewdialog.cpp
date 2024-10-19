@@ -265,14 +265,15 @@ void PreviewDialog::replayAudioPreview() {
     // Check if amplifier is playing
     if (amplifier->isPlaying()) {
         // Stop playback and reset the audio components before replaying
+        chronosTimer->stop();
         amplifier->stop();
         amplifier->resetAudioComponents();  // Reset the amplifier components
     }
         // regen preview
         amplifier->rewind();
-        chronos = "Encoding. . please wait.";
+        chronos = "Encoding vocals.. . .";
         setAudioFile(audioFilePath);
-
+        chronosTimer->start();
         amplifier->setPlaybackVol(!playbackMute_option->isChecked());
 
 }

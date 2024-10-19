@@ -18,8 +18,6 @@ AudioAmplifier::AudioAmplifier(const QAudioFormat &format, QObject *parent)
     audioSink.reset(new QAudioSink(format, this));
     connect(audioSink.data(), &QAudioSink::stateChanged, this, &AudioAmplifier::handleStateChanged);
     
-    playbackFile.setFileName(QDir::tempPath() + QDir::separator() + "WakkaQt_extracted_playback.wav");
-
     // Initialize QBuffer
     audioBuffer.reset(new QBuffer());
     audioBuffer->setBuffer(new QByteArray());
@@ -27,6 +25,18 @@ AudioAmplifier::AudioAmplifier(const QAudioFormat &format, QObject *parent)
     playbackBuffer.reset(new QBuffer());
     playbackBuffer->setBuffer(new QByteArray());
 
+    playbackFile.setFileName(QDir::tempPath() + QDir::separator() + "WakkaQt_extracted_playback.wav");
+    // Open the playback extracted .WAV
+    if ( playbackFile.isOpen() )
+        playbackFile.close();
+    if (!playbackFile.open(QIODevice::ReadOnly)) {
+        qWarning() << "Failed to open playback file!";
+        return;
+    }
+    playbackData.clear();
+    // Read the entire contents of the file into a QByteArray
+    playbackData = playbackFile.readAll();
+    
     // Initialize timer for probing end of stream
     dataPushTimer.reset(new QTimer(this));
     connect(dataPushTimer.data(), &QTimer::timeout, this, &AudioAmplifier::checkBufferState);
@@ -39,7 +49,7 @@ AudioAmplifier::~AudioAmplifier() {
 }
 
 QString AudioAmplifier::checkBufferState() {
-    if (!audioBuffer->isOpen() || !audioSink || audioSink->isNull()) return "NaN";
+    if (!audioBuffer->isOpen() || !audioSink || audioSink->isNull()) return ".. .Encoding. ..";
 
     // Total duration based on the original audio size
     qint64 totalDuration = originalAudioData.size() * 1000000 / (audioSink->format().sampleRate() * 
@@ -99,29 +109,24 @@ void AudioAmplifier::start() {
         if (audioBuffer->isOpen()) {
             audioBuffer->close();
         }
+        audioBuffer->setData(amplifiedAudioData); // Configure QBuffer data 
+        audioBuffer->open(QIODevice::ReadOnly); // and open for reading
+        audioBuffer->seek(playbackPosition);     // Resume prior position
         
-        // Configure QBuffer data and open for reading
-        audioBuffer->setData(amplifiedAudioData);
-        audioBuffer->open(QIODevice::ReadOnly);
-        // Resume prior position
-        audioBuffer->seek(playbackPosition);
-
         if (playbackBuffer->isOpen()) {
             playbackBuffer->close();
         }
-
         playbackBuffer->setData(playbackData);
         playbackBuffer->open(QIODevice::ReadOnly); // Open the buffer for reading
         playbackBuffer->seek(playbackPosition);
-        playbackSink->start(playbackBuffer.data());
 
-        ////////////////////////
-        // now the vocals
+        playbackSink->start(playbackBuffer.data());
         audioSink->start(audioBuffer.data()); // play amplified vocals
+
         dataPushTimer->start(25); // Probe buffer state paranoia style
         checkBufferState();
 
-        qDebug() << "Start amplified audio playback.";
+        qDebug() << "Start amplified vocals and backing track.";
     } else {
         qWarning() << "No audio data.";
     }
@@ -131,18 +136,23 @@ void AudioAmplifier::stop() {
     if (audioSink->state() == QAudio::ActiveState) {
         playbackPosition = audioBuffer->pos(); // Store current position before stopping
         audioSink->stop();  // Stop the audio sink
-        qDebug() << "Stopped playback.";
+        qDebug() << "Stopped vocals.";
+    }
+
+    if (playbackSink->state() == QAudio::ActiveState) {
+        playbackSink->stop();  // Stop the playback sink
+        qDebug() << "Stopped backingtrack.";
     }
 
     // Close the buffer if playback is fully stopped
     if (audioBuffer->isOpen() && !isPlaying()) {
         audioBuffer->close();
-        qDebug() << "Closed audio buffer.";
+        qDebug() << "Closed vocals buffer.";
     }
-    /*if (playbackBuffer->isOpen() && !isPlaying()) {
+    if (playbackBuffer->isOpen() && !isPlaying()) {
         playbackBuffer->close();
-        qDebug() << "Closed audio buffer.";
-    }*/
+        qDebug() << "Closed backing track buffer.";
+    }
 
     dataPushTimer->stop();  // Stop the timer when playback stops
 }
@@ -206,20 +216,6 @@ void AudioAmplifier::applyAmplification() {
         amplifiedAudioData.append(static_cast<char>((amplifiedSample >> 8) & 0xFF));
     }
 
-    // Open the playback extracted .WAV
-    if ( playbackFile.isOpen() )
-        playbackFile.close();
-
-    if (!playbackFile.open(QIODevice::ReadOnly)) {
-        qWarning() << "Failed to open playback file!";
-        return;
-    }
-
-    playbackData.clear();
-    // Read the entire contents of the file into a QByteArray
-    playbackData = playbackFile.readAll();
-    
-
     if (amplifiedAudioData.isEmpty()) {
         qWarning() << "Amplified audio data is empty!";
     }
@@ -232,10 +228,14 @@ bool AudioAmplifier::isPlaying() const {
 void AudioAmplifier::rewind() {
     if (audioBuffer->isOpen()) {
         audioBuffer->seek(0);  // Seek the buffer to the start
-        playbackBuffer->seek(0);
     } else {
-        qDebug() << "Audio buffer is not open. Cannot rewind.";
+        qDebug() << "Vocals buffer is not open. Cannot rewind.";
     }
+    if (playbackBuffer->isOpen())
+        playbackBuffer->seek(0);
+    else
+        qDebug() << "Playback buffer is not open. Cannot rewind.";
+
     playbackPosition = 0;  // Reset playback position
 }
 
@@ -253,21 +253,9 @@ void AudioAmplifier::resetAudioComponents() {
         audioSink->stop();
     }
 
-    if (audioBuffer && audioBuffer->isOpen()) {
-        audioBuffer->close();
+    if (playbackSink && playbackSink->state() == QAudio::ActiveState) {
+        playbackSink->stop();
     }
-
-    audioBuffer.reset(new QBuffer(this));
-    audioBuffer->setData(amplifiedAudioData);
-    audioBuffer->open(QIODevice::ReadOnly);
-
-    //if (playbackBuffer && playbackBuffer->isOpen()) {
-    //    playbackBuffer->close();
-    //}
-
-    //playbackBuffer.reset(new QBuffer(this));
-    //playbackBuffer->setData(playbackData);
-    //playbackBuffer->open(QIODevice::ReadOnly);
 
     playbackSink.reset(new QAudioSink(audioFormat, this));
     audioSink.reset(new QAudioSink(audioFormat, this));

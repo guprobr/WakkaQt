@@ -131,6 +131,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Create the main VideoDisplayWidget
     webcamPreviewWidget = new VideoDisplayWidget(this);
+    webcamPreviewWidget->setSharedImage(&sharedImage, &imageMutex);
     webcamPreviewWidget->setFixedSize(196, 84);
     webcamPreviewWidget->setToolTip("Click to open large preview");
     QHBoxLayout *webcamPreviewLayout = new QHBoxLayout();
@@ -1481,31 +1482,36 @@ void MainWindow::onPreviewCheckboxToggled(bool enable) {
 }
 
 void MainWindow::onVideoFrameReceived(const QVideoFrame &frame) {
+    // Forward the video frame to a shared buffer
     if (frame.isValid()) {
-        // Throttle to process only every 3rd frame
-        static int frameCount = 0;
-        frameCount++;
-        if (frameCount % 3 == 0) { 
-            proxyVideoFrame(frame);
-        }
+        proxyVideoFrame(frame);
     }
 }
 
 void MainWindow::proxyVideoFrame(const QVideoFrame &frame) {
-    // Check if the frame is valid
-    if (!frame.isValid()) return;
+    // Check if the frame is valid and can be converted to an image
+    if (frame.isValid()) {
+        // Attempt to convert the frame to a QImage
+        QImage img = frame.toImage(); // Convert the frame to an image
 
-    QImage img = frame.toImage();
+        // Check if the conversion was successful
+        if (!img.isNull()) {
+            // Lock the shared image buffer
+            QMutexLocker locker(&imageMutex);
 
-    if (!img.isNull()) { 
-        if (webcamPreviewWidget) {
-            webcamPreviewWidget->setImage(img);
+            // Update the shared image with the current frame
+            sharedImage = img;
+
+            // Request repaint from the widget
+            if (webcamPreviewWidget) {
+                webcamPreviewWidget->update();
+            }
+        } else {
+            qDebug() << "Failed to convert QVideoFrame to QImage"; // Debug message
         }
-        for (VideoDisplayWidget* widget : previewWidgets) {
-            widget->setImage(img);
-        }
+    } else {
+        qDebug() << "Received invalid QVideoFrame"; // Debug message
     }
-    
 }
 
 void MainWindow::addVideoDisplayWidgetInDialog() {
@@ -1522,6 +1528,7 @@ void MainWindow::addVideoDisplayWidgetInDialog() {
     webcamDialog->setWindowTitle("Webcam Preview");
     webcamDialog->setFixedSize(960, 544); 
     VideoDisplayWidget *newWidget = new VideoDisplayWidget(webcamDialog);
+    newWidget->setSharedImage(&sharedImage, &imageMutex);
     newWidget->setMinimumSize(960, 544);
     
     // Add to the list

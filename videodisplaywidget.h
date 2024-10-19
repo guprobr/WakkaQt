@@ -2,58 +2,61 @@
 #define VIDEODISPLAYWIDGET_H
 
 #include <QWidget>
-#include <QPainter>
 #include <QImage>
+#include <QPainter>
 #include <QMouseEvent>
+#include <QMutex>
+#include <QTimer>
 
 class VideoDisplayWidget : public QWidget {
     Q_OBJECT
 
 public:
-    explicit VideoDisplayWidget(QWidget *parent = nullptr) : QWidget(parent) {}
+    explicit VideoDisplayWidget(QWidget *parent = nullptr)
+        : QWidget(parent), m_sharedImage(nullptr), m_mutex(nullptr) {
+        // Set up a timer to refresh at a steady frame rate (~30 FPS)
+        m_timer = new QTimer(this);
+        connect(m_timer, &QTimer::timeout, this, &VideoDisplayWidget::updateFrame);
+        m_timer->start(33); // ~30 FPS
+    }
 
-    void setImage(const QImage &image) {
-        // clear the previous image to free memory
-        if (!m_image.isNull()) {
-            m_image = QImage(); 
-        }
-        
-        if (m_image != image) { // Only update if the image is different
-            m_image = image; 
-            if (!repaintScheduled) {
-                repaintScheduled = true;
-                QTimer::singleShot(33, this, [this]() {
-                    update(); 
-                    repaintScheduled = false;
-                });
-            }
-        }
+    void setSharedImage(QImage *image, QMutex *mutex) {
+        m_sharedImage = image;
+        m_mutex = mutex;
     }
 
 signals:
     void clicked();
 
 protected:
-    
-    // the mousePressEvent for 'clicked' 
     void mousePressEvent(QMouseEvent *event) override {
         if (event->button() == Qt::LeftButton) {
-            emit clicked();  
+            emit clicked();
         }
     }
 
     void paintEvent(QPaintEvent *event) override {
-        QPainter painter(this);
-        if (!m_image.isNull()) {
-            // Scale the image to fit the widget's size
-            painter.drawImage(this->rect(), m_image);
+        if (m_sharedImage && m_mutex) {
+            QPainter painter(this);
+            QMutexLocker locker(m_mutex); // Ensure thread-safe access to the shared image
+            
+            if (!m_sharedImage->isNull()) {
+                // Scale the image to fit the widget’s size and draw it
+                painter.drawImage(this->rect(), *m_sharedImage);
+            }
         }
     }
 
-private:
-    QImage m_image;
+private slots:
+    void updateFrame() {
+        // Trigger a repaint of the widget
+        update();
+    }
 
-    bool repaintScheduled = false;
+private:
+    QImage *m_sharedImage; // Shared image pointer
+    QMutex *m_mutex;       // Mutex for thread-safe image access
+    QTimer *m_timer;       // Timer for refreshing the widget
 };
 
 #endif

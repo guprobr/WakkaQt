@@ -1481,56 +1481,32 @@ void MainWindow::onPreviewCheckboxToggled(bool enable) {
 }
 
 void MainWindow::onVideoFrameReceived(const QVideoFrame &frame) {
-
-    // Forward the video frame to all widgets
     if (frame.isValid()) {
-        proxyVideoFrame(frame);
-    }
-
-}
-
-void MainWindow::proxyVideoFrame(const QVideoFrame &frame) {
-    if (frame.isValid()) {
-        QVideoFrameFormat::PixelFormat format = frame.pixelFormat();
-
-        if (format == QVideoFrameFormat::Format_BGRA8888 || format == QVideoFrameFormat::Format_ARGB8888 ||
-            format == QVideoFrameFormat::Format_RGBX8888 || format == QVideoFrameFormat::Format_BGRX8888) {
-            
-            const uchar *bits = frame.bits(0);
-            if (bits) {
-                QImage::Format imageFormat = (format == QVideoFrameFormat::Format_BGRA8888 || format == QVideoFrameFormat::Format_ARGB8888) ?
-                                              QImage::Format_ARGB32 : QImage::Format_RGB32;
-
-                QImage img(bits, frame.width(), frame.height(), frame.bytesPerLine(0), imageFormat);
-                if (!img.isNull()) {
-                    // Set the image only if it is not the same as the previous one
-                    if (webcamPreviewWidget) {
-                        webcamPreviewWidget->setImage(img);
-                    }
-
-                    for (VideoDisplayWidget* widget : previewWidgets) {
-                        widget->setImage(img);
-                    }
-                }
-            }
-        } else {
-            // Use frame.toImage() for unsupported formats
-            QImage img = frame.toImage();
-            if (!img.isNull()) {
-                if (webcamPreviewWidget) {
-                    webcamPreviewWidget->setImage(img);
-                }
-                for (VideoDisplayWidget* widget : previewWidgets) {
-                    widget->setImage(img);
-                }
-            }
+        // Throttle to process only every 3rd frame
+        static int frameCount = 0;
+        frameCount++;
+        if (frameCount % 3 == 0) { 
+            proxyVideoFrame(frame);
         }
     }
 }
 
+void MainWindow::proxyVideoFrame(const QVideoFrame &frame) {
+    // Check if the frame is valid
+    if (!frame.isValid()) return;
 
+    QImage img = frame.toImage();
 
-
+    if (!img.isNull()) { 
+        if (webcamPreviewWidget) {
+            webcamPreviewWidget->setImage(img);
+        }
+        for (VideoDisplayWidget* widget : previewWidgets) {
+            widget->setImage(img);
+        }
+    }
+    
+}
 
 void MainWindow::addVideoDisplayWidgetInDialog() {
 

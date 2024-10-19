@@ -58,6 +58,7 @@ private:
 
     QList<VideoDisplayWidget*> previewWidgets;
     VideoDisplayWidget *webcamPreviewWidget;
+    QImage m_previousImage = QImage();
     QDialog *webcamDialog; // Pointer to the currently webcam preview dialog
 
     QColor highlightColor;

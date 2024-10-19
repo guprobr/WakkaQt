@@ -1,6 +1,8 @@
 #ifndef VIDEODISPLAYWIDGET_H
 #define VIDEODISPLAYWIDGET_H
 
+#include "complexes.h"
+
 #include <QWidget>
 #include <QPainter>
 #include <QImage>
@@ -12,8 +14,7 @@ class VideoDisplayWidget : public QWidget {
 public:
     explicit VideoDisplayWidget(QWidget *parent = nullptr) : QWidget(parent) {}
 
-    void setImage(const QImage &image) {
-        m_image = image;
+    void setImage() {
         update(); // Trigger a repaint
     }
 
@@ -31,14 +32,13 @@ protected:
 
     void paintEvent(QPaintEvent *event) override {
         QPainter painter(this);
-        if (!m_image.isNull()) {
+        if (!sharedWebcamPreviewImage.isNull()) {
             // Scale the image to fit the widget's size
-            painter.drawImage(this->rect(), m_image);
+            painter.drawImage(this->rect(), sharedWebcamPreviewImage);
         }
     }
 
-private:
-    QImage m_image;
+ 
 };
 
 #endif

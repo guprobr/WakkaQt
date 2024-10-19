@@ -1502,10 +1502,10 @@ void MainWindow::proxyVideoFrame(QVideoFrame &frame) {
     sharedWebcamPreviewImage = frame.toImage(); // Directly update the same shared image
     if (!sharedWebcamPreviewImage.isNull()) {
         if (webcamPreviewWidget) {
-            webcamPreviewWidget->setImage(sharedWebcamPreviewImage);
+            webcamPreviewWidget->setImage();
         }
         for (VideoDisplayWidget* widget : previewWidgets) {
-            widget->setImage(sharedWebcamPreviewImage); // Share the same image reference
+            widget->setImage(); // Share the same image reference
         }
     }
 

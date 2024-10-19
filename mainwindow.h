@@ -56,7 +56,6 @@ private slots:
     
 private:
 
-    QImage sharedWebcamPreviewImage;
     QList<VideoDisplayWidget*> previewWidgets;
     VideoDisplayWidget *webcamPreviewWidget;
     QDialog *webcamDialog; // Pointer to the currently webcam preview dialog

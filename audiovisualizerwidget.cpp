@@ -18,21 +18,25 @@ AudioVisualizerWidget::AudioVisualizerWidget(QWidget *parent)
     // change the brush color every six seconds
     QTimer *colorTimer = new QTimer(this);
     connect(colorTimer, &QTimer::timeout, this, [this]() {
-        // Generate random RGB values :)
-        int red = QRandomGenerator::global()->bounded(256);
-        int green = QRandomGenerator::global()->bounded(256);
-        int blue = QRandomGenerator::global()->bounded(256);
 
-        // Set a random brush color
-        m_brush = QBrush(QColor(red, green, blue));
+        if ( !is_Mute ) {
+            // Generate random RGB values :)
+            int red = QRandomGenerator::global()->bounded(256);
+            int green = QRandomGenerator::global()->bounded(256);
+            int blue = QRandomGenerator::global()->bounded(256);
 
-        update();
+            // Set a random brush color
+            m_brush = QBrush(QColor(red, green, blue));
+
+            update();
+        }
+        
     });
 
     colorTimer->start(7777);
     QTimer *timer = new QTimer(this);
     connect(timer, &QTimer::timeout, this, &AudioVisualizerWidget::updatePainter);
-    timer->start(90);
+    timer->start(100);
 
 
 }
@@ -58,8 +62,15 @@ void AudioVisualizerWidget::clear()
     update(); // Request a repaint
 }
 
+void AudioVisualizerWidget::mute(bool toggle) {
+    is_Mute = toggle;
+}
+
 void AudioVisualizerWidget::paintEvent(QPaintEvent *event)
 {
+    if ( is_Mute )
+        return;
+
     QFrame::paintEvent(event);
 
     QPainter painter(this);

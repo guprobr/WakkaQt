@@ -53,11 +53,19 @@ void AudioVizMediaPlayer::mute(bool toggle) {
 
     if ( m_audioTimer )
         if ( toggle ) {
-            if ( m_audioTimer->isActive() ) 
+            if ( m_audioTimer->isActive() ) {
                 m_audioTimer->stop();
+                is_Mute = true;
+                m_visualizer_left->mute(true);
+                m_visualizer_right->mute(true);
+            }
         } else {
-            if ( !m_audioTimer->isActive() ) 
+            if ( !m_audioTimer->isActive()) {
                 m_audioTimer->start();
+                is_Mute = false;
+                m_visualizer_left->mute(false);
+                m_visualizer_right->mute(false);
+            }
         }
         
 }
@@ -83,7 +91,7 @@ void AudioVizMediaPlayer::play()
     if (m_mediaPlayer->playbackState() == QMediaPlayer::StoppedState || m_mediaPlayer->playbackState() == QMediaPlayer::PausedState) {
         m_mediaPlayer->play();
 
-        if (!m_audioTimer->isActive()) {
+        if (!m_audioTimer->isActive() && !is_Mute  ) {
             m_audioTimer->start(100);  // Start the timer to update the visualizer, if needed
         }
     }
@@ -137,7 +145,7 @@ void AudioVizMediaPlayer::seek(qint64 position)
         return;
     }
 
-    if (!m_audioTimer->isActive()) {
+    if (!m_audioTimer->isActive() && !is_Mute ) {
             m_audioTimer->start(100);  // Start the timer to update the visualizer, if needed
         }
 

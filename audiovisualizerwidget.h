@@ -14,6 +14,7 @@ public:
     explicit AudioVisualizerWidget(QWidget *parent = nullptr);
     ~AudioVisualizerWidget();
     void clear();
+    void mute(bool toggle);
 
 protected:
     void paintEvent(QPaintEvent *event) override;
@@ -23,6 +24,8 @@ private:
     QAudioFormat m_format;
     QBrush m_brush;
     QColor bgColor;
+
+    bool is_Mute = false;
 
 public slots:
     void updateVisualization(const QByteArray &audioData, const QAudioFormat &format);

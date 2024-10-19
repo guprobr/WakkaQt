@@ -48,6 +48,8 @@ private:
     QTimer *m_audioTimer;
     QScopedPointer<QByteArray> m_decodedAudioData; // Store extracted audio data
     QScopedPointer<QVector<qint64>> m_framePositions; // Store frame positions
+
+    bool is_Mute = false;
 };
 
 #endif // AUDIOVIZMEDIAPLAYER_H

@@ -42,7 +42,7 @@ public:
     ~MainWindow();
 
     void onVideoFrameReceived(const QVideoFrame &frame); // See below
-    void proxyVideoFrame(QVideoFrame &frame); // MEthod to mirror the webcam output from mediacapturesession
+    void proxyVideoFrame(const QVideoFrame &frame); // MEthod to mirror the webcam output from mediacapturesession
     void addVideoDisplayWidgetInDialog(); // Method to add a VideoDisplayWidget in a dialog
 
 private slots:

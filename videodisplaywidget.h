@@ -13,8 +13,14 @@ public:
     explicit VideoDisplayWidget(QWidget *parent = nullptr) : QWidget(parent) {}
 
     void setImage(const QImage &image) {
-        m_image = image;
-        update(); // Trigger a repaint
+        m_image = image; // Set the new image
+        if (!repaintScheduled) {
+            repaintScheduled = true;
+            QTimer::singleShot(33, this, [this]() {
+                update(); // Trigger a repaint, limit to ~30 FPS
+                repaintScheduled = false;
+            });
+        }
     }
 
 signals:
@@ -39,6 +45,8 @@ protected:
 
 private:
     QImage m_image;
+
+    bool repaintScheduled = false;
 };
 
 #endif

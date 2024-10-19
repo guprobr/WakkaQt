@@ -7,7 +7,3 @@
     QString _talent_filter = "lv2=p=http\\\\://gareus.org/oss/lv2/fat1:c=corr=1.0,";
     QString _rubberband_filter = "rubberband=pitch=1.0696:tempo=1.0:detector=compound:phase=laminar:window=standard:smoothing=on:formant=preserved:pitchq=quality:channels=apart,";
     QString _auburn_filter = "lv2=p=https\\\\://www.auburnsounds.com/products/Graillon.html40733133#stereo,";
-
-// REALLY shared image for webcamPreviews
-
-    QImage sharedWebcamPreviewImage = QImage();

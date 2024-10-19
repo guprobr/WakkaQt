@@ -1492,24 +1492,30 @@ void MainWindow::onVideoFrameReceived(const QVideoFrame &frame) {
 }
 
 void MainWindow::proxyVideoFrame(QVideoFrame &frame) {
+
     if (!frame.isMapped()) {
+        // Map the frame for reading
         if (!frame.map(QVideoFrame::ReadOnly)) {
             return;
         }
     }
 
     // Convert the frame to a QImage
-    sharedWebcamPreviewImage = frame.toImage(); // Directly update the same shared image
-    if (!sharedWebcamPreviewImage.isNull()) {
+    QImage img = frame.toImage();
+    if (!img.isNull()) {
+        // Update the main VideoDisplayWidget
         if (webcamPreviewWidget) {
-            webcamPreviewWidget->setImage();
+            webcamPreviewWidget->setImage(img);
         }
+
+        // Update each VideoDisplayWidget in the list
         for (VideoDisplayWidget* widget : previewWidgets) {
-            widget->setImage(); // Share the same image reference
+            widget->setImage(img);
         }
     }
 
     frame.unmap();
+
 }
 
 void MainWindow::addVideoDisplayWidgetInDialog() {

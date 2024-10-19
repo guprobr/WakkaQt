@@ -13,7 +13,13 @@ public:
     explicit VideoDisplayWidget(QWidget *parent = nullptr) : QWidget(parent) {}
 
     void setImage(const QImage &image) {
+        // clear the previous image to free memory
+        if (!m_image.isNull()) {
+            m_image = QImage(); 
+        }
+        
         m_image = image; // Set the new image
+
         if (!repaintScheduled) {
             repaintScheduled = true;
             QTimer::singleShot(33, this, [this]() {

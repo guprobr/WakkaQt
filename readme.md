@@ -106,7 +106,6 @@ sudo zypper install qt6-qtbase-devel qt6-qtmultimedia-devel glib2-devel ffmpeg y
 - **`audiorecorder.cpp` / `audiorecorder.h`:** Class to enable the configuration of different sample formats, channels and rates while recording sound, since QAudioInput with MediaCaptureSession don't do the job.
 - **`audiovizmediaplayer.cpp` / `audiovizmediaplayer.h`:** Class to mimic QMediaPlayer but extracting audio from playbacks and serve the AudioVisualizer widget.
 - **`audiovisualizerwidget.cpp` / `audiovisualizerwidget.h`:** Class that implements the bottom Yelloopy© audio visualizer widget.
-- **`videodisplaywidget.h`:** Class to serve as a proxy of the webcam preview, allowing multiple widgets for the webcam preview at the same time.
 - **`resources.qrc`:** Resource file for including images like the app logo.
 
 ## FFmpeg Integration

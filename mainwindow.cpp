@@ -130,7 +130,7 @@ MainWindow::MainWindow(QWidget *parent)
     placeholderLabel->setScaledContents(true);
 
     // Create the main VideoDisplayWidget
-    webcamPreviewWidget = new VideoDisplayWidget(this);
+    webcamPreviewWidget = new QVideoWidget(this);
     webcamPreviewWidget->setFixedSize(196, 84);
     webcamPreviewWidget->setToolTip("Click to open large preview");
     QHBoxLayout *webcamPreviewLayout = new QHBoxLayout();
@@ -299,13 +299,12 @@ MainWindow::MainWindow(QWidget *parent)
     connect(fetchButton, &QPushButton::clicked, this, &MainWindow::fetchVideo);
     connect(renderAgainButton, &QPushButton::clicked, this, &MainWindow::renderAgain);
     connect(previewCheckbox, &QCheckBox::toggled, this, &MainWindow::onPreviewCheckboxToggled);
-    connect(webcamPreviewWidget, &VideoDisplayWidget::clicked, this, &MainWindow::addVideoDisplayWidgetInDialog);
-
 
     playbackTimer = new QTimer(this);
     connect(playbackTimer, &QTimer::timeout, this, &MainWindow::updatePlaybackDuration);
 
     scene->installEventFilter(this);
+    webcamPreviewWidget->installEventFilter(this);
 
     chooseInputDevice();
     resetMediaComponents(true);
@@ -416,7 +415,7 @@ void MainWindow::configureMediaComponents()
     //mediaRecorder->setVideoFrameRate(30); 
     
     qDebug() << "Configuring mediaCaptureSession..";
-    mediaCaptureSession->setVideoOutput(videoSink.data());
+    mediaCaptureSession->setVideoOutput(webcamPreviewWidget);
     mediaCaptureSession->setCamera(camera.data());
     mediaCaptureSession->setAudioInput(nullptr);
     mediaCaptureSession->setRecorder(mediaRecorder.data());
@@ -427,7 +426,7 @@ void MainWindow::configureMediaComponents()
     connect(mediaRecorder.data(), &QMediaRecorder::errorOccurred, this, &MainWindow::handleRecorderError);
     connect(player.data(), &QMediaPlayer::mediaStatusChanged, this, &MainWindow::onPlayerMediaStatusChanged);
     connect(player.data(), &QMediaPlayer::playbackStateChanged, this, &MainWindow::onPlaybackStateChanged);
-    connect(videoSink.data(), &QVideoSink::videoFrameChanged, this, &MainWindow::onVideoFrameReceived);
+    //connect(videoSink.data(), &QVideoSink::videoFrameChanged, this, &MainWindow::onVideoFrameReceived);
 
     qDebug() << "Reconfigured media components";
 
@@ -1308,6 +1307,15 @@ void MainWindow::addProgressSong(QGraphicsScene *scene, qint64 duration) {
 }
 
 bool MainWindow::eventFilter(QObject *object, QEvent *event) {
+
+    // handle clicking the webcam preview
+    if (object == webcamPreviewWidget && event->type() == QEvent::MouseButtonPress) {
+        QMouseEvent *mouseEvent = static_cast<QMouseEvent *>(event);
+        if (mouseEvent->button() == Qt::LeftButton) {
+            addVideoDisplayWidgetInDialog();
+            return true; // Event handled
+        }
+    }
     
     // Check if the event is a mouse press event in a QGraphicsScene
     if (event->type() == QEvent::GraphicsSceneMousePress) {
@@ -1480,49 +1488,8 @@ void MainWindow::onPreviewCheckboxToggled(bool enable) {
 
 }
 
-void MainWindow::onVideoFrameReceived(const QVideoFrame &frame) {
-
-    // Forward the video frame to all widgets
-    if (frame.isValid()) {
-        // Create a mutable copy
-        QVideoFrame mutableFrame = frame;
-        proxyVideoFrame(mutableFrame); // Pass the mutable copy (maybe expensive, but safer)
-    }
-
-}
-
-void MainWindow::proxyVideoFrame(QVideoFrame &frame) {
-
-    if (!frame.isMapped()) {
-        // Map the frame for reading
-        if (!frame.map(QVideoFrame::ReadOnly)) {
-            return;
-        }
-    }
-
-    // Convert the frame to a QImage
-    QImage img = frame.toImage();
-    if (!img.isNull()) {
-        // Update the main VideoDisplayWidget
-        if (webcamPreviewWidget) {
-            webcamPreviewWidget->setImage(img);
-        }
-
-        // Update each VideoDisplayWidget in the list
-        for (VideoDisplayWidget* widget : previewWidgets) {
-            widget->setImage(img);
-        }
-    }
-
-    frame.unmap();
-
-}
-
 void MainWindow::addVideoDisplayWidgetInDialog() {
-
-    // is already open?
-    if (webcamDialog && webcamDialog->isVisible() ) {
-        // bring it to the front, captain
+    if (webcamDialog && webcamDialog->isVisible()) {
         webcamDialog->raise();
         webcamDialog->activateWindow();
         return;
@@ -1531,33 +1498,38 @@ void MainWindow::addVideoDisplayWidgetInDialog() {
     webcamDialog = new QDialog(this);
     webcamDialog->setWindowTitle("Webcam Preview");
     webcamDialog->setFixedSize(960, 544); 
-    VideoDisplayWidget *newWidget = new VideoDisplayWidget(webcamDialog);
-    newWidget->setMinimumSize(960, 544);
-    
-    // Add to the list
-    previewWidgets.append(newWidget);
+
+    QVideoWidget *newWidget = new QVideoWidget();
+    newWidget->hide();
+
+    QLayout *webcamLayout = webcamPreviewWidget->parentWidget()->layout();
+    if (webcamLayout) {
+        webcamLayout->replaceWidget(webcamPreviewWidget, newWidget);
+        webcamLayout->removeWidget(webcamPreviewWidget);
+    }
 
     QVBoxLayout *layout = new QVBoxLayout(webcamDialog);
-    layout->addWidget(newWidget);
+    layout->addWidget(webcamPreviewWidget);
+    webcamPreviewWidget->setFixedSize(960, 544);
+
     webcamDialog->setLayout(layout);
 
-    // signal to cleanup
-    connect(webcamDialog, &QDialog::finished, this, [this]() {
-        // prevent memory leaks
+    connect(webcamDialog, &QDialog::finished, this, [this, webcamLayout, newWidget]() {
         webcamDialog = nullptr;
+        if (webcamLayout) {
+            webcamLayout->replaceWidget(newWidget, webcamPreviewWidget); // put back in same place
+            delete newWidget; // cleanup
+            webcamPreviewWidget->setFixedSize(196, 84); // Set the original size 
+        }
     });
 
-    // Show me show me show me
     webcamDialog->show();
-
 }
+
 
 MainWindow::~MainWindow() {
     
-    qDeleteAll(previewWidgets);
-    previewWidgets.clear();
-
-    if (isRecording) {
+     if (isRecording) {
         mediaRecorder->stop();
         audioRecorder->stopRecording();
         camera->stop();

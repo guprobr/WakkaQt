@@ -49,7 +49,6 @@ add_executable(${PROJECT_NAME}
     audiorecorder.h
     audiovizmediaplayer.h
     audiovisualizerwidget.h
-    videodisplaywidget.h
     ${resources}
 )
 

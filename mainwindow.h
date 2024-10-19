@@ -2,7 +2,6 @@
 #define MAINWINDOW_H
 
 #include "sndwidget.h"
-#include "videodisplaywidget.h"
 #include "audiorecorder.h"
 #include "audiovizmediaplayer.h"
 #include "audiovisualizerwidget.h"
@@ -41,8 +40,6 @@ public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
-    void onVideoFrameReceived(const QVideoFrame &frame); // See below
-    void proxyVideoFrame(QVideoFrame &frame); // MEthod to mirror the webcam output from mediacapturesession
     void addVideoDisplayWidgetInDialog(); // Method to add a VideoDisplayWidget in a dialog
 
 private slots:
@@ -56,9 +53,8 @@ private slots:
     
 private:
 
-    QList<VideoDisplayWidget*> previewWidgets;
-    VideoDisplayWidget *webcamPreviewWidget;
-    QDialog *webcamDialog; // Pointer to the currently webcam preview dialog
+    QVideoWidget *webcamPreviewWidget;
+    QDialog *webcamDialog;
 
     QColor highlightColor;
     QString setRez = "1920x540"; // its a vstack, same width, half the height

@@ -55,10 +55,7 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
     rubberband_option->setToolTip("Check to enable wacko rubberband (this renders very slowly)");
     rubberband_option->setChecked(false);
     rubberband_option->setFont(QFont("Arial", 9));
-    auburn_option = new QCheckBox("Auburn Graillon FREE edition", this);
-    auburn_option->setToolTip("Very nice Auburn Graillon AutoTuner (you must download LV2 plugin on their website if you're not on WakkaQt-mswinX64 ZIP bundle)");
-    auburn_option->setChecked(false);
-    auburn_option->setFont(QFont("Arial", 9));
+
     playbackMute_option = new QCheckBox("Preview vocals only", this);
     playbackMute_option->setToolTip("Check to mute playback and hear vocals only");
     playbackMute_option->setChecked(false);
@@ -71,7 +68,6 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
     optz->addWidget(echo_option);
     optz->addWidget(talent_option);
     optz->addWidget(rubberband_option);
-    optz->addWidget(auburn_option);
 
     layout->addWidget(volumeBanner);
     layout->addWidget(volumeLabel);
@@ -135,15 +131,6 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
             rubberband_filter = "";
         
      });
-    connect(auburn_option, &QCheckBox::stateChanged, this, [this]() {
-
-        if ( auburn_option->isChecked() )
-            auburn_filter = _auburn_filter;
-        else
-            auburn_filter = "";
-
-     });
-
 
     chronosTimer = new QTimer(this);
     connect(chronosTimer, &QTimer::timeout, this, &PreviewDialog::updateChronos);
@@ -253,10 +240,6 @@ bool PreviewDialog::getTalent() const {
 
 bool PreviewDialog::getRubberband() const {
     return rubberband_option->isChecked();
-}
-
-bool PreviewDialog::getAuburn() const {
-    return auburn_option->isChecked();
 }
 
 void PreviewDialog::replayAudioPreview() {

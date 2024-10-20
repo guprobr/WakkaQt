@@ -955,7 +955,6 @@ void MainWindow::renderAgain()
 
             echo_option = dialog.getEcho();
             rubberband_option = dialog.getRubberband();
-            auburn_option = dialog.getAuburn();
             gareus_option = dialog.getTalent();
             
             mixAndRender(vocalVolume);
@@ -1043,14 +1042,12 @@ void MainWindow::mixAndRender(double vocalVolume) {
     QString echo_filter = _echo_filter;
     QString rubberband_filter = _rubberband_filter;
     QString gareus_filter = _talent_filter;
-    QString auburn_filter = _auburn_filter;
+    QString auburn_filter = "";
 
     if ( !echo_option )
         echo_filter = "";
     if ( !rubberband_option )
         rubberband_filter = "";
-    if ( !auburn_option )
-        auburn_filter = "";
     if ( !gareus_option )
         gareus_filter = "";
 

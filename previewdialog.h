@@ -45,7 +45,7 @@ private:
     QCheckBox *echo_option;
     QCheckBox *talent_option;
     QCheckBox *rubberband_option;
-    QCheckBox *auburn_option;
+
     QCheckBox *playbackMute_option;
 
     QString echo_filter = _echo_filter;

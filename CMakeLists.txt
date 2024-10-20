@@ -70,6 +70,10 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DQT_NO_DEBUG_OUTPUT")
+    if(WIN32)
+        # Add the WIN32 flag to remove the console window in Windows
+        set_target_properties(${PROJECT_NAME} PROPERTIES WIN32_EXECUTABLE TRUE)
+    endif()
 endif()
 message (STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 

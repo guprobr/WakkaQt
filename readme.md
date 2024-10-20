@@ -53,22 +53,22 @@ To build and run this application, ensure you have the following:
 ### Ubuntu/Debian
 ```bash
 sudo apt update
-sudo apt install qt6-base-dev qt6-multimedia-dev glib-2.0-dev ffmpeg yt-dlp x42-plugins
+sudo apt install qt6-base-dev qt6-multimedia-dev ffmpeg yt-dlp x42-plugins
 ```
 
 ### Fedora
 ```bash
-sudo dnf install qt6-qtbase-devel qt6-qtmultimedia-devel glib2-devel ffmpeg yt-dlp lv2-x42-plugins
+sudo dnf install qt6-qtbase-devel qt6-qtmultimedia-devel ffmpeg yt-dlp lv2-x42-plugins
 ```
 
 ### Arch Linux
 ```bash
-sudo pacman -S qt6-base qt6-multimedia glib2 ffmpeg yt-dlp x42-plugins
+sudo pacman -S qt6-base qt6-multimedia ffmpeg yt-dlp x42-plugins
 ```
 
 ### openSUSE
 ```bash
-sudo zypper install qt6-qtbase-devel qt6-qtmultimedia-devel glib2-devel ffmpeg yt-dlp x42-plugins
+sudo zypper install qt6-qtbase-devel qt6-qtmultimedia-devel ffmpeg yt-dlp x42-plugins
 ```
 
 3. Build the project:

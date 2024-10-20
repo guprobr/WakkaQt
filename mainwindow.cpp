@@ -496,7 +496,7 @@ void MainWindow::chooseInputDevice() {
     layout->addWidget(selectButton);
 
     // Create a button to exit the program
-    QPushButton *exitButton = new QPushButton("Exit", deviceDialog);
+    QPushButton *exitButton = new QPushButton("Exit Program", deviceDialog);
     layout->addWidget(exitButton);
 
     // Connect the select button to handle selection

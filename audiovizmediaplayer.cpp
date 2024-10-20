@@ -53,19 +53,19 @@ void AudioVizMediaPlayer::mute(bool toggle) {
 
     if ( m_audioTimer )
         if ( toggle ) {
-            if ( m_audioTimer->isActive() ) {
-                m_audioTimer->stop();
-                is_Mute = true;
-                m_visualizer_left->mute(true);
-                m_visualizer_right->mute(true);
-            }
+
+            m_audioTimer->stop();
+            is_Mute = true;
+            m_visualizer_left->mute(true);
+            m_visualizer_right->mute(true);
+            
         } else {
-            if ( !m_audioTimer->isActive()) {
-                m_audioTimer->start();
+
                 is_Mute = false;
                 m_visualizer_left->mute(false);
                 m_visualizer_right->mute(false);
-            }
+                if (m_mediaPlayer->playbackState() == QMediaPlayer::PlayingState)
+                    seek(m_mediaPlayer->position());
         }
         
 }

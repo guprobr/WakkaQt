@@ -398,6 +398,7 @@ void MainWindow::configureMediaComponents()
     player->setVideoOutput(videoWidget);
     player->setAudioOutput(audioOutput.data());
     vizPlayer.reset(new AudioVizMediaPlayer(player.data(), vizUpperLeft, vizUpperRight, this));
+    onVizCheckboxToggled(vizCheckbox->isChecked());
     
     // Setup SndWidget
     soundLevelWidget->setInputDevice(selectedDevice);

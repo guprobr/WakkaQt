@@ -12,6 +12,7 @@
 #include <QElapsedTimer>
 
 #include <QMessageBox>
+#include <QHBoxLayout>
 #include <QFile>
 #include <QFileInfo>
 #include <QLineEdit>
@@ -54,7 +55,10 @@ private slots:
 
 private:
 
-    QVideoWidget *webcamPreviewWidget;
+    QGraphicsVideoItem *webcamPreviewItem;
+    QGraphicsScene *webcamScene;
+    QGraphicsView *webcamView;
+    QHBoxLayout *webcamPreviewLayout;
     QDialog *webcamDialog;
 
     QColor highlightColor;
@@ -63,8 +67,8 @@ private:
     bool rubberband_option = false;
     bool gareus_option = false;
 
-    QGraphicsScene *scene;
-    QGraphicsView *previewView;
+    QGraphicsScene *progressScene;
+    QGraphicsView *progressView;
     QGraphicsRectItem *progressSong = nullptr;
     QGraphicsRectItem *progressSongFull = nullptr;
     QGraphicsTextItem *durationTextItem;

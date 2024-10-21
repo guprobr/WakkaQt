@@ -129,36 +129,44 @@ MainWindow::MainWindow(QWidget *parent)
     placeholderLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     placeholderLabel->setScaledContents(true);
 
-    // Create the main VideoDisplayWidget
-    webcamPreviewWidget = new QVideoWidget(this);
-    webcamPreviewWidget->setFixedSize(196, 84);
-    webcamPreviewWidget->setToolTip("Click to open large preview");
-    QHBoxLayout *webcamPreviewLayout = new QHBoxLayout();
-    webcamPreviewLayout->addWidget(webcamPreviewWidget, 0, Qt::AlignCenter);
+    // Create the webcam preview
+    webcamScene = new QGraphicsScene(this);
+    webcamScene->setSceneRect(0, 0, 196, 88);
+    webcamView = new QGraphicsView(webcamScene, this);
+    webcamView->setFixedSize(196, 88);
+    webcamView->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    webcamView->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    webcamPreviewItem = new QGraphicsVideoItem();
+    webcamPreviewItem->setSize(QSizeF(196, 88));
+    webcamPreviewItem->setToolTip("Click to open large preview");
+    webcamScene->addItem(webcamPreviewItem);
+    webcamPreviewLayout = new QHBoxLayout();
+    webcamPreviewLayout->addWidget(webcamView, 0, Qt::AlignCenter);
    
     // Create the scene and view
-    scene = new QGraphicsScene(this);
-    previewView = new QGraphicsView(scene, this);
-    previewView->setMinimumSize(640, 45);
-    previewView->setMaximumHeight(50);
-    previewView->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    previewView->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    previewView->setAlignment(Qt::AlignCenter);
-    qreal viewWidth = previewView->width();
-    qreal viewHeight = previewView->height();
+    progressScene = new QGraphicsScene(this);
+    progressView = new QGraphicsView(progressScene, this);
+    progressView->setMinimumSize(640, 45);
+    progressView->setMaximumHeight(50);
+    progressView->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    progressView->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    progressView->setAlignment(Qt::AlignCenter);
+    qreal viewWidth = progressView->width();
+    qreal viewHeight = progressView->height();
     // Create playback chronometer text item
     durationTextItem = new QGraphicsTextItem;
     durationTextItem->setDefaultTextColor(palette.color(QPalette::Text));
-    durationTextItem->setFont(QFont("Courier", 12, QFont::Bold));
-    durationTextItem->setY(previewView->height() - (durationTextItem->boundingRect().height()) +5 );
+    durationTextItem->setFont(QFont("Courier", 16, QFont::Bold));
     durationTextItem->setPlainText("00:00:00 / 00:00:00");
+    durationTextItem->setY(progressView->height()/4);
+    
         
-    scene->addItem(durationTextItem);
-    scene->setSceneRect(0, 0, viewWidth, viewHeight);
+    progressScene->addItem(durationTextItem);
+    progressScene->setSceneRect(0, 0, viewWidth, viewHeight);
 
     banner = new QLabel(Wakka_welcome, this);
     banner->setTextFormat(Qt::TextFormat::RichText);
-    banner->setFont(QFont("Arial", 10));
+    banner->setFont(QFont("Arial", 11, QFont::Bold));
     banner->setAlignment(Qt::AlignCenter);
     banner->setToolTip("Here be the song title!");
     setBanner(Wakka_welcome);
@@ -168,7 +176,7 @@ MainWindow::MainWindow(QWidget *parent)
     chooseVideoButton = new QPushButton("Load playback from disk", this);
     chooseVideoButton->setToolTip("Load media files from disk");
     singButton = new QPushButton("♪ SING ♪", this);
-    singButton->setFont(QFont("Arial", 16));
+    singButton->setFont(QFont("Arial", 21));
     singButton->setToolTip("Start/Stop recording after loaded playback");
     chooseInputButton = new QPushButton("Choose Input Devices", this);
     renderAgainButton = new QPushButton("RENDER AGAIN", this);
@@ -196,8 +204,8 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Instantiate SndWidget
     soundLevelWidget = new SndWidget(this);
-    soundLevelWidget->setMinimumSize(640, 48);
-    soundLevelWidget->setMaximumHeight(64);
+    soundLevelWidget->setMinimumSize(640, 25);
+    soundLevelWidget->setMaximumHeight(32);
     soundLevelWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     soundLevelWidget->setToolTip("Sound input visualization widget");
 
@@ -257,7 +265,7 @@ MainWindow::MainWindow(QWidget *parent)
     layout->addLayout(indicatorLayout);
     layout->addLayout(vizLayout);
     layout->addWidget(banner);
-    layout->addWidget(previewView);
+    layout->addWidget(progressView);
     layout->addWidget(soundLevelWidget);
     layout->addWidget(placeholderLabel);  
     layout->addWidget(videoWidget);       
@@ -276,8 +284,9 @@ MainWindow::MainWindow(QWidget *parent)
     chooseVideoButton->setVisible(true);
     chooseInputButton->setVisible(false);
     soundLevelWidget->setVisible(true);
+    webcamPreviewItem->setVisible(true);
     recordingIndicator->hide();
-    webcamPreviewWidget->hide();
+    webcamView->hide();
     singButton->setEnabled(false);
     singAction->setEnabled(false);
     renderAgainButton->setVisible(false);
@@ -301,8 +310,8 @@ MainWindow::MainWindow(QWidget *parent)
     playbackTimer = new QTimer(this);
     connect(playbackTimer, &QTimer::timeout, this, &MainWindow::updatePlaybackDuration);
 
-    scene->installEventFilter(this);
-    webcamPreviewWidget->installEventFilter(this);
+    progressScene->installEventFilter(this);
+    webcamScene->installEventFilter(this);
 
     chooseInputDevice();
     resetMediaComponents(true);
@@ -411,10 +420,10 @@ void MainWindow::configureMediaComponents()
     mediaRecorder->setMediaFormat(*format);
     mediaRecorder->setOutputLocation(QUrl::fromLocalFile(webcamRecorded));
     mediaRecorder->setQuality(QMediaRecorder::VeryHighQuality);
-    //mediaRecorder->setVideoFrameRate(30); 
+    //mediaRecorder->setVideoFrameRate(25); 
     
     qDebug() << "Configuring mediaCaptureSession..";
-    mediaCaptureSession->setVideoOutput(webcamPreviewWidget);
+    mediaCaptureSession->setVideoOutput(webcamPreviewItem);
     mediaCaptureSession->setCamera(camera.data());
     mediaCaptureSession->setAudioInput(nullptr);
     mediaCaptureSession->setRecorder(mediaRecorder.data());
@@ -589,12 +598,12 @@ void MainWindow::updateDeviceLabel(const QString &deviceLabelText) {
         playbackTimer->stop();
         
         if (progressSongFull) {
-            scene->removeItem(progressSongFull);
+            progressScene->removeItem(progressSongFull);
             delete progressSongFull;
             progressSongFull = nullptr;
         }
         if (progressSong) {
-            scene->removeItem(progressSong);
+            progressScene->removeItem(progressSong);
             delete progressSong;
             progressSong = nullptr;
         }
@@ -678,7 +687,7 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
     if ( QMediaPlayer::PlayingState == state ) {
         
         if ( !isPlayback ) { 
-            addProgressSong(scene, static_cast<int>(getMediaDuration(currentPlayback)));
+            addProgressSong(progressScene, static_cast<int>(getMediaDuration(currentPlayback)));
         }            
 
         isPlayback = true; // enable seeking now
@@ -792,7 +801,7 @@ void MainWindow::stopRecording() {
         disconnect(player.data(), &QMediaPlayer::positionChanged, this, &MainWindow::onPlayerPositionChanged);
 
         recordingIndicator->hide();
-        webcamPreviewWidget->hide();
+        webcamView->hide();
         previewCheckbox->setChecked(false);
 
         if ( player ) {
@@ -892,7 +901,7 @@ void MainWindow::handleRecordingError() {
         audioRecorder->stopRecording();
 
     recordingIndicator->hide();
-    webcamPreviewWidget->hide();
+    webcamView->hide();
     previewCheckbox->setChecked(false);
     videoWidget->hide();
     placeholderLabel->show();
@@ -1281,7 +1290,7 @@ void MainWindow::addProgressSong(QGraphicsScene *scene, qint64 duration) {
     progressSongFull = new QGraphicsRectItem(0, 0, 640, 20);
     progressSongFull->setToolTip("Click to seek");
     scene->addItem(progressSongFull);
-    progressSongFull->setPos((this->previewView->width() - progressSongFull->boundingRect().width()) / 2, 0);
+    progressSongFull->setPos((this->progressView->width() - progressSongFull->boundingRect().width()) / 2, 0);
     
     if (progressSong) {
         scene->removeItem(progressSong);
@@ -1292,7 +1301,7 @@ void MainWindow::addProgressSong(QGraphicsScene *scene, qint64 duration) {
     progressSong = new QGraphicsRectItem(0, 0, 0, 20);
     progressSong->setBrush(QBrush(highlightColor));
     scene->addItem(progressSong);
-    progressSong->setPos((this->previewView->width() - progressSongFull->boundingRect().width()) / 2, 0);
+    progressSong->setPos((this->progressView->width() - progressSongFull->boundingRect().width()) / 2, 0);
 
     // Update progress bar as media plays
     connect(player.data(), &QMediaPlayer::positionChanged, this, [=](qint64 currentPosition) {
@@ -1304,15 +1313,22 @@ void MainWindow::addProgressSong(QGraphicsScene *scene, qint64 duration) {
 
 bool MainWindow::eventFilter(QObject *object, QEvent *event) {
 
-    // handle clicking the webcam preview
-    if (object == webcamPreviewWidget && event->type() == QEvent::MouseButtonPress) {
-        QMouseEvent *mouseEvent = static_cast<QMouseEvent *>(event);
-        if (mouseEvent->button() == Qt::LeftButton) {
+    // Ensure the event is related to webcamScene and is a mouse press event
+    if (object == webcamScene && event->type() == QEvent::GraphicsSceneMousePress) {
+        QGraphicsSceneMouseEvent *mouseEvent = static_cast<QGraphicsSceneMouseEvent *>(event);
+
+        // Check which item was clicked
+        QGraphicsItem *clickedItem = webcamScene->itemAt(mouseEvent->scenePos(), QTransform());
+        
+        if (clickedItem == webcamPreviewItem) {  // Check if it's the webcam preview item
+            QPointF clickPos = mouseEvent->scenePos();
+
             addVideoDisplayWidgetInDialog();
-            return true; // Event handled
+
+            return true; 
         }
     }
-    
+
     // Check if the event is a mouse press event in a QGraphicsScene
     if (event->type() == QEvent::GraphicsSceneMousePress) {
         // Cast the event to QGraphicsSceneMouseEvent
@@ -1320,7 +1336,7 @@ bool MainWindow::eventFilter(QObject *object, QEvent *event) {
         if (mouseEvent) {
             
             QPointF clickPos = mouseEvent->scenePos();  // Get the mouse click position in scene coordinates
-
+            
             if ( progressSong ) {
                 if ( !isRecording && isPlayback ) {
                     // Get progress bar position and dimensions
@@ -1474,11 +1490,11 @@ void MainWindow::onPreviewCheckboxToggled(bool enable) {
 
     if (enable) {
         qDebug() << "Camera preview will be enabled.";
-        webcamPreviewWidget->show();
+        webcamView->show();
         if ( camera->isAvailable() && !camera->isActive() )
             camera->start();
     } else {
-        webcamPreviewWidget->hide();
+        webcamView->hide();
         qDebug() << "Camera preview hidden.";
     }
 
@@ -1503,36 +1519,50 @@ void MainWindow::addVideoDisplayWidgetInDialog() {
         return;
     }
 
+    // Create and configure the dialog
     webcamDialog = new QDialog(this);
-    webcamDialog->setWindowTitle("Webcam Preview");
+    webcamDialog->setWindowTitle("WakkaQt - Webcam Preview");
     webcamDialog->setFixedSize(960, 544); 
 
-    QVideoWidget *newWidget = new QVideoWidget();
+    QWidget *newWidget = new QWidget();  // placeholder
     newWidget->hide();
 
-    QLayout *webcamLayout = webcamPreviewWidget->parentWidget()->layout();
-    if (webcamLayout) {
-        webcamLayout->replaceWidget(webcamPreviewWidget, newWidget);
-        webcamLayout->removeWidget(webcamPreviewWidget);
-    }
+    // Replace the existing widget in the layout (for reuse)
+    webcamPreviewLayout->replaceWidget(webcamView, newWidget);
 
+    // Add webcamView to the dialog's layout
     QVBoxLayout *layout = new QVBoxLayout(webcamDialog);
-    layout->addWidget(webcamPreviewWidget);
-    webcamPreviewWidget->setFixedSize(960, 544);
-
+    layout->addWidget(webcamView);
     webcamDialog->setLayout(layout);
 
-    connect(webcamDialog, &QDialog::finished, this, [this, webcamLayout, newWidget]() {
+    // Set the size of the view and the preview item
+    webcamView->setFixedSize(960, 544);
+    webcamPreviewItem->setSize(QSizeF(960, 544));
+
+    // Set the scene size based on the view size
+    webcamView->scene()->setSceneRect(0, 0, webcamView->width(), webcamView->height());
+
+    // Center the webcamPreviewItem within the scene
+    qreal xCenter = (webcamView->scene()->width() - webcamPreviewItem->boundingRect().width()) / 2;
+    qreal yCenter = (webcamView->scene()->height() - webcamPreviewItem->boundingRect().height()) / 2;
+    webcamPreviewItem->setPos(xCenter, yCenter);
+
+    // Restore original layout and size when the dialog is closed
+    connect(webcamDialog, &QDialog::finished, this, [this, newWidget]() {
         webcamDialog = nullptr;
-        if (webcamLayout) {
-            webcamLayout->replaceWidget(newWidget, webcamPreviewWidget); // put back in same place
-            delete newWidget; // cleanup
-            webcamPreviewWidget->setFixedSize(196, 84); // Set the original size 
+        if (webcamPreviewLayout) {
+            webcamPreviewLayout->replaceWidget(newWidget, webcamView);  // Put back the view in its original place
+            delete newWidget;  // Cleanup
+            webcamView->setFixedSize(196, 88);  // Set the original size
+            webcamPreviewItem->setSize(QSizeF(196, 88));
+            webcamPreviewItem->setPos(0, 0);  // Reset position to (0, 0)
         }
     });
 
+    // Show the dialog
     webcamDialog->show();
 }
+
 
 
 MainWindow::~MainWindow() {
@@ -1612,9 +1642,9 @@ void MainWindow::resizeEvent(QResizeEvent* event) {
     QMainWindow::resizeEvent(event);
 
     // Update the scene size to match the view size
-    QRectF sceneRect = previewView->rect(); 
-    previewView->scene()->setSceneRect(sceneRect); 
-    qreal sceneWidth = previewView->scene()->width();
+    QRectF sceneRect = progressView->rect(); 
+    progressView->scene()->setSceneRect(sceneRect); 
+    qreal sceneWidth = progressView->scene()->width();
     
     if ( this->progressSongFull ) {
         progressSongFull->setX((sceneWidth - progressSongFull->boundingRect().width()) / 2);
@@ -1624,7 +1654,7 @@ void MainWindow::resizeEvent(QResizeEvent* event) {
     }    
     
     durationTextItem->setTextWidth(durationTextItem->boundingRect().width());
-    durationTextItem->setX((this->previewView->width() - durationTextItem->boundingRect().width()) / 2);
+    durationTextItem->setX((this->progressView->width() - durationTextItem->boundingRect().width()) / 2);
     
 }
 

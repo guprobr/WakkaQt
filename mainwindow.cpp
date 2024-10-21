@@ -1552,6 +1552,7 @@ void MainWindow::addVideoDisplayWidgetInDialog() {
             webcamView->setFixedSize(196, 88);  // Set the original size
             webcamPreviewItem->setSize(QSizeF(196, 88));
             webcamPreviewItem->setPos(0, 0);  // Reset position to (0, 0)
+            webcamView->scene()->setSceneRect(webcamView->rect());
         }
     });
 

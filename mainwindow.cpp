@@ -1523,12 +1523,7 @@ void MainWindow::addVideoDisplayWidgetInDialog() {
     webcamDialog = new QDialog(this);
     webcamDialog->setWindowTitle("WakkaQt - Webcam Preview");
     webcamDialog->setFixedSize(960, 544); 
-
-    QWidget *newWidget = new QWidget();  // placeholder
-    newWidget->hide();
-
-    // Replace the existing widget in the layout (for reuse)
-    webcamPreviewLayout->replaceWidget(webcamView, newWidget);
+    webcamPreviewLayout->removeWidget(webcamView);
 
     // Add webcamView to the dialog's layout
     QVBoxLayout *layout = new QVBoxLayout(webcamDialog);
@@ -1548,11 +1543,12 @@ void MainWindow::addVideoDisplayWidgetInDialog() {
     webcamPreviewItem->setPos(xCenter, yCenter);
 
     // Restore original layout and size when the dialog is closed
-    connect(webcamDialog, &QDialog::finished, this, [this, newWidget]() {
+    connect(webcamDialog, &QDialog::finished, this, [this, layout]() {
         webcamDialog = nullptr;
         if (webcamPreviewLayout) {
-            webcamPreviewLayout->replaceWidget(newWidget, webcamView);  // Put back the view in its original place
-            delete newWidget;  // Cleanup
+            // Put back the view in its original place
+            layout->removeWidget(webcamView);
+            webcamPreviewLayout->addWidget(webcamView);
             webcamView->setFixedSize(196, 88);  // Set the original size
             webcamPreviewItem->setSize(QSizeF(196, 88));
             webcamPreviewItem->setPos(0, 0);  // Reset position to (0, 0)

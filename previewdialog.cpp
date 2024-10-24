@@ -27,7 +27,7 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
     volumeDial->setFixedSize(200, 100);
     
     // Initialize UI elements
-    QLabel *volumeBanner = new QLabel("Volume Amplification: This is a low-quality preview. Choose effects if you have the plugins and click REWIND to apply for previewing. Rewind takes a while, to encode the new preview. Avoid rewinding and use SEEK instead. ", this);
+    QLabel *volumeBanner = new QLabel("Volume Amplification: This is a low-quality preview.\nChoose effects if you have the plugins and click to apply for previewing.\nSometimes it takes a while to encode the new preview. ", this);
     volumeBanner->setToolTip("While you review your performance you can adjust the volume for the render output.");
     volumeBanner->setFont(QFont("Arial", 10));
     volumeBanner->setWordWrap(true);
@@ -35,9 +35,9 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
     volumeLabel->setToolTip("Values above 100\% amplifies, while values below reduce volume");
     volumeLabel->setFont(QFont("Courier", 12, QFont::Bold));
     startButton = new QPushButton("Apply Effects", this);
-    startButton->setToolTip("Apply effects on checkboxes");
+    startButton->setToolTip("Apply the effects on checkboxes");
     stopButton = new QPushButton("Render Mix", this);
-    stopButton->setToolTip("Apply changes and begin rendering");
+    stopButton->setToolTip("Apply volume and effect changes and begin rendering");
     seekForwardButton = new QPushButton(">>", this);
     seekForwardButton->setToolTip("Seek forward");
     seekBackwardButton = new QPushButton("<<", this);
@@ -51,13 +51,13 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
     talent_option->setToolTip("Check to render X42 very subtle pitch correction");
     talent_option->setChecked(false);
     talent_option->setFont(QFont("Arial", 9));
-    rubberband_option = new QCheckBox("RubberBand pitch UP (slow!!)", this);
-    rubberband_option->setToolTip("Check to enable wacko rubberband (this renders very slowly)");
+    rubberband_option = new QCheckBox("RubberBand (slow!!)", this);
+    rubberband_option->setToolTip("Check to enable rubberband effect (this renders very slowly)");
     rubberband_option->setChecked(false);
     rubberband_option->setFont(QFont("Arial", 9));
 
     playbackMute_option = new QCheckBox("Preview vocals only", this);
-    playbackMute_option->setToolTip("Check to mute playback and hear vocals only");
+    playbackMute_option->setToolTip("Check to mute backing track and hear vocals only");
     playbackMute_option->setChecked(false);
     playbackMute_option->setFont(QFont("Arial", 8));
 

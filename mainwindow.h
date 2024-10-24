@@ -76,8 +76,8 @@ private:
     QTimer *playbackTimer;
     QElapsedTimer sysLatency;
     
-    bool isRecording;
-    bool isPlayback;
+    bool isRecording = false;
+    bool isPlayback = false;
     
     qint64 pos = 0;
     qint64 offset = 0;

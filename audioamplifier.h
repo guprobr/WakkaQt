@@ -51,7 +51,9 @@ private:
     QFile playbackFile;
 
     double volumeFactor;  
-    qint64 playbackPosition;  
+    qint64 playbackPosition; 
+
+    bool playbackVol = true; 
 };
 
 #endif // AUDIOAMPLIFIER_H

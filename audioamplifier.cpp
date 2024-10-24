@@ -121,6 +121,7 @@ void AudioAmplifier::start() {
         playbackBuffer->seek(playbackPosition);
 
         playbackSink->start(playbackBuffer.data());
+        playbackSink->setVolume(playbackVol);
         audioSink->start(audioBuffer.data()); // play amplified vocals
 
         dataPushTimer->start(25); // Probe buffer state paranoia style
@@ -194,6 +195,7 @@ void AudioAmplifier::setAudioData(const QByteArray &data) {
 
  void AudioAmplifier::setPlaybackVol(bool flag) {
     playbackSink->setVolume(flag);
+    playbackVol = flag;
  }
 
 void AudioAmplifier::applyAmplification() {

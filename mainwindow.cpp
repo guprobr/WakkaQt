@@ -835,10 +835,10 @@ void MainWindow::stopRecording() {
 
             // DETERMINE videoOffset
             qint64 recDuration = 1000 * getMediaDuration(webcamRecorded);
-            videoOffset = recDuration - pos;
+            videoOffset = offset + recDuration - pos;
             // DETERMINE audioOffset
             recDuration = 1000 * getMediaDuration(audioRecorded);
-            audioOffset = recDuration - pos;
+            audioOffset = offset + recDuration - pos;
 
             qWarning() << "System Latency: " << offset << " ms";
             qWarning() << "Audio Gap: " << audioOffset << " ms";

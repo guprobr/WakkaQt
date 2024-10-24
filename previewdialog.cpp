@@ -34,8 +34,8 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
     volumeLabel = new QLabel("Current Volume: 100\%", this);
     volumeLabel->setToolTip("Values above 100\% amplifies, while values below reduce volume");
     volumeLabel->setFont(QFont("Courier", 12, QFont::Bold));
-    startButton = new QPushButton("REWIND", this);
-    startButton->setToolTip("Apply chosen effects and restart rec preview");
+    startButton = new QPushButton("Apply Effects", this);
+    startButton->setToolTip("Apply effects on checkboxes");
     stopButton = new QPushButton("Render Mix", this);
     stopButton->setToolTip("Apply changes and begin rendering");
     seekForwardButton = new QPushButton(">>", this);
@@ -253,7 +253,7 @@ void PreviewDialog::replayAudioPreview() {
         amplifier->resetAudioComponents();  // Reset the amplifier components
     }
         // regen preview
-        amplifier->rewind();
+        //amplifier->rewind();
         setAudioFile(audioFilePath);
         chronosTimer->start();
         amplifier->setPlaybackVol(!playbackMute_option->isChecked());

@@ -768,6 +768,7 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
         singAction->setText("Finish recording");
         singButton->setEnabled(true);
         singAction->setEnabled(true);
+        vizCheckbox->setEnabled(false);
 
     }
     
@@ -793,7 +794,7 @@ void MainWindow::stopRecording() {
             QMessageBox::critical(this, "ERROR.", "Tried to stop Recording, but we are not recording. ERROR.");
             return;
         }
-        setBanner(".. .ENHANCING VOCALS.. .. .");
+        setBanner(".. .ENHANCING VOCALS.. .");
         isRecording = false;
         disconnect(player.data(), &QMediaPlayer::positionChanged, this, &MainWindow::onPlayerPositionChanged);
 
@@ -821,6 +822,7 @@ void MainWindow::stopRecording() {
 
         singButton->setText("♪ SING ♪");
         singAction->setText("SING");
+        vizCheckbox->setEnabled(true);
         progressSongFull->setToolTip("Nothing to seek");
         
         videoWidget->hide();
@@ -938,6 +940,7 @@ void MainWindow::handleRecordingError() {
     enable_playback(true);
     chooseInputButton->setEnabled(true);
     chooseInputAction->setEnabled(true);
+    vizCheckbox->setEnabled(true);
 
 }
 

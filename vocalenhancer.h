@@ -25,15 +25,13 @@ private:
     fftw_plan m_fftPlan;
     fftw_plan m_ifftPlan;
 
-    void phaseVocoder(QVector<double>& inputData, double pitchShiftRatio, int frameSize, int hopSize);
     void processPitchCorrection(QVector<double>& inputData);
-    double detectPitch(const QVector<double>& inputData);
-    QVector<double> pitchShiftPSOLA(const QVector<double>& inputData, double shiftRatio);
+    double detectPitch(QVector<double>& inputData);
+    QVector<double> harmonicScale(const QVector<double>& inputData, double scaleFactor);
     QVector<double> timeStretch(const QVector<double>& segment, double shiftRatio);
     double findClosestNoteFrequency(double frequency);
     double calculateDuration(int sampleRate);
 
-    void applyHanningWindow(QVector<double>& frame);
     double cubicInterpolate(double y0, double y1, double y2, double y3, double mu);
     void harmonicExciter(QVector<double>& inputData, double gain, double threshold);
     void compressDynamics(QVector<double>& inputData, double threshold, double ratio);

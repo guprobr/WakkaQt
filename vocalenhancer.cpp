@@ -52,20 +52,30 @@ QByteArray VocalEnhancer::enhance(const QByteArray& input) {
 
     QByteArray output(m_numSamples * m_sampleSize, 0);
     
-    // Convert QByteArray to QVector<double>
+     // Convert QByteArray to QVector<double>
     QVector<double> inputData(m_numSamples);
     for (int i = 0; i < m_numSamples; ++i) {
         // Ensure we're within bounds
         Q_ASSERT(i * m_sampleSize < input.size());
         
-        // Read the sample and normalize
-        inputData[i] = static_cast<double>(reinterpret_cast<const int16_t*>(input.constData())[i]) / 32768.0; 
+        // Read the sample and normalize based on the actual format
+        if (m_sampleSize == 2) { // 16-bit
+            inputData[i] = static_cast<double>(reinterpret_cast<const int16_t*>(input.constData())[i]) / 32768.0; 
+        } else if (m_sampleSize == 3) { // 24-bit
+            // Handle 24-bit audio
+            const uint8_t* sample = reinterpret_cast<const uint8_t*>(input.constData() + i * 3);
+            int32_t sampleValue = (sample[2] << 16) | (sample[1] << 8) | sample[0]; // Combine 3 bytes into a single int32_t
+            inputData[i] = static_cast<double>(sampleValue) / (1 << 23); // Normalize for 24-bit
+        } else if (m_sampleSize == 4) { // 32-bit
+            inputData[i] = static_cast<double>(reinterpret_cast<const int32_t*>(input.constData())[i]) / 2147483648.0; 
+        } else {
+            qWarning() << "Unsupported sample size:" << m_sampleSize;
+            return QByteArray(); // Return empty on unsupported format
+        }
     }
 
     // Process pitch correction
     processPitchCorrection(inputData);
-
-    harmonicExciter(inputData, 1.15, 0.5);
 
     for (const auto& value : inputData) {
         Q_ASSERT(!qIsNaN(value)); // Assert that the value is not NaN
@@ -94,49 +104,60 @@ QByteArray VocalEnhancer::enhance(const QByteArray& input) {
 
     // Convert outputData back to QByteArray
     for (int i = 0; i < inputData.size(); ++i) {
-        int sampleValue = static_cast<int>(inputData[i] * 32767); // Denormalize
-        sampleValue = qBound(-32768, sampleValue, 32767); // Clamp for 16-bit PCM
-        
-        // Ensure we're not writing out of bounds
-        Q_ASSERT(i < output.size() / m_sampleSize);
-        
-        reinterpret_cast<int16_t*>(output.data())[i] = static_cast<int16_t>(sampleValue); // Write to output
+        int sampleValue = 0;
+        if (m_sampleSize == 2) { // 16-bit
+            sampleValue = static_cast<int>(inputData[i] * 32767); // Denormalize
+            sampleValue = qBound(-32768, sampleValue, 32767); // Clamp for 16-bit
+            reinterpret_cast<int16_t*>(output.data())[i] = static_cast<int16_t>(sampleValue); // Write to output
+        } else if (m_sampleSize == 3) { // 24-bit
+            sampleValue = static_cast<int>(inputData[i] * (1 << 23)); // Denormalize
+            sampleValue = qBound(-8388608, sampleValue, 8388607); // Clamp for 24-bit
+            uint8_t* sample = reinterpret_cast<uint8_t*>(output.data() + i * 3);
+            sample[0] = static_cast<uint8_t>(sampleValue & 0xFF);
+            sample[1] = static_cast<uint8_t>((sampleValue >> 8) & 0xFF);
+            sample[2] = static_cast<uint8_t>((sampleValue >> 16) & 0xFF);
+        } else if (m_sampleSize == 4) { // 32-bit
+            sampleValue = static_cast<int>(inputData[i] * 2147483647); // Denormalize
+            sampleValue = qBound(-2147483648, sampleValue, 2147483647); // Clamp for 32-bit
+            reinterpret_cast<int32_t*>(output.data())[i] = static_cast<int32_t>(sampleValue); // Write to output
+        }
     }
 
     return output;
 }
 
 void VocalEnhancer::processPitchCorrection(QVector<double>& inputData) {
-    // Step 1: Robust pitch detection (Yin or autocorrelation method)
+    // Step 1: (pitch detection)
     double detectedPitch = detectPitch(inputData);
     
     if (detectedPitch <= 0) {
         detectedPitch = A440; // Default to A4 if no pitch is detected
     }
 
-    // Step 2: Find the target frequency (quantize detected pitch to the closest note)
+    // Step 2: (quantize detected pitch to the closest note)
     double targetFrequency = findClosestNoteFrequency(detectedPitch);
     
-    // Step 3: Calculate pitch shifting ratio
+    // Step 3: (Calculate pitch shifting ratio)
     double pitchShiftRatio = targetFrequency / detectedPitch;
     
-    // Step 4: Apply advanced pitch shifting (e.g., PSOLA or phase vocoder)
-    QVector<double> shiftedData = pitchShiftPSOLA(inputData, pitchShiftRatio);
+    // Step 4: Harmonic scaling
+    QVector<double> scaledData = harmonicScale(inputData, 0.99);
 
-    // Step 5: Replace the inputData with pitch-shifted data
-    inputData = shiftedData;
+    // Step 5: Replace data with pitch-shifted data
+    inputData = scaledData;
 
-    // Step 6: Apply any post-processing, such as dynamics compression
+    // Step 6: Apply any post-processing
     compressDynamics(inputData, 0.3, 1.696);
+    harmonicExciter(inputData, 1.15, 0.5);
     
 }
 
-QVector<double> VocalEnhancer::pitchShiftPSOLA(const QVector<double>& inputData, double shiftRatio) {
+QVector<double> VocalEnhancer::harmonicScale(const QVector<double>& inputData, double scaleFactor) {
     QVector<double> outputData(inputData.size(), 0.0);  // Initialize output with zeros
 
     // Define window size and hop size
-    int windowSize = 1024; // Typical for voice, adjust for other applications
-    int hopSize = windowSize / 4; // Base hop size (25% overlap)
+    int windowSize = 1024; // Typical size for harmonic scaling, can be adjusted
+    int hopSize = windowSize / 4; // 25% overlap
 
     // Hann window function
     QVector<double> window(windowSize);
@@ -144,7 +165,7 @@ QVector<double> VocalEnhancer::pitchShiftPSOLA(const QVector<double>& inputData,
         window[i] = 0.5 * (1.0 - cos(2.0 * M_PI * i / (windowSize - 1)));
     }
 
-    // Time-stretch and pitch-shift using overlap-add
+    // Time-stretch using harmonic scaling
     int numFrames = (inputData.size() + hopSize - 1) / hopSize; // Ensure we cover all frames
     for (int frame = 0; frame < numFrames; ++frame) {
         int start = frame * hopSize;
@@ -156,27 +177,20 @@ QVector<double> VocalEnhancer::pitchShiftPSOLA(const QVector<double>& inputData,
             segment[i] = (idx < inputData.size()) ? inputData[idx] * window[i] : 0.0;
         }
 
-        // Modify segment by shifting pitch
-        QVector<double> stretchedSegment = timeStretch(segment, shiftRatio);
+        // Modify segment by applying harmonic scaling
+        QVector<double> scaledSegment = timeStretch(segment, scaleFactor);
 
-        // Add the stretched segment back to the output using overlap-add
-        int outputStart = static_cast<int>(start * shiftRatio); // Adjust starting index based on pitch shift
-        for (int i = 0; i < stretchedSegment.size(); ++i) {
+        // Add the scaled segment back to the output using overlap-add
+        int outputStart = start; 
+        for (int i = 0; i < scaledSegment.size(); ++i) {
             int idx = outputStart + i;
             if (idx < outputData.size()) {
-                outputData[idx] += stretchedSegment[i] * window[i]; // Overlap-add with windowing
+                outputData[idx] += scaledSegment[i] * window[i]; // with windowing
             }
         }
     }
 
     return outputData;
-}
-
-void VocalEnhancer::applyHanningWindow(QVector<double>& frame) {
-    int frameSize = frame.size();
-    for (int i = 0; i < frameSize; ++i) {
-        frame[i] *= 0.5 * (1 - cos(2 * M_PI * i / (frameSize - 1))); // Hanning window
-    }
 }
 
 double VocalEnhancer::cubicInterpolate(double v0, double v1, double v2, double v3, double t) {
@@ -207,59 +221,50 @@ QVector<double> VocalEnhancer::timeStretch(const QVector<double>& segment, doubl
     return stretchedSegment;
 }
 
-
-double VocalEnhancer::detectPitch(const QVector<double>& inputData) {
-    //qDebug() << "detectPitch called with inputData size:" << inputData.size();
-
-    // Check if input data is valid
-    if (inputData.isEmpty()) {
-        qWarning() << "VocalEnhancer: Input data is empty. Cannot detect pitch.";
-        return -1.0; // or some invalid frequency value
+double VocalEnhancer::detectPitch(QVector<double>& inputData) {
+    const int sampleSize = inputData.size();
+    if (sampleSize == 0) {
+        return 0.0;  // Return 0 for empty input
     }
 
-    // Calculate the average amplitude to detect silence
-    double totalAmplitude = 0.0;
-    for (const auto& sample : inputData) {
-        totalAmplitude += std::abs(sample);
-    }
-    double averageAmplitude = totalAmplitude / inputData.size();
+    // Allocate memory for FFTW input and output
+    fftw_complex* fftwOutput = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * (sampleSize / 2 + 1));
+    double* fftwInput = (double*) fftw_malloc(sizeof(double) * sampleSize);
 
-    // Define a threshold to detect silence
-    const double SILENCE_THRESHOLD = 0.01;
-
-    if (averageAmplitude < SILENCE_THRESHOLD) {
-        qDebug() << "Vocal Enhancer: Input data is considered silent, returning default frequency.";
-        return A440; // Default to A4
+    // Copy input data to FFTW input array
+    for (int i = 0; i < sampleSize; ++i) {
+        fftwInput[i] = inputData[i];
     }
 
-    // Fill m_fftIn with real input data or zero if out of bounds
-    for (int i = 0; i < m_numSamples; ++i) {
-        if (i < inputData.size()) {
-            m_fftIn[i] = std::complex<double>(inputData[i], 0.0); // Real data from inputData
-        } else {
-            m_fftIn[i] = std::complex<double>(0.0, 0.0); // Zero padding
-        }
-    }
+    // Create FFTW plan for forward FFT
+    fftw_plan plan = fftw_plan_dft_r2c_1d(sampleSize, fftwInput, fftwOutput, FFTW_ESTIMATE);
 
-    // Now you can execute the FFT using m_fftIn directly
-    fftw_execute(m_fftPlan);
+    // Execute FFT
+    fftw_execute(plan);
 
-
-// Analyze FFT output stored in m_fftOut
+    // Variables for finding the maximum magnitude
     double maxMagnitude = 0.0;
     int maxIndex = 0;
-    for (int i = 0; i < m_numSamples / 2; ++i) {
-        double magnitude = std::sqrt(m_fftOut[i].real() * m_fftOut[i].real() + m_fftOut[i].imag() * m_fftOut[i].imag());
+
+    // Analyze frequency magnitudes
+    for (int i = 0; i < (sampleSize / 2 + 1); ++i) {
+        double magnitude = std::sqrt(fftwOutput[i][0] * fftwOutput[i][0] + fftwOutput[i][1] * fftwOutput[i][1]); // Calculate magnitude
         if (magnitude > maxMagnitude) {
             maxMagnitude = magnitude;
-            maxIndex = i;
+            maxIndex = i; // Store the index of max magnitude
         }
     }
 
-    // Calculate the detected frequency
-    double detectedFrequency = static_cast<double>(maxIndex) * m_sampleRate / m_numSamples;
-    qDebug() << "Vocal Enhancer: Detected frequency:" << detectedFrequency;
+    // Calculate the frequency corresponding to max index
+    double sampleRate = m_sampleRate;
+    double detectedFrequency = (maxIndex * sampleRate) / sampleSize;
 
+    // Clean up FFTW resources
+    fftw_destroy_plan(plan);
+    fftw_free(fftwOutput);
+    fftw_free(fftwInput);
+
+    qDebug() << "VocalEnhancer detected frequency: " << detectedFrequency << " Hz";
     return detectedFrequency;
 }
 

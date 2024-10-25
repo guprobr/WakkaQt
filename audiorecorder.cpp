@@ -1,6 +1,7 @@
 #include "audiorecorder.h"
 #include "vocalenhancer.h"
 
+#include <QApplication>
 #include <QDebug>
 
 AudioRecorder::AudioRecorder(QAudioDevice selectedDevice, QObject* parent)
@@ -8,13 +9,9 @@ AudioRecorder::AudioRecorder(QAudioDevice selectedDevice, QObject* parent)
       m_audioSource(nullptr),
       m_isRecording(false)
 {
-    //qDebug() << "Determine proper format for AudioRecorder";
-    m_audioFormat = selectedDevice.preferredFormat();
-    //qDebug() << "Preferred Audio Format:";
-    //qDebug() << "Sample rate:" << m_audioFormat.sampleRate();
-    //qDebug() << "Channels:" << m_audioFormat.channelCount();
-    //qDebug() << "Sample size:" << m_audioFormat.bytesPerSample();
 
+    m_audioFormat = selectedDevice.preferredFormat();
+ 
     if (!m_audioFormat.sampleRate()) { // a sort of bug in preferredFormat() returns zero on some high-fidelity audio interfaces
         m_audioFormat.setSampleRate(192000);
         m_audioFormat.setChannelCount(1);
@@ -100,6 +97,8 @@ void AudioRecorder::stopRecording()
         return;
     }
 
+    QApplication::processEvents();
+    
     // Enhance the entire audio input
     VocalEnhancer vocalEnhancer(m_audioFormat);
     QByteArray tunedBuff = vocalEnhancer.enhance(pcmData);

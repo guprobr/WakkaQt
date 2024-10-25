@@ -47,7 +47,6 @@ QByteArray VocalEnhancer::enhance(const QByteArray& input) {
         return QByteArray();
     }
 
-    int m_sampleSize = 2; // Assuming 16-bit PCM
     int m_numSamples = input.size() / m_sampleSize; 
     qDebug() << "Calculated m_numSamples:" << m_numSamples;
 

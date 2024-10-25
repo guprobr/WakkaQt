@@ -25,7 +25,7 @@ AudioAmplifier::AudioAmplifier(const QAudioFormat &format, QObject *parent)
     playbackBuffer.reset(new QBuffer());
     playbackBuffer->setBuffer(new QByteArray());
 
-    playbackFile.setFileName(QDir::tempPath() + QDir::separator() + "WakkaQt_extracted_playback.wav");
+    playbackFile.setFileName(QDir::tempPath() + QDir::separator() + "WakkaQt_tmp_playback.wav");
     // Open the playback extracted .WAV
     if ( playbackFile.isOpen() )
         playbackFile.close();
@@ -46,6 +46,7 @@ AudioAmplifier::~AudioAmplifier() {
     stop();  // Ensure audio stops and resources are cleaned up
     playbackBuffer->reset();
     playbackSink->reset();
+    audioBuffer->reset();
 }
 
 QString AudioAmplifier::checkBufferState() {

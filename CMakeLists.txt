@@ -17,10 +17,13 @@ find_package(Qt6 REQUIRED COMPONENTS
     Multimedia
     MultimediaWidgets
 )
+find_package(PkgConfig REQUIRED)
 
-# Check if the system is Linux
+# Add FFTW3 library
+pkg_check_modules(FFTW3F REQUIRED fftw3f)
+pkg_check_modules(FFTW3 REQUIRED fftw3)
+
 if(UNIX AND NOT APPLE)
-    find_package(PkgConfig REQUIRED)
     pkg_check_modules(GLIB2 REQUIRED glib-2.0)
     include_directories(${GLIB2_INCLUDE_DIRS})
     link_directories(${GLIB2_LIBRARY_DIRS})
@@ -41,6 +44,7 @@ add_executable(${PROJECT_NAME}
     audiorecorder.cpp
     audiovizmediaplayer.cpp
     audiovisualizerwidget.cpp
+    vocalenhancer.cpp
     mainwindow.h
     complexes.h
     sndwidget.h
@@ -49,6 +53,7 @@ add_executable(${PROJECT_NAME}
     audiorecorder.h
     audiovizmediaplayer.h
     audiovisualizerwidget.h
+    vocalenhancer.h
     ${resources}
 )
 
@@ -60,6 +65,8 @@ target_link_libraries(${PROJECT_NAME}
     Qt6::Multimedia
     Qt6::MultimediaWidgets
     ${GLIB2_LIBRARIES}
+    ${FFTW3_LIBRARIES}
+    ${FFTW3F_LIBRARIES}
     ${MINGW_RUNTIME_LIB}
 )
 

@@ -796,7 +796,7 @@ void MainWindow::stopRecording() {
             QMessageBox::critical(this, "ERROR.", "Tried to stop Recording, but we are not recording. ERROR.");
             return;
         }
-
+        setBanner(".. .ENHANCING VOCALS.. .. .");
         isRecording = false;
         disconnect(player.data(), &QMediaPlayer::positionChanged, this, &MainWindow::onPlayerPositionChanged);
 
@@ -847,13 +847,40 @@ void MainWindow::stopRecording() {
             logUI(QString("Calculated Camera Offset: %1 ms").arg(videoOffset));
             logUI(QString("Calculated Audio Offset: %1 ms").arg(audioOffset));
             
-            qWarning() << "Recording saved successfully";
+            
+            QString sourceFilePath = QDir::tempPath() + QDir::separator() + "WakkaQt_extracted_playback.wav";
+            QString destinationFilePath = QDir::tempPath() + QDir::separator() + "WakkaQt_tmp_playback.wav";
 
+            QFile sourceFile(sourceFilePath);
+
+            if (sourceFile.exists()) {
+                // Check if the destination file exists
+                if (QFile::exists(destinationFilePath)) {
+                    // delete the existing file
+                    if (!QFile::remove(destinationFilePath)) {
+                        qDebug() << "Failed to remove existing file:" << destinationFilePath;
+                        return;
+                    }
+                }
+
+                // Attempt to copy the file
+                if (QFile::copy(sourceFilePath, destinationFilePath)) {
+                    qDebug() << "File copied successfully to" << destinationFilePath;
+                } else {
+                    qDebug() << "Failed to copy file to" << destinationFilePath;
+                }
+            } else {
+                qDebug() << "Source file does not exist:" << sourceFilePath;
+            }
+
+            qWarning() << "Recording saved successfully";
+            setBanner("Recording saved successfully!");
             renderAgain();
 
         } else {
             qWarning() << "*FAILURE* File size is zero.";
             logUI("Recording ERROR. File size is zero.");
+            setBanner("Recording ERROR. File size is zero.");
 
             enable_playback(true);
             chooseInputButton->setEnabled(true);
@@ -889,7 +916,8 @@ void MainWindow::handleRecorderError(QMediaRecorder::Error error) {
 void MainWindow::handleRecordingError() {
 
     logUI("Attempting to recover from recording error...");
-
+    setBanner("Attempting to recover from recording error...");
+    
     isRecording = false;
 
     qWarning() << "Cleaning up..";
@@ -921,7 +949,7 @@ void MainWindow::renderAgain()
 {
     vizPlayer->stop();
     playbackTimer->stop();
-
+    
     resetMediaComponents(false);
 
     isPlayback = false; // to avoid seeking while rendering
@@ -929,7 +957,7 @@ void MainWindow::renderAgain()
     renderAgainButton->setVisible(false);
     enable_playback(false);
     progressSongFull->setToolTip("Nothing to seek");
-    
+    setBanner("Let's preview performance and render!");
     // choose where to save rendered file
     outputFilePath = QFileDialog::getSaveFileName(this, "Mix destination (default .MP4)", "", "Video or Audio Files (*.mp4 *.mkv *.webm *.avi *.mp3 *.flac *.wav)");
     if (!outputFilePath.isEmpty()) {
@@ -1169,7 +1197,6 @@ void MainWindow::mixAndRender(double vocalVolume) {
         resetMediaComponents(false);
 
         qDebug() << "Setting media source to" << outputFilePath;
-
         playVideo(outputFilePath);
         logUI("Playing mix!");
         logUI(QString("System Latency: %1 ms").arg(offset));

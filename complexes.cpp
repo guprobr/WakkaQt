@@ -1,7 +1,7 @@
 #include "complexes.h"
 
 // filterComplexes Lego bits©
-    QString _audioMasterization = "aformat=channel_layouts=stereo,afftdn=nf=-20:nr=10:nt=w,speechnorm,acompressor=threshold=0.5:ratio=4,highpass=f=200,";
+    QString _audioMasterization = "aformat=channel_layouts=stereo,afftdn=nf=-20:nr=10:nt=w,deesser,speechnorm,acompressor=threshold=0.5:ratio=4,highpass=f=200,";
     QString _audioTreble = "treble=g=12,";
     QString _echo_filter = "aecho=0.84:0.48:69|96:0.21|0.13,";
     QString _talent_filter = "lv2=p=http\\\\://gareus.org/oss/lv2/fat1:c=corr=1.0,";

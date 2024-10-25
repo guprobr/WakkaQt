@@ -37,7 +37,7 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    QString Wakka_versione = "v0.9.9.69 alpha";
+    QString Wakka_versione = "v0.9.9.71 alpha";
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
@@ -103,7 +103,6 @@ private:
     QScopedPointer<QMediaRecorder> mediaRecorder;
     QScopedPointer<QMediaCaptureSession> mediaCaptureSession;
     QScopedPointer<QCamera> camera;
-    QScopedPointer<QVideoSink> videoSink;
     
     QAction *loadPlaybackAction;
     QAction *chooseInputAction;

@@ -6,8 +6,6 @@
 
 **Windows x86_64 zip bundle available at the end of this readme**, please follow instructions (mostly unpack, double click CONFIG.bat and then run WakkaQt.exe)
 
-*WARNING*:  Latest ubuntu "realtime" kernel 6.8 seems unstable; "low-latency" and the usual "generic" seems fine.
-
 # WakkaQt - Karaoke App
 
 WakkaQt is a karaoke application built with C++ and Qt6, designed to record vocals over a video/audio track and mix them into a rendered file. This app features webcam recording, YouTube video downloading, real-time sound visualization, and post-recording video rendering with FFmpeg. It automatically does some masterization on the vocal tracks. It also uses an AutoTuner LV2 plugin for smoothing the results, X42 by Robin Gareus, with slight pitch shift/correction and formant preservation.
@@ -30,6 +28,7 @@ To build and run this application, ensure you have the following:
 - **Qt6** (Qt Multimedia module)
 - **FFmpeg** (for video/audio mixing and rendering)
 - **yt-dlp** (for downloading YouTube videos)
+- **fftw3** (for the custom VocalEnhancer class)
 - **Gareus X42 AutoTune** (LV2 pitch correction plugin)
 
 ## Installation
@@ -46,29 +45,28 @@ To build and run this application, ensure you have the following:
     - Qt6: Install via your system package manager or the official [Qt website](https://www.qt.io/).
     - FFmpeg: Install from [FFmpeg website](https://ffmpeg.org/) or via your system package manager.
     - yt-dlp: Install from [yt-dlp GitHub page](https://github.com/yt-dlp/yt-dlp).
+    - libfftw3: for our own custom VocalEnhancer class
 
     Pitch correction LV2 plugin:
     - Gareus Autotuner X42 [Visit website](https://x42-plugins.com/x42/x42-autotune) or install via package managers.
   
-### Ubuntu/Debian
-```bash
+
+# Ubuntu/Debian
+```
 sudo apt update
-sudo apt install qt6-base-dev qt6-multimedia-dev ffmpeg yt-dlp x42-plugins
+sudo apt install qt6-base-dev qt6-multimedia-dev ffmpeg yt-dlp x42-plugins libfftw3-dev
 ```
-
-### Fedora
-```bash
-sudo dnf install qt6-qtbase-devel qt6-qtmultimedia-devel ffmpeg yt-dlp lv2-x42-plugins
+# Fedora
 ```
-
-### Arch Linux
-```bash
-sudo pacman -S qt6-base qt6-multimedia ffmpeg yt-dlp x42-plugins
+sudo dnf install qt6-qtbase-devel qt6-qtmultimedia-devel ffmpeg yt-dlp lv2-x42-plugins fftw-devel
 ```
-
-### openSUSE
-```bash
-sudo zypper install qt6-qtbase-devel qt6-qtmultimedia-devel ffmpeg yt-dlp x42-plugins
+# Arch Linux
+```
+sudo pacman -S qt6-base qt6-multimedia ffmpeg yt-dlp x42-plugins fftw
+```
+# openSUSE
+```
+sudo zypper install qt6-qtbase-devel qt6-qtmultimedia-devel ffmpeg yt-dlp x42-plugins fftw3-devel
 ```
 
 3. Build the project:
@@ -92,10 +90,10 @@ sudo zypper install qt6-qtbase-devel qt6-qtmultimedia-devel ffmpeg yt-dlp x42-pl
 2. **Select Input Device:** Choose the microphone or audio input device for recording.
 3. **Sing & Record:** Click the "♪ SING ♪" button to start recording. The webcam will be used to record a video, while the audio input will record your voice.
 4. **Stop Recording:** Once finished, click the "Finish!" button to stop the recording.
-5. **Adjust vocals volume** Once finished recording, a dialog appears with a knob for you to amplify or reduce volume of the vocals. It is a very low quality sound, just to adjust volumes. After rendering it will sound much better.
+5. **Adjust vocals volume** Once finished recording, a dialog appears with a knob for you to amplify or reduce volume of the vocals. It is a very low quality amplification, just to adjust volumes. After rendering it will sound much better.
 6. **Render the Video:** You can render and preview the mix of vocals and the karaoke track before the final video or audio file.
 7. **Download YouTube Video:** You can enter a YouTube URL to download and use as a karaoke track. Other streaming services URL might work as well.
-8. **Render again:** This button appears after rendering, so you can save a new filename and adjust options again, then render, again :D
+8. **Render again:** This button appears after rendering, so you can save a new filename and adjust options again, then render, again, with different options :D
 
 ## Project Structure
 
@@ -105,7 +103,8 @@ sudo zypper install qt6-qtbase-devel qt6-qtmultimedia-devel ffmpeg yt-dlp x42-pl
 - **`audioamplifier.cpp` / `audioamplifier.h`:** Class to manipulate samples of preview volume adjustment.
 - **`audiorecorder.cpp` / `audiorecorder.h`:** Class to enable the configuration of different sample formats, channels and rates while recording sound, since QAudioInput with MediaCaptureSession don't do the job.
 - **`audiovizmediaplayer.cpp` / `audiovizmediaplayer.h`:** Class to mimic QMediaPlayer but extracting audio from playbacks and serve the AudioVisualizer widget.
-- **`audiovisualizerwidget.cpp` / `audiovisualizerwidget.h`:** Class that implements the bottom Yelloopy© audio visualizer widget.
+- **`audiovisualizerwidget.cpp` / `audiovisualizerwidget.h`:** Class that implements the Yelloopy© audio visualizer widget.
+- **`vocalenhancer.cpp` / `vocalenhancer.h`:** Class that implements a custom pitch shifter VocalEnhancer automatically applied right after each recording.
 - **`resources.qrc`:** Resource file for including images like the app logo.
 
 ## FFmpeg Integration

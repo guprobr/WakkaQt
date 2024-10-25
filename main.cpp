@@ -33,7 +33,9 @@ int main(int argc, char *argv[]) {
     //g_type_init(); // uncomment to Initialize GLib (necessary for some GLib versions)
     g_log_set_default_handler(my_log_handler, NULL); // Set the custom log handler
 #endif
-
+#ifdef Q_OS_WIN
+    qputenv("QT_MEDIA_BACKEND", "windows");
+#endif
     QApplication WakkaQt(argc, argv);
     MainWindow w;
     w.show();

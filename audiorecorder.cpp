@@ -1,4 +1,5 @@
 #include "audiorecorder.h"
+#include "vocalenhancer.h"
 
 #include <QDebug>
 
@@ -88,7 +89,7 @@ void AudioRecorder::stopRecording()
 
     // Read the PCM data into a QByteArray
     QByteArray pcmData = m_outputFile.readAll();
-    qint64 dataSize = pcmData.size(); // Get the size of the PCM data
+    //qint64 dataSize = pcmData.size(); // Get the size of the PCM data
 
     // Now close the file after reading
     m_outputFile.close();
@@ -99,8 +100,13 @@ void AudioRecorder::stopRecording()
         return;
     }
 
+    // Enhance the entire audio input
+    VocalEnhancer vocalEnhancer(m_audioFormat);
+    QByteArray tunedBuff = vocalEnhancer.enhance(pcmData);
+    qint64 dataSize = tunedBuff.size(); // Get the size of the PCM data
+
     // Write the complete WAV header
-    writeWavHeader(m_outputFile, m_audioFormat, dataSize, pcmData);
+    writeWavHeader(m_outputFile, m_audioFormat, dataSize, tunedBuff);
 
     // Finalize and close the file
     m_outputFile.close();

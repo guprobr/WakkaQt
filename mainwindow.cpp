@@ -3,7 +3,6 @@
 #include "sndwidget.h"
 #include "previewdialog.h"
 
-
 #include <QCoreApplication>
 #include <QMenu>
 #include <QMenuBar>
@@ -156,9 +155,9 @@ MainWindow::MainWindow(QWidget *parent)
     // Create playback chronometer text item
     durationTextItem = new QGraphicsTextItem;
     durationTextItem->setDefaultTextColor(palette.color(QPalette::Text));
-    durationTextItem->setFont(QFont("Courier", 16, QFont::Bold));
+    durationTextItem->setFont(QFont("Courier", 12, QFont::Bold));
     durationTextItem->setPlainText("00:00:00 / 00:00:00");
-    durationTextItem->setY(progressView->height()/4);
+    durationTextItem->setY(progressView->height()/2);
     
         
     progressScene->addItem(durationTextItem);
@@ -234,7 +233,7 @@ MainWindow::MainWindow(QWidget *parent)
     logTextEdit = new QTextEdit(this);
     logTextEdit->setReadOnly(true);
     logUI(Wakka_welcome);
-    logTextEdit->setMinimumHeight(25);
+    logTextEdit->setMinimumHeight(50);
     logTextEdit->setMaximumHeight(90);
     logTextEdit->setFont(QFont("Arial", 8));
     logTextEdit->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
@@ -397,7 +396,6 @@ void MainWindow::configureMediaComponents()
 
     player.reset(new QMediaPlayer(this));
     audioOutput.reset(new QAudioOutput(this));
-    videoSink.reset(new QVideoSink(this));
     format.reset(new QMediaFormat);
     camera.reset(new QCamera(selectedCameraDevice, this));
     mediaRecorder.reset(new QMediaRecorder(this));
@@ -434,7 +432,6 @@ void MainWindow::configureMediaComponents()
     connect(mediaRecorder.data(), &QMediaRecorder::errorOccurred, this, &MainWindow::handleRecorderError);
     connect(player.data(), &QMediaPlayer::mediaStatusChanged, this, &MainWindow::onPlayerMediaStatusChanged);
     connect(player.data(), &QMediaPlayer::playbackStateChanged, this, &MainWindow::onPlaybackStateChanged);
-    //connect(videoSink.data(), &QVideoSink::videoFrameChanged, this, &MainWindow::onVideoFrameReceived);
 
     qDebug() << "Reconfigured media components";
 
@@ -559,7 +556,7 @@ void MainWindow::chooseInputDevice() {
             // Set up Video recording
             mediaCaptureSession.reset(new QMediaCaptureSession(this));  // Set up media session
             camera.reset(new QCamera(selectedCameraDevice, this));  // Set up camera
-            mediaCaptureSession->setVideoOutput(videoSink.data());
+            mediaCaptureSession->setVideoOutput(this->webcamPreviewItem);
             mediaCaptureSession->setCamera(camera.data());
             mediaCaptureSession->setAudioInput(nullptr);
             mediaCaptureSession->setRecorder(mediaRecorder.data());
@@ -1603,8 +1600,6 @@ MainWindow::~MainWindow() {
         player.reset();
     if ( audioOutput )
         audioOutput.reset();
-    if ( videoSink )
-        videoSink.reset();
     if ( mediaRecorder )
         mediaRecorder.reset();
     if ( mediaCaptureSession )

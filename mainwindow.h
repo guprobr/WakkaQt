@@ -103,7 +103,6 @@ private:
     QScopedPointer<QMediaRecorder> mediaRecorder;
     QScopedPointer<QMediaCaptureSession> mediaCaptureSession;
     QScopedPointer<QCamera> camera;
-    QScopedPointer<QVideoSink> videoSink;
     
     QAction *loadPlaybackAction;
     QAction *chooseInputAction;

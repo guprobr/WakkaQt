@@ -2,40 +2,48 @@
 #define VOCALENHANCER_H
 
 #include <QAudioFormat>
-#include <QVector>
 #include <QByteArray>
-#include <fftw3.h>
-#include <complex>
+#include <QVector>
 
-class VocalEnhancer {
+class VocalEnhancer
+{
 public:
     explicit VocalEnhancer(const QAudioFormat& format);
     QByteArray enhance(const QByteArray& input);
 
 private:
-    static const double A440; // Frequency of A4
-    static const int MIDI_NOTES; // Total MIDI notes
+    // Constants
+    static const double A440;
+    static const int MIDI_NOTES;
     static const double NOTE_FREQUENCIES[128];
 
+    // Member variables
     int m_sampleSize;
     int m_sampleRate;
     int m_numSamples;
-    QVector<std::complex<double>> m_fftIn;
-    QVector<std::complex<double>> m_fftOut;
-    fftw_plan m_fftPlan;
-    fftw_plan m_ifftPlan;
+    
+    double calculateDuration(int sampleRate) const;
+    QVector<double> convertToDoubleArray(const QByteArray& input, int sampleCount);
+    double normalizeSample(const QByteArray& input, int index) const;
+    void processPitchCorrection(QVector<double>& data);
+    double detectPitch(const QVector<double>& data) const;
+    double findClosestNoteFrequency(double pitch) const;
+    QVector<double> harmonicScale(const QVector<double>& data, double scaleFactor);
+    void normalizeAndApplyGain(QVector<double>& data, double gain);
+    void convertToQByteArray(const QVector<double>& inputData, QByteArray& output);
+    int denormalizeSample(double value) const;
 
-    void processPitchCorrection(QVector<double>& inputData);
-    double detectPitch(QVector<double>& inputData);
-    QVector<double> harmonicScale(const QVector<double>& inputData, double scaleFactor);
+    // Helper methods for harmonic scaling
+    QVector<double> createHannWindow(int size) const;
+    QVector<double> extractSegment(const QVector<double>& data, const QVector<double>& window, int start, int size) const;
+    void addScaledSegment(QVector<double>& outputData, const QVector<double>& scaledSegment, int start, const QVector<double>& window) const;
     QVector<double> timeStretch(const QVector<double>& segment, double shiftRatio);
-    double findClosestNoteFrequency(double frequency);
-    double calculateDuration(int sampleRate);
+    double cubicInterpolate(double v0, double v1, double v2, double v3, double t) const;
 
-    double cubicInterpolate(double y0, double y1, double y2, double y3, double mu);
-    void harmonicExciter(QVector<double>& inputData, double gain, double threshold);
-    void compressDynamics(QVector<double>& inputData, double threshold, double ratio);
-
+    // Additional processing methods
+    void compressDynamics(QVector<double>& data, double threshold, double ratio);
+    void harmonicExciter(QVector<double>& data, double intensity, double mix);
+    
 };
 
 #endif // VOCALENHANCER_H

@@ -4,11 +4,11 @@
 - This software is currently in **Alpha stage** for developers to test. 
 - Help requested: for Windows and MacOS tests. 
 
-**Windows x86_64 zip bundle available at the end of this readme**, please follow instructions (mostly unpack, double click CONFIG.bat and then run WakkaQt.exe)
+**Windows x86_64 zip bundle available at the end of this readme**, please follow instructions (mostly unpack, then run WakkaQt.exe)
 
 # WakkaQt - Karaoke App
 
-WakkaQt is a karaoke application built with C++ and Qt6, designed to record vocals over a video/audio track and mix them into a rendered file. This app features webcam recording, YouTube video downloading, real-time sound visualization, and post-recording video rendering with FFmpeg. It automatically does some masterization on the vocal tracks. It also uses an AutoTuner LV2 plugin for smoothing the results, X42 by Robin Gareus, with slight pitch shift/correction and formant preservation.
+WakkaQt is a karaoke application built with C++ and Qt6, designed to record vocals over a video/audio track and mix them into a rendered file. This app features webcam recording, YouTube video downloading, real-time sound visualization, and post-recording video rendering with FFmpeg. It automatically does some masterization on the vocal tracks. It also has a custom AutoTuner class called VocalEnhancer that provides slight pitch shift/correction and formant preservation.
 
 ## Features
 
@@ -29,7 +29,6 @@ To build and run this application, ensure you have the following:
 - **FFmpeg** (for video/audio mixing and rendering)
 - **yt-dlp** (for downloading YouTube videos)
 - **fftw3** (for the custom VocalEnhancer class)
-- **Gareus X42 AutoTune** (LV2 pitch correction plugin)
 
 ## Installation
 
@@ -47,26 +46,22 @@ To build and run this application, ensure you have the following:
     - yt-dlp: Install from [yt-dlp GitHub page](https://github.com/yt-dlp/yt-dlp).
     - libfftw3: for our own custom VocalEnhancer class
 
-    Pitch correction LV2 plugin:
-    - Gareus Autotuner X42 [Visit website](https://x42-plugins.com/x42/x42-autotune) or install via package managers.
-  
-
 # Ubuntu/Debian
 ```
 sudo apt update
-sudo apt install qt6-base-dev qt6-multimedia-dev ffmpeg yt-dlp x42-plugins libfftw3-dev
+sudo apt install qt6-base-dev qt6-multimedia-dev ffmpeg yt-dlp libfftw3-dev
 ```
 # Fedora
 ```
-sudo dnf install qt6-qtbase-devel qt6-qtmultimedia-devel ffmpeg yt-dlp lv2-x42-plugins fftw-devel
+sudo dnf install qt6-qtbase-devel qt6-qtmultimedia-devel ffmpeg yt-dlp fftw-devel
 ```
 # Arch Linux
 ```
-sudo pacman -S qt6-base qt6-multimedia ffmpeg yt-dlp x42-plugins fftw
+sudo pacman -S qt6-base qt6-multimedia ffmpeg yt-dlp fftw
 ```
 # openSUSE
 ```
-sudo zypper install qt6-qtbase-devel qt6-qtmultimedia-devel ffmpeg yt-dlp x42-plugins fftw3-devel
+sudo zypper install qt6-qtbase-devel qt6-qtmultimedia-devel ffmpeg yt-dlp fftw3-devel
 ```
 
 3. Build the project:
@@ -115,9 +110,8 @@ Ensure that FFmpeg is correctly installed, compiled with LV2 plugin support, and
 
 ## About Windows bundle ZIP
 
-  - **A proper FFMPEG binary version with LV2 support** is already on the root of the application directory.
+  - **A proper FFMPEG binary** is already on the root of the application directory.
   - **yt-dlp** is already there too, for your convenience.
-  - After extracting the ZIP, please double-click to **run as _normal_ user the CONFIG.BAT script**. It will set up environment variables and copy the LV2 plugin to the correct directory. It will ask admin permissions for that. PS: run as _normal user_, admin permissions will be _asked later_;
   - NOTE: **antivirus software degrade this software a lot**, and **VPNs might make streaming services to block** the fetching of the video file when running *yt-dlp*.
     
   - You can download the windows x64 ZIP [Here on my website](https://gu.pro.br/WakkaQt-mswinX64.zip)

@@ -17,7 +17,6 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
     // Setup UI
     QVBoxLayout *layout = new QVBoxLayout(this);
     QHBoxLayout *controls = new QHBoxLayout();
-    QHBoxLayout *optz = new QHBoxLayout();
 
     volumeDial = new QDial(this);  // Change from QSlider to QDial
     volumeDial->setRange(0, 1000);   // 0% to 1000% amplification
@@ -34,27 +33,14 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
     volumeLabel = new QLabel("Current Volume: 100\%", this);
     volumeLabel->setToolTip("Values above 100\% amplifies, while values below reduce volume");
     volumeLabel->setFont(QFont("Courier", 12, QFont::Bold));
-    startButton = new QPushButton("Apply Effects", this);
-    startButton->setToolTip("Apply the effects on checkboxes");
+    startButton = new QPushButton("REWIND", this);
+    startButton->setToolTip("Restart playback");
     stopButton = new QPushButton("Render Mix", this);
     stopButton->setToolTip("Apply volume and effect changes and begin rendering");
     seekForwardButton = new QPushButton(">>", this);
     seekForwardButton->setToolTip("Seek forward");
     seekBackwardButton = new QPushButton("<<", this);
     seekBackwardButton->setToolTip("Seek backwards");
-
-    echo_option = new QCheckBox("Echo effect", this);
-    echo_option->setToolTip("Check to render with echo effect on vocals");
-    echo_option->setChecked(true);
-    echo_option->setFont(QFont("Arial", 9));
-    talent_option = new QCheckBox("X42 AutoTune", this);
-    talent_option->setToolTip("Check to render X42 very subtle pitch correction");
-    talent_option->setChecked(false);
-    talent_option->setFont(QFont("Arial", 9));
-    rubberband_option = new QCheckBox("RubberBand (slow!!)", this);
-    rubberband_option->setToolTip("Check to enable rubberband effect (this renders very slowly)");
-    rubberband_option->setChecked(false);
-    rubberband_option->setFont(QFont("Arial", 9));
 
     playbackMute_option = new QCheckBox("Preview vocals only", this);
     playbackMute_option->setToolTip("Check to mute backing track and hear vocals only");
@@ -65,19 +51,12 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
     controls->addWidget(volumeDial);
     controls->addWidget(seekForwardButton);
 
-    optz->addWidget(echo_option);
-    optz->addWidget(talent_option);
-    optz->addWidget(rubberband_option);
-
     layout->addWidget(volumeBanner);
     layout->addWidget(volumeLabel);
     layout->addWidget(startButton);
     layout->addWidget(playbackMute_option);
     layout->addLayout(controls);
     layout->addWidget(stopButton);
-    layout->addLayout(optz);
-
-    optz->setAlignment(Qt::AlignCenter);
     layout->setAlignment(Qt::AlignHCenter);
     
     setFixedSize(800, 480);
@@ -104,31 +83,6 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
             amplifier->setPlaybackVol(false);
         else
             amplifier->setPlaybackVol(true);
-        
-     });
-
-    connect(echo_option, &QCheckBox::stateChanged, this, [this]() {
-        
-        if ( echo_option->isChecked() )
-            echo_filter = _echo_filter;
-        else
-            echo_filter = "";
-        
-     });
-     connect(talent_option, &QCheckBox::stateChanged, this, [this]() {
-        
-        if ( talent_option->isChecked() )
-            talent_filter = _talent_filter;
-        else
-            talent_filter = "";
-        
-     });
-    connect(rubberband_option, &QCheckBox::stateChanged, this, [this]() {
-
-        if ( rubberband_option->isChecked() )
-            rubberband_filter = _rubberband_filter;
-        else
-            rubberband_filter = "";
         
      });
 
@@ -168,13 +122,8 @@ void PreviewDialog::setAudioFile(const QString &filePath) {
     QStringList arguments;
     arguments   << "-y" << "-i" << audioFilePath 
                 << "-vn" << "-filter_complex" 
-                << QString("%1 %2 %3 %4 %5 %6 atrim=%7ms;")
+                << QString("%1 atrim=%2ms;")
                                                 .arg(_audioMasterization)
-                                                .arg(rubberband_filter)
-                                                .arg(talent_filter)
-                                                .arg(auburn_filter)
-                                                .arg(echo_filter)
-                                                .arg(_audioTreble)
                                                 .arg(audioOffset)
                 
                 << "-ac" << "2" 
@@ -230,21 +179,8 @@ double PreviewDialog::getVolume() const {
     return volume;  // Returns the current volume level (we send this to render function)
 }
 
-bool PreviewDialog::getEcho() const {
-    return echo_option->isChecked(); 
-}
-
-bool PreviewDialog::getTalent() const {
-    return talent_option->isChecked();
-}
-
-bool PreviewDialog::getRubberband() const {
-    return rubberband_option->isChecked();
-}
-
 void PreviewDialog::replayAudioPreview() {
     
-
     // Check if amplifier is playing
     if (amplifier->isPlaying()) {
         // Stop playback and reset the audio components before replaying
@@ -252,10 +188,10 @@ void PreviewDialog::replayAudioPreview() {
         amplifier->stop();
         amplifier->resetAudioComponents();  // Reset the amplifier components
     }
-        // regen preview
-        //amplifier->rewind();
-        setAudioFile(audioFilePath);
+        
+        amplifier->rewind();
         chronosTimer->start();
+        amplifier->start();
         amplifier->setPlaybackVol(!playbackMute_option->isChecked());
 
 }

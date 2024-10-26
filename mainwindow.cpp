@@ -90,7 +90,7 @@ MainWindow::MainWindow(QWidget *parent)
 
         QString aboutText = R"(
             <p>WakkaQt is a karaoke application built with C++ and Qt6, designed to record vocals over a video/audio track and mix them into a rendered file.</p>
-            <p>This app features webcam recording, YouTube video downloading, real-time sound visualization, and post-recording video rendering with FFmpeg. It automatically does some mastering on the vocal tracks. It also uses an AutoTuner LV2 plugin for smoothing the results, X42 by Robin Gareus, with slight pitch shift/correction and formant preservation.</p>
+            <p>This app features webcam recording, YouTube video downloading, real-time sound visualization, and post-recording video rendering with FFmpeg. It automatically does some mastering on the vocal tracks. It also has a custom AutoTuner class called VocalEnhancer that provides slight pitch shift/correction and formant preservation.</p>
             <p>©2024 The author is Gustavo L Conte. Visit the author's website: <a href="https://gu.pro.br">https://gu.pro.br</a></p>
             <p>WakkaQt is open source and the code is available <a href="https://github.com/guprobr/WakkaQt">on GitHub</a>.</p>
             <p>%1</p>
@@ -990,10 +990,6 @@ void MainWindow::renderAgain()
 
             double vocalVolume = dialog.getVolume();
 
-            echo_option = dialog.getEcho();
-            rubberband_option = dialog.getRubberband();
-            gareus_option = dialog.getTalent();
-            
             mixAndRender(vocalVolume);
 
         } else {
@@ -1075,25 +1071,6 @@ void MainWindow::mixAndRender(double vocalVolume) {
                                     .arg(fullRez)
                                     .arg(stopDuration);
             }
-    
-    QString echo_filter = _echo_filter;
-    QString rubberband_filter = _rubberband_filter;
-    QString gareus_filter = _talent_filter;
-    QString auburn_filter = "";
-
-    if ( !echo_option )
-        echo_filter = "";
-    if ( !rubberband_option )
-        rubberband_filter = "";
-    if ( !gareus_option )
-        gareus_filter = "";
-
-    // we Configure autotalent plugin here:
-    QString talent = QString("%1%2%3%4")
-                            .arg(rubberband_filter)
-                            .arg(gareus_filter)
-                            .arg(auburn_filter)
-                            .arg(echo_filter);
 
     arguments << "-y"               // Overwrite output file if it exists
           << "-i" << audioRecorded  // audio vocals INPUT file
@@ -1101,12 +1078,10 @@ void MainWindow::mixAndRender(double vocalVolume) {
           << "-i" << currentVideoFile // playback song INPUT file
           << "-filter_complex"      // NOW, masterization and vocal enhancement of recorded audio
           << QString("[0:a]atrim=%1ms,asetpts=PTS-STARTPTS, \
-                        %2 %3 %4 volume=%5[vocals]; \
-                        [2:a][vocals]amix=inputs=2:normalize=0,aresample=async=1[wakkamix];%6" 
+                        %2 volume=%3[vocals]; \
+                        [2:a][vocals]amix=inputs=2:normalize=0,aresample=async=1[wakkamix];%4" 
                         ).arg(audioOffset)
                         .arg(_audioMasterization)
-                        .arg(talent)
-                        .arg(_audioTreble)
                         .arg(vocalVolume)
                         .arg(videorama);
 

@@ -29,6 +29,8 @@ private:
     double detectPitch(const QVector<double>& data) const;
     double findClosestNoteFrequency(double pitch) const;
     QVector<double> harmonicScale(const QVector<double>& data, double scaleFactor);
+
+    QByteArray applyNoiseReduction(const QByteArray& audioData, int threshold);
     void normalizeAndApplyGain(QVector<double>& data, double gain);
     void convertToQByteArray(const QVector<double>& inputData, QByteArray& output);
     int denormalizeSample(double value) const;

@@ -63,9 +63,6 @@ private:
 
     QColor highlightColor;
     QString setRez = "1920x540"; // its a vstack, same width, half the height
-    bool echo_option = true;
-    bool rubberband_option = false;
-    bool gareus_option = false;
 
     QGraphicsScene *progressScene;
     QGraphicsView *progressView;

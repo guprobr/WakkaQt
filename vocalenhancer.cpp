@@ -34,10 +34,13 @@ QByteArray VocalEnhancer::enhance(const QByteArray& input) {
     qDebug() << "VocalEnhancer Input Data Size:" << input.size();
     if (input.isEmpty()) return QByteArray();
 
-    int sampleCount = input.size() / m_sampleSize;
+    QByteArray denoiseInput = applyNoiseReduction(input, 100);
+
+    int sampleCount = denoiseInput.size() / m_sampleSize;
+
     QByteArray output(sampleCount * m_sampleSize, 0);
 
-    QVector<double> inputData = convertToDoubleArray(input, sampleCount);
+    QVector<double> inputData = convertToDoubleArray(denoiseInput, sampleCount);
     processPitchCorrection(inputData);
     normalizeAndApplyGain(inputData, 1.0);
     convertToQByteArray(inputData, output);
@@ -78,10 +81,10 @@ void VocalEnhancer::processPitchCorrection(QVector<double>& data) {
 
     // A large upward pitch shift followed by a downward shift!
     // significant pitch correction while mitigating the formant shift issue.
-    QVector<double> scaleUp = harmonicScale(data, 0.64); // pitch way high for strong pitch correction
-    data = harmonicScale(scaleUp, 1.0 / 0.64 ); // pitch down back to Kansas
+    QVector<double> scaleUp = harmonicScale(data, 0.5); // pitch way high for strong pitch correction
+    data = harmonicScale(scaleUp, 1.0 / 0.5 ); // pitch down back to Kansas
     
-    //compressDynamics(data, 2.5, 0.5);
+    compressDynamics(data, 2.5, 0.5);
     harmonicExciter(data, 1.0, 0.4);
 }
 
@@ -96,6 +99,26 @@ void VocalEnhancer::normalizeAndApplyGain(QVector<double>& data, double gain) {
             value = qBound(-1.0, value * normalizationFactor, 1.0);
         }
     }
+}
+
+QByteArray VocalEnhancer::applyNoiseReduction(const QByteArray& audioData, int threshold) {
+    QByteArray processedData(audioData.size(), 0);
+    const int16_t* samples = reinterpret_cast<const int16_t*>(audioData.constData());
+    int16_t* processedSamples = reinterpret_cast<int16_t*>(processedData.data());
+
+    int sampleCount = audioData.size() / sizeof(int16_t);
+
+    for (int i = 0; i < sampleCount; ++i) {
+        // Apply a simple noise gate: If the amplitude is below the threshold, reduce it to zero
+        int16_t sample = samples[i];
+        if (std::abs(sample) < threshold) {
+            processedSamples[i] = 0; // Attenuate low amplitude (noise) signals
+        } else {
+            processedSamples[i] = sample; // Keep original sample
+        }
+    }
+
+    return processedData;
 }
 
 void VocalEnhancer::convertToQByteArray(const QVector<double>& inputData, QByteArray& output) {

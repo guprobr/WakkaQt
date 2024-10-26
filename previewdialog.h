@@ -35,6 +35,7 @@ private slots:
     void updateVolume();
 
 private:
+
     AudioAmplifier *amplifier;
     QDial *volumeDial;
     QPushButton *startButton;
@@ -42,16 +43,7 @@ private:
     QPushButton *seekForwardButton;
     QPushButton *seekBackwardButton;
 
-    QCheckBox *echo_option;
-    QCheckBox *talent_option;
-    QCheckBox *rubberband_option;
-
     QCheckBox *playbackMute_option;
-
-    QString echo_filter = _echo_filter;
-    QString talent_filter = "";
-    QString rubberband_filter = "";
-    QString auburn_filter = "";
 
     QLabel *volumeLabel;           
     QTimer *volumeChangeTimer;

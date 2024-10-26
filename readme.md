@@ -104,7 +104,7 @@ sudo zypper install qt6-qtbase-devel qt6-qtmultimedia-devel ffmpeg yt-dlp x42-pl
 - **`audiorecorder.cpp` / `audiorecorder.h`:** Class to enable the configuration of different sample formats, channels and rates while recording sound, since QAudioInput with MediaCaptureSession don't do the job.
 - **`audiovizmediaplayer.cpp` / `audiovizmediaplayer.h`:** Class to mimic QMediaPlayer but extracting audio from playbacks and serve the AudioVisualizer widget.
 - **`audiovisualizerwidget.cpp` / `audiovisualizerwidget.h`:** Class that implements the Yelloopy© audio visualizer widget.
-- **`vocalenhancer.cpp` / `vocalenhancer.h`:** Class that implements a custom pitch shifter VocalEnhancer automatically applied right after each recording.
+- **`vocalenhancer.cpp` / `vocalenhancer.h`:** Class that implements a custom pitch shifter VocalEnhancer automatically applied right after each recording. The VocalEnhancer class provides a multi-step process for enhancing vocals in audio data by combining pitch detection, harmonic scaling, gain normalization, and windowed overlap-add techniques. Its two-pass scaling approach for pitch correction achieves a robust enhancement without distorting vocal characteristics. This modular design allows each step to be fine-tuned, providing a flexible framework for vocal processing.
 - **`resources.qrc`:** Resource file for including images like the app logo.
 
 ## FFmpeg Integration

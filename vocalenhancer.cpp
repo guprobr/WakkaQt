@@ -73,10 +73,16 @@ void VocalEnhancer::processPitchCorrection(QVector<double>& data) {
     double targetFrequency = findClosestNoteFrequency(detectedPitch <= 0 ? A440 : detectedPitch);
     double pitchShiftRatio = targetFrequency / detectedPitch;
 
-    QVector<double> scaledData = harmonicScale(data, 0.97025);
-    data = scaledData;
+    //QVector<double> scaledData = harmonicScale(data, 0.97025);
+    //data = scaledData;
 
-    compressDynamics(data, 2.5, 0.5);
+    // A large upward pitch shift followed
+    //  by a downward shift could allow for more significant pitch correction 
+    // while potentially mitigating the formant shift issue.
+    QVector<double> scaleUp = harmonicScale(data, 0.64); // pitch way high for strong pitch correction
+    data = harmonicScale(scaleUp, 1.0 / 0.64 ); // pitch down 
+    
+    //compressDynamics(data, 2.5, 0.5);
     harmonicExciter(data, 1.0, 0.4);
 }
 

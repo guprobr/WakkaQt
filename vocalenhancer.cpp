@@ -73,7 +73,7 @@ void VocalEnhancer::processPitchCorrection(QVector<double>& data) {
     double targetFrequency = findClosestNoteFrequency(detectedPitch <= 0 ? A440 : detectedPitch);
     double pitchShiftRatio = targetFrequency / detectedPitch;
 
-    QVector<double> scaledData = harmonicScale(data, 0.9685);
+    QVector<double> scaledData = harmonicScale(data, 0.97025);
     data = scaledData;
 
     compressDynamics(data, 2.5, 0.5);
@@ -121,7 +121,7 @@ int VocalEnhancer::denormalizeSample(double value) const {
 }
 
 QVector<double> VocalEnhancer::harmonicScale(const QVector<double>& data, double scaleFactor) {
-    int windowSize = 256;
+    int windowSize = 128;
     int hopSize = windowSize / 4;
     QVector<double> outputData(data.size(), 0.0);
 
@@ -133,10 +133,14 @@ QVector<double> VocalEnhancer::harmonicScale(const QVector<double>& data, double
         QVector<double> segment = extractSegment(data, window, start, windowSize);
         QVector<double> scaledSegment = timeStretch(segment, scaleFactor);
 
-        addScaledSegment(outputData, scaledSegment, start, window);
+        // Ensure scaledSegment fits within data size on adding
+        if (start + scaledSegment.size() <= outputData.size()) {
+            addScaledSegment(outputData, scaledSegment, start, window);
+        }
     }
     return outputData;
 }
+
 
 QVector<double> VocalEnhancer::createHannWindow(int size) const {
     QVector<double> window(size);
@@ -147,34 +151,55 @@ QVector<double> VocalEnhancer::createHannWindow(int size) const {
 }
 
 QVector<double> VocalEnhancer::extractSegment(const QVector<double>& data, const QVector<double>& window, int start, int size) const {
+    // Ensure size does not exceed the data or window bounds
+    size = qMin(size, qMin(data.size() - start, window.size()));
     QVector<double> segment(size);
+
     for (int i = 0; i < size; ++i) {
         int idx = start + i;
-        segment[i] = (idx < data.size()) ? data[idx] * window[i] : 0.0;
+        if (idx < data.size() && i < window.size()) {
+            segment[i] = data[idx] * window[i];
+        } else {
+            segment[i] = 0.0; // Pad with 0 if out of range
+        }
     }
+
     return segment;
 }
 
-void VocalEnhancer::addScaledSegment(QVector<double>& outputData, const QVector<double>& scaledSegment, int start, const QVector<double>& window) const {
-    for (int i = 0; i < scaledSegment.size(); ++i) {
-        int idx = start + i;
-        if (idx < outputData.size()) {
-            outputData[idx] += scaledSegment[i] * window[i];
-        }
-    }
-}
 
 QVector<double> VocalEnhancer::timeStretch(const QVector<double>& segment, double shiftRatio) {
     int newSize = static_cast<int>(segment.size() * shiftRatio);
     QVector<double> output(newSize, 0.0);
 
-    for (int i = 1; i < newSize - 2; ++i) {
+    for (int i = 1; i < newSize - 1; ++i) {
         double t = static_cast<double>(i) / shiftRatio;
         int idx = static_cast<int>(t);
-        output[i] = cubicInterpolate(segment[idx - 1], segment[idx], segment[idx + 1], segment[idx + 2], t - idx);
+
+        // Boundary check for cubic interpolation
+        if (idx > 0 && idx + 2 < segment.size()) {
+            output[i] = cubicInterpolate(
+                segment[idx - 1], segment[idx], segment[idx + 1], segment[idx + 2], t - idx
+            );
+        } else if (idx < segment.size()) {
+            output[i] = segment[qBound(0, idx, segment.size() - 1)];
+        }
     }
+
     return output;
 }
+
+
+void VocalEnhancer::addScaledSegment(QVector<double>& outputData, const QVector<double>& scaledSegment, int start, const QVector<double>& window) const {
+    for (int i = 0; i < scaledSegment.size(); ++i) {
+        int idx = start + i;
+        if (idx < outputData.size() && i < window.size()) {
+            outputData[idx] += scaledSegment[i] * window[i];
+        }
+    }
+}
+
+
 
 double VocalEnhancer::cubicInterpolate(double v0, double v1, double v2, double v3, double t) const {
     double a0 = v3 - v2 - v0 + v1;
@@ -270,6 +295,6 @@ double VocalEnhancer::detectPitch(const QVector<double>& inputData) const {
     fftw_free(fftwOutput);
     fftw_free(fftwInput);
 
-    qDebug() << "VocalEnhancer detected frequency: " << detectedFrequency << " Hz";
+    qWarning() << "VocalEnhancer detected frequency: " << detectedFrequency << " Hz";
     return detectedFrequency;
 }

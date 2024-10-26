@@ -20,7 +20,6 @@ find_package(Qt6 REQUIRED COMPONENTS
 find_package(PkgConfig REQUIRED)
 
 # Add FFTW3 library
-pkg_check_modules(FFTW3F REQUIRED fftw3f)
 pkg_check_modules(FFTW3 REQUIRED fftw3)
 
 if(UNIX AND NOT APPLE)
@@ -66,8 +65,6 @@ target_link_libraries(${PROJECT_NAME}
     Qt6::MultimediaWidgets
     ${GLIB2_LIBRARIES}
     ${FFTW3_LIBRARIES}
-    ${FFTW3F_LIBRARIES}
-    ${MINGW_RUNTIME_LIB}
 )
 
 # Include headers

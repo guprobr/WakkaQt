@@ -81,8 +81,8 @@ void VocalEnhancer::processPitchCorrection(QVector<double>& data) {
 
     // A large upward pitch shift followed by a downward shift!
     // significant pitch correction while mitigating the formant shift issue.
-    QVector<double> scaleUp = harmonicScale(data, pitchShiftRatio); // pitch way high for strong pitch correction
-    data = harmonicScale(scaleUp, 1.0 / pitchShiftRatio ); // pitch down back to Kansas
+    QVector<double> scaleUp = harmonicScale(data, (pitchShiftRatio - 0.2975) ); // pitch way high for strong pitch correction
+    data = harmonicScale(scaleUp, 1.0 / (pitchShiftRatio - 0.2975) ); // pitch down back to Kansas
     
     compressDynamics(data, 2.5, 0.5);
     harmonicExciter(data, 1.0, 0.4);

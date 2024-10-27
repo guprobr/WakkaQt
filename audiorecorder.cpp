@@ -1,5 +1,4 @@
 #include "audiorecorder.h"
-#include "vocalenhancer.h"
 
 #include <QApplication>
 #include <QDebug>
@@ -96,19 +95,12 @@ void AudioRecorder::stopRecording()
         qWarning() << "Failed to reopen AudioRecorder output file for writing header.";
         return;
     }
-
-    QApplication::processEvents();
-    
-    // Enhance the entire audio input
-    VocalEnhancer vocalEnhancer(m_audioFormat);
-    QByteArray tunedBuff = vocalEnhancer.enhance(pcmData);
-    qint64 dataSize = tunedBuff.size(); // Get the size of the PCM data
-
-    // Write the complete WAV header
-    writeWavHeader(m_outputFile, m_audioFormat, dataSize, tunedBuff);
-
+    qint64 dataSize = pcmData.size(); // Get the size of the PCM data
+    // Write the complete WAV header and file
+    writeWavHeader(m_outputFile, m_audioFormat, dataSize, pcmData);
     // Finalize and close the file
     m_outputFile.close();
+
     m_isRecording = false;
     qWarning() << "AudioRecorder stopped";
 }

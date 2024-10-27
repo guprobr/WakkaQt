@@ -1,7 +1,9 @@
 #include "complexes.h"
 #include "previewdialog.h"
 #include "audioamplifier.h"
+#include "vocalenhancer.h"
 
+#include <QApplication>
 #include <QMessageBox>
 #include <QVBoxLayout>
 #include <QProcess>
@@ -62,7 +64,6 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
     setFixedSize(800, 480);
 
     // Setup audio format
-    QAudioFormat format;
     format.setSampleRate(44100);
     format.setChannelCount(2);
     format.setSampleFormat(QAudioFormat::SampleFormat::Int16);  // Set sample format to 16 bit
@@ -116,13 +117,13 @@ void PreviewDialog::setAudioFile(const QString &filePath) {
     QProcess *ffmpegProcess = new QProcess(this);
 
     // Temporary output file for the extracted audio
-    QString tempAudioFile = QDir::temp().filePath("WakkaQt_extracted_audio.wav");
+    QString tempAudioFile = tunedRecorded;
 
     // Prepare FFmpeg command
     QStringList arguments;
     arguments   << "-y" << "-i" << audioFilePath 
                 << "-vn" << "-filter_complex" 
-                << QString("%1 atrim=%2ms;")
+                << QString("%1 atrim=%2ms,asetpts=PTS-STARTPTS;")
                                                 .arg(_audioMasterization)
                                                 .arg(audioOffset)
                 
@@ -146,8 +147,25 @@ void PreviewDialog::setAudioFile(const QString &filePath) {
             QByteArray audioData = audioFile.readAll();
             audioFile.close();
 
+            QApplication::processEvents();
+    
+            // Enhance the entire audio input
+            VocalEnhancer vocalEnhancer(format);
+            QByteArray tunedData = vocalEnhancer.enhance(audioData); 
+
+            // open the file again in write mode to write the WAV header
+            if (!audioFile.open(QIODevice::WriteOnly)) {
+                qWarning() << "Failed to reopen PreviewDialog output file for writing header.";
+                return;
+            }
+            qint64 dataSize = audioData.size(); // Get the size of the PCM data
+            // Write the complete WAV header and file
+            writeWavHeader(audioFile, format, dataSize, audioData);
+            // Finalize and close the file
+            audioFile.close();
+
             // Set the audio data in the AudioAmplifier
-            amplifier->setAudioData(audioData);
+            amplifier->setAudioData(tunedData);
 
             // Start playback
             amplifier->start();
@@ -238,4 +256,40 @@ void PreviewDialog::updateChronos() {
     chronos = amplifier->checkBufferState();
      // Update the volume label to inform the user
     volumeLabel->setText(QString("Current Volume: %1\% Elapsed Time: %2").arg(pendingVolumeValue).arg(chronos));
+}
+
+void PreviewDialog::writeWavHeader(QFile &file, const QAudioFormat &format, qint64 dataSize, const QByteArray &pcmData)
+{
+    // Prepare header values
+    qint32 sampleRate = format.sampleRate(); 
+    qint16 numChannels = format.channelCount(); 
+    qint16 bitsPerSample = format.bytesPerSample() * 8; // Convert bytes to bits
+    qint32 byteRate = sampleRate * numChannels * (bitsPerSample / 8); // Calculate byte rate
+    qint16 blockAlign = numChannels * (bitsPerSample / 8); // Calculate block align
+    qint16 audioFormatValue = 1; // 1 for PCM format
+
+    // Create header
+    QByteArray header;
+    header.append("RIFF");                                         // Chunk ID
+    qint32 chunkSize = dataSize + 36;                            // Data size + 36 bytes for the header
+    header.append(reinterpret_cast<const char*>(&chunkSize), sizeof(chunkSize)); // Chunk Size
+    header.append("WAVE");                                         // Format
+    header.append("fmt ");                                         // Subchunk 1 ID
+    qint32 subchunk1Size = 16;                                   // Subchunk 1 Size (16 for PCM)
+    header.append(reinterpret_cast<const char*>(&subchunk1Size), sizeof(subchunk1Size)); // Subchunk 1 Size
+    header.append(reinterpret_cast<const char*>(&audioFormatValue), sizeof(audioFormatValue)); // Audio Format
+    header.append(reinterpret_cast<const char*>(&numChannels), sizeof(numChannels));        // Channels
+    header.append(reinterpret_cast<const char*>(&sampleRate), sizeof(sampleRate));          // Sample Rate
+    header.append(reinterpret_cast<const char*>(&byteRate), sizeof(byteRate));                // Byte Rate
+    header.append(reinterpret_cast<const char*>(&blockAlign), sizeof(blockAlign));            // Block Align
+    header.append(reinterpret_cast<const char*>(&bitsPerSample), sizeof(bitsPerSample));      // Bits per Sample
+    header.append("data");                                         // Subchunk 2 ID
+    qint32 subchunk2Size = pcmData.size();                       // Size of the audio data
+    header.append(reinterpret_cast<const char*>(&subchunk2Size), sizeof(subchunk2Size)); // Subchunk2 Size
+
+    // Write the header and audio data to the file in one go
+    file.write(header);
+    file.write(pcmData); // Write audio data after the header
+
+    qDebug() << "WAV header and audio data written.";
 }

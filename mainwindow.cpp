@@ -1073,15 +1073,14 @@ void MainWindow::mixAndRender(double vocalVolume) {
             }
 
     arguments << "-y"               // Overwrite output file if it exists
-          << "-i" << audioRecorded  // audio vocals INPUT file
+          << "-i" << tunedRecorded  // tuned audio vocals INPUT file
           << "-i" << webcamRecorded // recorded camera INPUT file
           << "-i" << currentVideoFile // playback song INPUT file
           << "-filter_complex"      // NOW, masterization and vocal enhancement of recorded audio
-          << QString("[0:a]atrim=%1ms,asetpts=PTS-STARTPTS, \
-                        %2 volume=%3[vocals]; \
-                        [2:a][vocals]amix=inputs=2:normalize=0,aresample=async=1[wakkamix];%4" 
-                        ).arg(audioOffset)
-                        .arg(_audioMasterization)
+          << QString("[0:a]%1 volume=%2[vocals]; \
+                        [2:a][vocals]amix=inputs=2:normalize=0,aresample=async=1[wakkamix];%3" 
+                        )
+                        .arg(_filter_Echo)
                         .arg(vocalVolume)
                         .arg(videorama);
 

@@ -37,7 +37,7 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    QString Wakka_versione = "v1.0-rc1";
+    QString Wakka_versione = "v1.0-rc2";
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
@@ -127,8 +127,6 @@ private:
     QString currentPlayback;
     QString currentVideoFile;
     QString currentVideoName;
-    QString webcamRecorded;
-    QString audioRecorded; 
     QString outputFilePath; 
 
     SndWidget *soundLevelWidget;

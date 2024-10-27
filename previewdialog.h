@@ -5,6 +5,7 @@
 
 #include <QDialog>
 #include <QAudioFormat>
+#include <QFile>
 #include <QDial>
 #include <QPushButton>
 #include <QCheckBox>
@@ -35,7 +36,7 @@ private slots:
     void updateVolume();
 
 private:
-
+    QAudioFormat format;
     AudioAmplifier *amplifier;
     QDial *volumeDial;
     QPushButton *startButton;
@@ -58,6 +59,7 @@ private:
     void updateChronos();
     void seekForward();
     void seekBackward();
+    void writeWavHeader(QFile &file, const QAudioFormat &format, qint64 dataSize, const QByteArray &pcmData);
 };
 
 #endif // PREVIEWDIALOG_H

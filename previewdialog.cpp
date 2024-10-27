@@ -146,7 +146,7 @@ void PreviewDialog::setAudioFile(const QString &filePath) {
             audioFile.open(QIODevice::ReadOnly);
             QByteArray audioData = audioFile.readAll();
             audioFile.close();
-
+            QFile::remove(tempAudioFile);   
             QApplication::processEvents();
     
             // Enhance the entire audio input
@@ -158,9 +158,9 @@ void PreviewDialog::setAudioFile(const QString &filePath) {
                 qWarning() << "Failed to reopen PreviewDialog output file for writing header.";
                 return;
             }
-            qint64 dataSize = audioData.size(); // Get the size of the PCM data
+            qint64 dataSize = tunedData.size(); // Get the size of the PCM data
             // Write the complete WAV header and file
-            writeWavHeader(audioFile, format, dataSize, audioData);
+            writeWavHeader(audioFile, format, dataSize, tunedData);
             // Finalize and close the file
             audioFile.close();
 

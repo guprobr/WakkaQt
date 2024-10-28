@@ -34,15 +34,15 @@ QByteArray VocalEnhancer::enhance(const QByteArray& input) {
     qDebug() << "VocalEnhancer Input Data Size:" << input.size();
     if (input.isEmpty()) return QByteArray();
 
-    QByteArray denoiseInput = applyNoiseReduction(input, 100);
+    //QByteArray denoiseInput = applyNoiseReduction(input, 100);
 
-    int sampleCount = denoiseInput.size() / m_sampleSize;
+    int sampleCount = input.size() / m_sampleSize;
 
     QByteArray output(sampleCount * m_sampleSize, 0);
 
-    QVector<double> inputData = convertToDoubleArray(denoiseInput, sampleCount);
+    QVector<double> inputData = convertToDoubleArray(input, sampleCount);
     processPitchCorrection(inputData);
-    normalizeAndApplyGain(inputData, 1.0);
+    normalizeAndApplyGain(inputData, 0.8);
     convertToQByteArray(inputData, output);
 
     return output;
@@ -82,7 +82,7 @@ void VocalEnhancer::processPitchCorrection(QVector<double>& data) {
     // A large upward pitch shift followed by a downward shift!
     // significant pitch correction while mitigating the formant shift issue.
     QVector<double> scaleUp = harmonicScale(data, (0.7025 - (1 - pitchShiftRatio)) ); // pitch way high for strong pitch correction
-    data = harmonicScale(scaleUp, 1.0 / 0.7025 ); // pitch down back to Kansas but leave shiftRatio as a difference
+    data = harmonicScale(data, 1.0 / 0.7025 ); // pitch down back to Kansas but leave shiftRatio as a difference
     
     compressDynamics(data, 2.5, 0.5);
     harmonicExciter(data, 1.0, 0.4);
@@ -149,8 +149,8 @@ int VocalEnhancer::denormalizeSample(double value) const {
 }
 
 QVector<double> VocalEnhancer::harmonicScale(const QVector<double>& data, double scaleFactor) {
-    int windowSize = 128;
-    int hopSize = windowSize / 4;
+    int windowSize = 32;
+    int hopSize = windowSize / 8;
     QVector<double> outputData(data.size(), 0.0);
 
     QVector<double> window = createHannWindow(windowSize);

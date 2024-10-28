@@ -28,7 +28,7 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
     volumeDial->setFixedSize(200, 100);
     
     // Initialize UI elements
-    QLabel *volumeBanner = new QLabel("Volume Amplification: This is a low-quality preview.\nChoose effects if you have the plugins and click to apply for previewing.\nSometimes it takes a while to encode the new preview. ", this);
+    QLabel *volumeBanner = new QLabel("Volume Amplification: This is a low-quality preview.\nSometimes it takes a while to encode the preview. Please be patient. ", this);
     volumeBanner->setToolTip("While you review your performance you can adjust the volume for the render output.");
     volumeBanner->setFont(QFont("Arial", 10));
     volumeBanner->setWordWrap(true);

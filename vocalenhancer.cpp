@@ -39,9 +39,10 @@ QByteArray VocalEnhancer::enhance(const QByteArray& input) {
     QByteArray output(sampleCount * m_sampleSize, 0);
 
     QVector<double> inputData = convertToDoubleArray(input, sampleCount);
-    normalizeAndApplyGain(inputData, 0.6);
+    normalizeAndApplyGain(inputData, 0.6); // sanitize for pich correction and effects
     qWarning() << "VocalEnhancer processing pitch correction";
     processPitchCorrection(inputData);
+    normalizeAndApplyGain(inputData, 0.9); // normalize again at the very end
     convertToQByteArray(inputData, output);
 
     return output;

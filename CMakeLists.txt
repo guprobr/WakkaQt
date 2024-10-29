@@ -16,6 +16,7 @@ find_package(Qt6 REQUIRED COMPONENTS
     Widgets
     Multimedia
     MultimediaWidgets
+    Concurrent
 )
 find_package(PkgConfig REQUIRED)
 
@@ -63,6 +64,7 @@ target_link_libraries(${PROJECT_NAME}
     Qt6::Widgets
     Qt6::Multimedia
     Qt6::MultimediaWidgets
+    Qt6::Concurrent
     ${GLIB2_LIBRARIES}
     ${FFTW3_LIBRARIES}
 )

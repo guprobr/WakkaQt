@@ -7,6 +7,8 @@
 #include <QMessageBox>
 #include <QVBoxLayout>
 #include <QProcess>
+#include <QtConcurrent/QtConcurrent>
+#include <QFutureWatcher>
 #include <QFile>
 #include <QDir>
 #include <QTimer>
@@ -105,13 +107,14 @@ PreviewDialog::~PreviewDialog() {
 void PreviewDialog::setAudioFile(const QString &filePath) {
     audioFilePath = filePath;
     qDebug() << "Audio file set to:" << audioFilePath;
-    
-    // disable all controls while encoding
+
+    // Disable all controls while encoding
     startButton->setEnabled(false);
     stopButton->setEnabled(false);
     seekBackwardButton->setEnabled(false);
     seekForwardButton->setEnabled(false);
     volumeDial->setEnabled(false);
+    playbackMute_option->setEnabled(false);
 
     // Initialize the QProcess
     QProcess *ffmpegProcess = new QProcess(this);
@@ -126,7 +129,6 @@ void PreviewDialog::setAudioFile(const QString &filePath) {
                 << QString("%1 atrim=%2ms,asetpts=PTS-STARTPTS;")
                                                 .arg(_audioMasterization)
                                                 .arg(audioOffset)
-                
                 << "-ac" << "2" 
                 << "-acodec" << "pcm_s16le" << "-ar" << "44100" << tempAudioFile;
 
@@ -146,35 +148,43 @@ void PreviewDialog::setAudioFile(const QString &filePath) {
             audioFile.open(QIODevice::ReadOnly);
             QByteArray audioData = audioFile.readAll();
             audioFile.close();
-            QFile::remove(tempAudioFile);   
-            QApplication::processEvents();
-    
-            // Enhance the entire audio input
-            VocalEnhancer vocalEnhancer(format);
-            QByteArray tunedData = vocalEnhancer.enhance(audioData); 
+            QFile::remove(tempAudioFile);
 
-            // open the file again in write mode to write the WAV header
-            if (!audioFile.open(QIODevice::WriteOnly)) {
-                qWarning() << "Failed to reopen PreviewDialog output file for writing header.";
-                return;
-            }
-            qint64 dataSize = tunedData.size(); // Get the size of the PCM data
-            // Write the complete WAV header and file
-            writeWavHeader(audioFile, format, dataSize, tunedData);
-            // Finalize and close the file
-            audioFile.close();
+            // Prepare the VocalEnhancer to run in a separate thread
+            QFutureWatcher<QByteArray> *watcher = new QFutureWatcher<QByteArray>(this);
+            connect(watcher, &QFutureWatcher<QByteArray>::finished, this, [this, watcher]() {
+                QByteArray tunedData = watcher->result();
 
-            // Set the audio data in the AudioAmplifier
-            amplifier->setAudioData(tunedData);
+                QFile audioFile(tunedRecorded);
+                if (!audioFile.open(QIODevice::WriteOnly)) {
+                    qWarning() << "Failed to reopen PreviewDialog output file for writing header.";
+                    return;
+                }
+                qint64 dataSize = tunedData.size();
+                writeWavHeader(audioFile, format, dataSize, tunedData);
+                audioFile.close();
 
-            // Start playback
-            amplifier->start();
+                amplifier->setAudioData(tunedData);
+                amplifier->start();
 
-            startButton->setEnabled(true);
-            stopButton->setEnabled(true);
-            seekBackwardButton->setEnabled(true);
-            seekForwardButton->setEnabled(true);
-            volumeDial->setEnabled(true);
+                // Re-enable controls
+                startButton->setEnabled(true);
+                stopButton->setEnabled(true);
+                seekBackwardButton->setEnabled(true);
+                seekForwardButton->setEnabled(true);
+                volumeDial->setEnabled(true);
+                playbackMute_option->setEnabled(true);
+
+                watcher->deleteLater();  // Clean up watcher
+            });
+
+            // Run VocalEnhancer::enhance in a background thread using a lambda
+            
+            QFuture<QByteArray> future = QtConcurrent::run([this, audioData]() {
+                VocalEnhancer vocalEnhancer(format);
+                return vocalEnhancer.enhance(audioData);
+            });
+            watcher->setFuture(future);
 
         } else {
             qWarning() << "Audio extraction failed or file is empty.";
@@ -192,6 +202,7 @@ void PreviewDialog::setAudioFile(const QString &filePath) {
         return;
     }
 }
+
 
 double PreviewDialog::getVolume() const {
     return volume;  // Returns the current volume level (we send this to render function)

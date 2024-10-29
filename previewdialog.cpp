@@ -113,6 +113,7 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
 PreviewDialog::~PreviewDialog() {
     amplifier->stop();
     delete amplifier;
+    delete vocalEnhancer;
 }
 
 void PreviewDialog::setAudioFile(const QString &filePath) {

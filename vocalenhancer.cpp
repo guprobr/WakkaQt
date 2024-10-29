@@ -149,8 +149,8 @@ int VocalEnhancer::denormalizeSample(double value) const {
 }
 
 QVector<double> VocalEnhancer::harmonicScale(const QVector<double>& data, double scaleFactor) {
-    int windowSize = 32;
-    int hopSize = windowSize / 8;
+    int windowSize = 256;
+    int hopSize = windowSize / 4;
     QVector<double> outputData(data.size(), 0.0);
 
     QVector<double> window = createHannWindow(windowSize);

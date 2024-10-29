@@ -1,8 +1,10 @@
 #ifndef PREVIEWDIALOG_H
 #define PREVIEWDIALOG_H
 
+#include "vocalenhancer.h"
 #include "complexes.h"
 
+#include <QProgressBar>
 #include <QDialog>
 #include <QAudioFormat>
 #include <QFile>
@@ -24,10 +26,6 @@ public:
 
     void setAudioFile(const QString &filePath);
     double getVolume() const;
-    bool getEcho() const;
-    bool getTalent() const;
-    bool getRubberband() const;
-    bool getAuburn() const;
     
 private slots:
     void replayAudioPreview();
@@ -38,15 +36,18 @@ private slots:
 private:
     QAudioFormat format;
     AudioAmplifier *amplifier;
-    QDial *volumeDial;
+    VocalEnhancer *vocalEnhancer;
+    
+    QLabel *volumeLabel;
+    QProgressBar *progressBar;       
     QPushButton *startButton;
-    QPushButton *stopButton;
-    QPushButton *seekForwardButton;
-    QPushButton *seekBackwardButton;
-
     QCheckBox *playbackMute_option;
-
-    QLabel *volumeLabel;           
+    QPushButton *seekForwardButton;
+    QDial *volumeDial;
+    QPushButton *seekBackwardButton;
+    QPushButton *stopButton;    
+    
+    QTimer *progressTimer;
     QTimer *volumeChangeTimer;
     QTimer *chronosTimer;
     QString audioFilePath;

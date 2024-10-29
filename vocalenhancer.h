@@ -10,6 +10,7 @@ class VocalEnhancer
 public:
     explicit VocalEnhancer(const QAudioFormat& format);
     QByteArray enhance(const QByteArray& input);
+    int getProgress();
 
 private:
     // Constants
@@ -21,6 +22,8 @@ private:
     int m_sampleSize;
     int m_sampleRate;
     int m_numSamples;
+
+    double progressValue = 0;
     
     double calculateDuration(int sampleRate) const;
     QVector<double> convertToDoubleArray(const QByteArray& input, int sampleCount);

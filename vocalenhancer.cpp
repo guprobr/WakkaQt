@@ -146,6 +146,9 @@ QVector<double> VocalEnhancer::harmonicScale(const QVector<double>& data, double
         if (start + scaledSegment.size() <= outputData.size()) {
             addScaledSegment(outputData, scaledSegment, start, window);
         }
+        
+        progressValue = static_cast<double>(frame) / numFrames;
+        
     }
     return outputData;
 }
@@ -327,4 +330,10 @@ double VocalEnhancer::detectPitch(const QVector<double>& inputData) const {
 
     qWarning() << "VocalEnhancer detected frequency: " << detectedFrequency << " Hz";
     return detectedFrequency;
+}
+
+int VocalEnhancer::getProgress() {
+
+    return progressValue * 100;
+
 }

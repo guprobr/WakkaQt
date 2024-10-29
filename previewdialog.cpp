@@ -1,7 +1,6 @@
 #include "complexes.h"
 #include "previewdialog.h"
 #include "audioamplifier.h"
-#include "vocalenhancer.h"
 
 #include <QApplication>
 #include <QMessageBox>
@@ -30,13 +29,13 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
     volumeDial->setFixedSize(200, 100);
     
     // Initialize UI elements
-    QLabel *volumeBanner = new QLabel("Volume Amplification: This is a low-quality preview.\nSometimes it takes a while to encode the preview. Please be patient. ", this);
+    QLabel *volumeBanner = new QLabel("Vocal Enhancement and Volume Amplification: This is a low-quality preview.\nSometimes it takes a while to encode the two-pass vocal enhancement.\nPlease be patient. ", this);
     volumeBanner->setToolTip("While you review your performance you can adjust the volume for the render output.");
-    volumeBanner->setFont(QFont("Arial", 10));
+    volumeBanner->setFont(QFont("Arial", 11));
     volumeBanner->setWordWrap(true);
     volumeLabel = new QLabel("Current Volume: 100\%", this);
     volumeLabel->setToolTip("Values above 100\% amplifies, while values below reduce volume");
-    volumeLabel->setFont(QFont("Courier", 12, QFont::Bold));
+    volumeLabel->setFont(QFont("Courier", 14, QFont::Bold));
     startButton = new QPushButton("REWIND", this);
     startButton->setToolTip("Restart playback");
     stopButton = new QPushButton("Render Mix", this);
@@ -45,6 +44,11 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
     seekForwardButton->setToolTip("Seek forward");
     seekBackwardButton = new QPushButton("<<", this);
     seekBackwardButton->setToolTip("Seek backwards");
+
+    progressBar = new QProgressBar(this);
+    progressBar->setRange(0, 100);
+    progressBar->setFixedSize(QSize(600, 50));
+    progressBar->setToolTip("VocalEnhancer progress bar");
 
     playbackMute_option = new QCheckBox("Preview vocals only", this);
     playbackMute_option->setToolTip("Check to mute backing track and hear vocals only");
@@ -56,6 +60,7 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
     controls->addWidget(seekForwardButton);
 
     layout->addWidget(volumeBanner);
+    layout->addWidget(progressBar);
     layout->addWidget(volumeLabel);
     layout->addWidget(startButton);
     layout->addWidget(playbackMute_option);
@@ -63,7 +68,7 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
     layout->addWidget(stopButton);
     layout->setAlignment(Qt::AlignHCenter);
     
-    setFixedSize(800, 480);
+    setFixedSize(800, 544);
 
     // Setup audio format
     format.setSampleRate(44100);
@@ -89,6 +94,7 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
         
      });
 
+    // initialize the cronometer timer
     chronosTimer = new QTimer(this);
     connect(chronosTimer, &QTimer::timeout, this, &PreviewDialog::updateChronos);
     chronosTimer->start(250);
@@ -97,6 +103,11 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
     volumeChangeTimer = new QTimer(this);
     connect(volumeChangeTimer, &QTimer::timeout, this, &PreviewDialog::updateVolume);
     volumeChangeTimer->setSingleShot(true);  // Ensure the timer only runs once for each dial adjustment
+    // Init the progress bar timer
+    progressTimer = new QTimer(this);
+
+    vocalEnhancer = new VocalEnhancer(format);
+
 }
 
 PreviewDialog::~PreviewDialog() {
@@ -175,15 +186,23 @@ void PreviewDialog::setAudioFile(const QString &filePath) {
                 volumeDial->setEnabled(true);
                 playbackMute_option->setEnabled(true);
 
+                progressTimer->stop();
+                this->progressBar->setValue(100);
+
                 watcher->deleteLater();  // Clean up watcher
             });
+            
+            // update progress bar each 55 ms
+            connect(progressTimer, &QTimer::timeout, this, [this]() {
+                this->progressBar->setValue(vocalEnhancer->getProgress());
+            });
+            progressTimer->start(55);
 
             // Run VocalEnhancer::enhance in a background thread using a lambda
-            
             QFuture<QByteArray> future = QtConcurrent::run([this, audioData]() {
-                VocalEnhancer vocalEnhancer(format);
-                return vocalEnhancer.enhance(audioData);
+                return vocalEnhancer->enhance(audioData);
             });
+
             watcher->setFuture(future);
 
         } else {

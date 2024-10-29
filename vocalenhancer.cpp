@@ -112,7 +112,7 @@ void VocalEnhancer::processPitchCorrection(QVector<double>& data) {
     
     compressDynamics(data, 1.5, 0.5);
     harmonicExciter(data, 1.2, 0.4);
-    applyEcho(data, 0.5, 0.5, 64, 84, 0.4, 0.3);
+    applyEcho(data, 0.8, 0.7, 64, 84, 0.4, 0.3);
 
 }
 

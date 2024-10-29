@@ -23,7 +23,7 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
     QHBoxLayout *controls = new QHBoxLayout();
 
     volumeDial = new QDial(this);  // Change from QSlider to QDial
-    volumeDial->setRange(0, 1000);   // 0% to 1000% amplification
+    volumeDial->setRange(0, 300);   // 0% to 300% amplification
     volumeDial->setValue(100);       // Default 100% volume (no amplification)
     volumeDial->setNotchesVisible(true); // Show notches for better precision
     volumeDial->setToolTip("Adjust the knob to amplify or lower volume level");

@@ -4,7 +4,8 @@
 #include <QString>
 
 extern QString _audioMasterization;
-extern QString _filter_Echo;
+extern QString _filterEcho;
+extern QString _filterTreble;
 
 extern QString webcamRecorded;
 extern QString audioRecorded;

@@ -30,7 +30,6 @@ private:
     double findClosestNoteFrequency(double pitch) const;
     QVector<double> harmonicScale(const QVector<double>& data, double scaleFactor);
 
-    QByteArray applyNoiseReduction(const QByteArray& audioData, int threshold);
     void normalizeAndApplyGain(QVector<double>& data, double gain);
     void convertToQByteArray(const QVector<double>& inputData, QByteArray& output);
     int denormalizeSample(double value) const;
@@ -45,7 +44,7 @@ private:
     // Additional processing methods
     void compressDynamics(QVector<double>& data, double threshold, double ratio);
     void harmonicExciter(QVector<double>& data, double intensity, double mix);
-    
+    void applyEcho(QVector<double>& inputData, double gainIn, double gainOut, double delayMs1, double delayMs2, double feedback1, double feedback2);
 };
 
 #endif // VOCALENHANCER_H

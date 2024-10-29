@@ -1080,7 +1080,7 @@ void MainWindow::mixAndRender(double vocalVolume) {
           << QString("[0:a]%1 volume=%2[vocals]; \
                         [2:a][vocals]amix=inputs=2:normalize=0,aresample=async=1[wakkamix];%3" 
                         )
-                        .arg(_filter_Echo)
+                        .arg(_filterTreble)
                         .arg(vocalVolume)
                         .arg(videorama);
 

@@ -1,4 +1,5 @@
 #include "vocalenhancer.h"
+
 #include <QDebug>
 #include <cmath>
 #include <complex>
@@ -31,18 +32,16 @@ VocalEnhancer::VocalEnhancer(const QAudioFormat& format)
       m_numSamples(format.sampleRate() * calculateDuration(format.sampleRate()) / 1000) {}
 
 QByteArray VocalEnhancer::enhance(const QByteArray& input) {
-    qDebug() << "VocalEnhancer Input Data Size:" << input.size();
+    qWarning() << "VocalEnhancer Input Data Size:" << input.size();
     if (input.isEmpty()) return QByteArray();
 
-    //QByteArray denoiseInput = applyNoiseReduction(input, 100); // this method is broken, it causes distortion
-
     int sampleCount = input.size() / m_sampleSize;
-
     QByteArray output(sampleCount * m_sampleSize, 0);
 
     QVector<double> inputData = convertToDoubleArray(input, sampleCount);
+    normalizeAndApplyGain(inputData, 0.6);
+    qWarning() << "VocalEnhancer processing pitch correction";
     processPitchCorrection(inputData);
-    normalizeAndApplyGain(inputData, 0.8);
     convertToQByteArray(inputData, output);
 
     return output;
@@ -55,70 +54,6 @@ QVector<double> VocalEnhancer::convertToDoubleArray(const QByteArray& input, int
         data[i] = normalizeSample(input, i);
     }
     return data;
-}
-
-double VocalEnhancer::normalizeSample(const QByteArray& input, int index) const {
-    if (m_sampleSize == 2) { // 16-bit
-        return static_cast<double>(reinterpret_cast<const int16_t*>(input.constData())[index]) / 32768.0;
-    } else if (m_sampleSize == 3) { // 24-bit
-        const uint8_t* sample = reinterpret_cast<const uint8_t*>(input.constData() + index * 3);
-        int32_t sampleValue = (sample[2] << 16) | (sample[1] << 8) | sample[0];
-        return static_cast<double>(sampleValue) / (1 << 23);
-    } else if (m_sampleSize == 4) { // 32-bit
-        return static_cast<double>(reinterpret_cast<const int32_t*>(input.constData())[index]) / 2147483648.0;
-    }
-    qWarning() << "Unsupported sample size:" << m_sampleSize;
-    return 0.0;
-}
-
-void VocalEnhancer::processPitchCorrection(QVector<double>& data) {
-    double detectedPitch = detectPitch(data);
-    double targetFrequency = findClosestNoteFrequency(detectedPitch <= 0 ? A440 : detectedPitch);
-    double pitchShiftRatio = targetFrequency / detectedPitch;
-
-    //QVector<double> scaledData = harmonicScale(data, 0.97025);
-    //data = scaledData;
-
-    // A large upward pitch shift followed by a downward shift!
-    // significant pitch correction while mitigating the formant shift issue.
-    QVector<double> scaleUp = harmonicScale(data, (0.7025 - (1 - pitchShiftRatio)) ); // pitch way high for strong pitch correction
-    data = harmonicScale(scaleUp, 1.0 / 0.7025 ); // pitch down back to Kansas but leave shiftRatio as a difference
-    
-    compressDynamics(data, 2.5, 0.5);
-    harmonicExciter(data, 1.0, 0.4);
-}
-
-void VocalEnhancer::normalizeAndApplyGain(QVector<double>& data, double gain) {
-    double maxAmplitude = 0.0;
-    for (const auto& value : data) {
-        maxAmplitude = std::max(maxAmplitude, std::abs(value));
-    }
-    if (maxAmplitude > 0) {
-        double normalizationFactor = gain / maxAmplitude;
-        for (auto& value : data) {
-            value = qBound(-1.0, value * normalizationFactor, 1.0);
-        }
-    }
-}
-
-QByteArray VocalEnhancer::applyNoiseReduction(const QByteArray& audioData, int threshold) {
-    QByteArray processedData(audioData.size(), 0);
-    const int16_t* samples = reinterpret_cast<const int16_t*>(audioData.constData());
-    int16_t* processedSamples = reinterpret_cast<int16_t*>(processedData.data());
-
-    int sampleCount = audioData.size() / sizeof(int16_t);
-
-    for (int i = 0; i < sampleCount; ++i) {
-        // Apply a simple noise gate: If the amplitude is below the threshold, reduce it to zero
-        int16_t sample = samples[i];
-        if (std::abs(sample) < threshold) {
-            processedSamples[i] = 0; // Attenuate low amplitude (noise) signals
-        } else {
-            processedSamples[i] = sample; // Keep original sample
-        }
-    }
-
-    return processedData;
 }
 
 void VocalEnhancer::convertToQByteArray(const QVector<double>& inputData, QByteArray& output) {
@@ -137,6 +72,20 @@ void VocalEnhancer::convertToQByteArray(const QVector<double>& inputData, QByteA
     }
 }
 
+double VocalEnhancer::normalizeSample(const QByteArray& input, int index) const {
+    if (m_sampleSize == 2) { // 16-bit
+        return static_cast<double>(reinterpret_cast<const int16_t*>(input.constData())[index]) / 32768.0;
+    } else if (m_sampleSize == 3) { // 24-bit
+        const uint8_t* sample = reinterpret_cast<const uint8_t*>(input.constData() + index * 3);
+        int32_t sampleValue = (sample[2] << 16) | (sample[1] << 8) | sample[0];
+        return static_cast<double>(sampleValue) / (1 << 23);
+    } else if (m_sampleSize == 4) { // 32-bit
+        return static_cast<double>(reinterpret_cast<const int32_t*>(input.constData())[index]) / 2147483648.0;
+    }
+    qWarning() << "Unsupported sample size:" << m_sampleSize;
+    return 0.0;
+}
+
 int VocalEnhancer::denormalizeSample(double value) const {
     if (m_sampleSize == 2) {
         return static_cast<int>(value * 32767);
@@ -148,8 +97,40 @@ int VocalEnhancer::denormalizeSample(double value) const {
     return 0;
 }
 
+void VocalEnhancer::processPitchCorrection(QVector<double>& data) {
+    double detectedPitch = detectPitch(data);
+    double targetFrequency = findClosestNoteFrequency(detectedPitch <= 0 ? A440 : detectedPitch);
+    double pitchShiftRatio = targetFrequency / detectedPitch;
+
+    //QVector<double> scaledData = harmonicScale(data, 0.97025);
+    //data = scaledData;
+
+    // A large upward pitch shift followed by a downward shift!
+    // significant pitch correction while mitigating the formant shift issue.
+    QVector<double> scaleUp = harmonicScale(data, (0.7025 - (1 - pitchShiftRatio)) ); // pitch way high for strong pitch correction
+    data = harmonicScale(scaleUp, 1.0 / 0.7025 ); // pitch down back to Kansas but leave shiftRatio as a difference
+    
+    compressDynamics(data, 1.5, 0.5);
+    harmonicExciter(data, 1.2, 0.4);
+    applyEcho(data, 0.5, 0.5, 64, 84, 0.4, 0.3);
+
+}
+
+void VocalEnhancer::normalizeAndApplyGain(QVector<double>& data, double gain) {
+    double maxAmplitude = 0.0;
+    for (const auto& value : data) {
+        maxAmplitude = std::max(maxAmplitude, std::abs(value));
+    }
+    if (maxAmplitude > 0) {
+        double normalizationFactor = gain / maxAmplitude;
+        for (auto& value : data) {
+            value = qBound(-1.0, value * normalizationFactor, 1.0);
+        }
+    }
+}
+
 QVector<double> VocalEnhancer::harmonicScale(const QVector<double>& data, double scaleFactor) {
-    int windowSize = 256;
+    int windowSize = 512;
     int hopSize = windowSize / 4;
     QVector<double> outputData(data.size(), 0.0);
 
@@ -227,8 +208,6 @@ void VocalEnhancer::addScaledSegment(QVector<double>& outputData, const QVector<
     }
 }
 
-
-
 double VocalEnhancer::cubicInterpolate(double v0, double v1, double v2, double v3, double t) const {
     double a0 = v3 - v2 - v0 + v1;
     double a1 = v0 - v1 - a0;
@@ -279,6 +258,29 @@ void VocalEnhancer::harmonicExciter(QVector<double>& inputData, double gain, dou
         inputData[i] += sample * 0.3; // Blend in 30% of the harmonic signal
     }
 }
+
+void VocalEnhancer::applyEcho(QVector<double>& inputData, double gainIn, double gainOut, double delayMs1, double delayMs2, double feedback1, double feedback2) {
+    int size = inputData.size();
+    QVector<double> echoData(size, 0.0);
+
+    // Convert delays from milliseconds to samples based on the sample rate
+    int delaySamples1 = static_cast<int>((delayMs1 / 1000.0) * m_sampleRate);
+    int delaySamples2 = static_cast<int>((delayMs2 / 1000.0) * m_sampleRate);
+
+    // Apply two delayed echoes with feedback
+    for (int i = 0; i < size; ++i) {
+        double delayedSample1 = (i >= delaySamples1) ? echoData[i - delaySamples1] * feedback1 : 0.0;
+        double delayedSample2 = (i >= delaySamples2) ? echoData[i - delaySamples2] * feedback2 : 0.0;
+
+        echoData[i] = inputData[i] * gainIn + delayedSample1 + delayedSample2;
+    }
+
+    // Blend echoData into inputData with gainOut to add the echo effect
+    for (int i = 0; i < size; ++i) {
+        inputData[i] = qBound(-1.0, inputData[i] + echoData[i] * gainOut, 1.0);
+    }
+}
+
 
 double VocalEnhancer::detectPitch(const QVector<double>& inputData) const {
     const int sampleSize = inputData.size();

@@ -1,4 +1,5 @@
 #include "audiorecorder.h"
+#include "complexes.h"
 
 #include <QApplication>
 #include <QDebug>
@@ -121,42 +122,6 @@ void AudioRecorder::setSampleRate(int sampleRate)
     if (!m_selectedDevice.isFormatSupported(m_audioFormat)) {
         qWarning() << "The selected AudioRecorder sample rate is not supported.";
     }
-}
-
-void AudioRecorder::writeWavHeader(QFile &file, const QAudioFormat &format, qint64 dataSize, const QByteArray &pcmData)
-{
-    // Prepare header values
-    qint32 sampleRate = format.sampleRate(); 
-    qint16 numChannels = format.channelCount(); 
-    qint16 bitsPerSample = format.bytesPerSample() * 8; // Convert bytes to bits
-    qint32 byteRate = sampleRate * numChannels * (bitsPerSample / 8); // Calculate byte rate
-    qint16 blockAlign = numChannels * (bitsPerSample / 8); // Calculate block align
-    qint16 audioFormatValue = 1; // 1 for PCM format
-
-    // Create header
-    QByteArray header;
-    header.append("RIFF");                                         // Chunk ID
-    qint32 chunkSize = dataSize + 36;                            // Data size + 36 bytes for the header
-    header.append(reinterpret_cast<const char*>(&chunkSize), sizeof(chunkSize)); // Chunk Size
-    header.append("WAVE");                                         // Format
-    header.append("fmt ");                                         // Subchunk 1 ID
-    qint32 subchunk1Size = 16;                                   // Subchunk 1 Size (16 for PCM)
-    header.append(reinterpret_cast<const char*>(&subchunk1Size), sizeof(subchunk1Size)); // Subchunk 1 Size
-    header.append(reinterpret_cast<const char*>(&audioFormatValue), sizeof(audioFormatValue)); // Audio Format
-    header.append(reinterpret_cast<const char*>(&numChannels), sizeof(numChannels));        // Channels
-    header.append(reinterpret_cast<const char*>(&sampleRate), sizeof(sampleRate));          // Sample Rate
-    header.append(reinterpret_cast<const char*>(&byteRate), sizeof(byteRate));                // Byte Rate
-    header.append(reinterpret_cast<const char*>(&blockAlign), sizeof(blockAlign));            // Block Align
-    header.append(reinterpret_cast<const char*>(&bitsPerSample), sizeof(bitsPerSample));      // Bits per Sample
-    header.append("data");                                         // Subchunk 2 ID
-    qint32 subchunk2Size = pcmData.size();                       // Size of the audio data
-    header.append(reinterpret_cast<const char*>(&subchunk2Size), sizeof(subchunk2Size)); // Subchunk2 Size
-
-    // Write the header and audio data to the file in one go
-    file.write(header);
-    file.write(pcmData); // Write audio data after the header
-
-    qDebug() << "WAV header and audio data written.";
 }
 
 QString AudioRecorder::sampleFormatToString(QAudioFormat::SampleFormat format) {

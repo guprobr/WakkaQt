@@ -25,7 +25,6 @@ signals:
     void deviceLabelChanged(const QString &label);
 
 private:
-    void writeWavHeader(QFile &file, const QAudioFormat &format, qint64 dataSize, const QByteArray &pcmData);
     QString sampleFormatToString(QAudioFormat::SampleFormat format);
 
     QAudioSource* m_audioSource;

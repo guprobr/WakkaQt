@@ -60,7 +60,6 @@ private:
     void updateChronos();
     void seekForward();
     void seekBackward();
-    void writeWavHeader(QFile &file, const QAudioFormat &format, qint64 dataSize, const QByteArray &pcmData);
 };
 
 #endif // PREVIEWDIALOG_H

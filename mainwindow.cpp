@@ -158,8 +158,6 @@ MainWindow::MainWindow(QWidget *parent)
     durationTextItem->setFont(QFont("Courier", 12, QFont::Bold));
     durationTextItem->setPlainText("00:00:00 / 00:00:00");
     durationTextItem->setY(progressView->height()/2);
-    
-        
     progressScene->addItem(durationTextItem);
     progressScene->setSceneRect(0, 0, viewWidth, viewHeight);
 
@@ -253,7 +251,6 @@ MainWindow::MainWindow(QWidget *parent)
     vizUpperRight->setMaximumHeight(64);
     vizUpperLeft->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     vizUpperRight->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    
     vizLayout->addWidget(vizUpperLeft);
     vizLayout->addLayout(webcamPreviewLayout);
     vizLayout->addWidget(vizUpperRight);
@@ -384,10 +381,6 @@ void MainWindow::resetMediaComponents(bool isStarting) {
 void MainWindow::configureMediaComponents()
 {
     qDebug() << "Reconfiguring media components";
-
-    // PATHS to the tmp files for recording audio and video
-    webcamRecorded = QDir::temp().filePath("WakkaQt_tmp_recording.mp4");
-    audioRecorded = QDir::temp().filePath("WakkaQt_tmp_recording.wav");
 
     // Reconfigure ALL components //
     audioRecorder.reset(new AudioRecorder(selectedDevice, this));
@@ -847,8 +840,8 @@ void MainWindow::stopRecording() {
             logUI(QString("Calculated Audio Offset: %1 ms").arg(audioOffset));
             
             
-            QString sourceFilePath = QDir::tempPath() + QDir::separator() + "WakkaQt_extracted_playback.wav";
-            QString destinationFilePath = QDir::tempPath() + QDir::separator() + "WakkaQt_tmp_playback.wav";
+            QString sourceFilePath = extractedPlayback;
+            QString destinationFilePath = extractedTmpPlayback;
 
             QFile sourceFile(sourceFilePath);
 
@@ -989,7 +982,6 @@ void MainWindow::renderAgain()
         {
 
             double vocalVolume = dialog.getVolume();
-
             mixAndRender(vocalVolume);
 
         } else {

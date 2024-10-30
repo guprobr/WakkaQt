@@ -1,11 +1,12 @@
 #include "audiovizmediaplayer.h"
 #include "audiovisualizerwidget.h"
+#include "complexes.h"
 
 #include <QApplication>
 #include <QAudioFormat>
 #include <QMediaDevices>
 #include <QBuffer>
-#include <QDir>
+#include <QFile>
 #include <QProcess>
 #include <QThread>
 #include <QDebug>
@@ -82,7 +83,7 @@ void AudioVizMediaPlayer::setMedia(const QString &source)
     m_framePositions->detach();    
     m_framePositions->clear();    // Clear frame positions
 
-    QString audioFile = QDir::tempPath() + QDir::separator() + "WakkaQt_extracted_playback.wav";
+    QString audioFile = extractedPlayback;
     extractAudio(source, audioFile);
 }
 

@@ -1,4 +1,5 @@
 #include "audioamplifier.h"
+#include "complexes.h"
 
 #include <QDebug>
 #include <QDir>
@@ -25,8 +26,8 @@ AudioAmplifier::AudioAmplifier(const QAudioFormat &format, QObject *parent)
     playbackBuffer.reset(new QBuffer());
     playbackBuffer->setBuffer(new QByteArray());
 
-    playbackFile.setFileName(QDir::tempPath() + QDir::separator() + "WakkaQt_tmp_playback.wav");
-    // Open the playback extracted .WAV
+    playbackFile.setFileName(extractedTmpPlayback);
+    // Open the playback extracted WAVE
     if ( playbackFile.isOpen() )
         playbackFile.close();
     if (!playbackFile.open(QIODevice::ReadOnly)) {

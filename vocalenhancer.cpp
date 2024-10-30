@@ -39,10 +39,10 @@ QByteArray VocalEnhancer::enhance(const QByteArray& input) {
     QByteArray output(sampleCount * m_sampleSize, 0);
 
     QVector<double> inputData = convertToDoubleArray(input, sampleCount);
-    normalizeAndApplyGain(inputData, 0.6); // sanitize for pich correction and effects
+    normalizeAndApplyGain(inputData, 0.5); // sanitize for pich correction and effects
     qWarning() << "VocalEnhancer processing pitch correction";
     processPitchCorrection(inputData);
-    normalizeAndApplyGain(inputData, 0.9); // normalize again at the very end
+    normalizeAndApplyGain(inputData, 0.6); // normalize again at the very end
     convertToQByteArray(inputData, output);
 
     return output;
@@ -108,14 +108,15 @@ void VocalEnhancer::processPitchCorrection(QVector<double>& data) {
 
     // A large upward pitch shift followed by a downward shift!
     // significant pitch correction while mitigating the formant shift issue.
-    double bigShift = (0.7025 - (1 - pitchShiftRatio));
-    QVector<double> scaleUp = harmonicScale(data, bigShift ); // pitch way high for strong pitch correction
-    QVector<double> scaleDown = harmonicScale(scaleUp, 1.0 / bigShift ); // pitch down back to Kansas
-    data = harmonicScale(scaleDown, pitchShiftRatio); // actually shift 
+    double bigShift = 0.2425625;
+    QVector<double> scale = harmonicScale(data, pitchShiftRatio );
+    QVector<double> scaleUp = harmonicScale(scale, bigShift ); // pitch way high, for strong pitch correction
+    QVector<double> scaleDown = harmonicScale(scaleUp, 1.0 / bigShift ); // pitch down, back to Kansas
+    data = scaleDown;
     
     compressDynamics(data, 1.5, 0.5);
-    harmonicExciter(data, 1.2, 0.4);
-    applyEcho(data, 0.8, 0.7, 50, 100, 0.28, 0.22);
+    harmonicExciter(data, 1.8, 0.4);
+    applyEcho(data, 0.8, 0.7, 84, 100, 0.28, 0.22);
 
 }
 

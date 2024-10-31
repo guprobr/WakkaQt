@@ -43,7 +43,7 @@ QByteArray VocalEnhancer::enhance(const QByteArray& input) {
     normalizeAndApplyGain(inputData, 0.5); // sanitize for pich correction and effects
     qWarning() << "VocalEnhancer processing pitch correction";
     processPitchCorrection(inputData);
-    normalizeAndApplyGain(inputData, 0.6); // normalize again at the very end
+    normalizeAndApplyGain(inputData, 0.8); // normalize again at the very end
     convertToQByteArray(inputData, output);
 
     return output;

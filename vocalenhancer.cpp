@@ -102,7 +102,7 @@ int VocalEnhancer::denormalizeSample(double value) const {
 void VocalEnhancer::processPitchCorrection(QVector<double>& data) {
     double detectedPitch = detectPitch(data);
     double targetFrequency = findClosestNoteFrequency(detectedPitch <= 0 ? A440 : detectedPitch);
-    double pitchShiftRatio = targetFrequency / detectedPitch;
+    double pitchShiftRatio = detectedPitch > 0 ? targetFrequency / detectedPitch : targetFrequency / A440;
 
     //QVector<double> scaledData = harmonicScale(data, 0.97025);
     //data = scaledData;
@@ -137,7 +137,7 @@ void VocalEnhancer::normalizeAndApplyGain(QVector<double>& data, double gain) {
 }
 
 QVector<double> VocalEnhancer::harmonicScale(const QVector<double>& data, double scaleFactor) {
-    int windowSize = 512;
+    int windowSize = 2048;
     int hopSize = windowSize / 4;
     QVector<double> outputData(data.size(), 0.0);
 

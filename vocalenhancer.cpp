@@ -27,9 +27,10 @@ const double VocalEnhancer::NOTE_FREQUENCIES[MIDI_NOTES] = {
 };
 
 VocalEnhancer::VocalEnhancer(const QAudioFormat& format)
-    : m_sampleSize(format.bytesPerSample()),
+    : banner("VocalEnhancement"),
+      m_sampleSize(format.bytesPerSample()),
       m_sampleRate(format.sampleRate()),
-      m_numSamples(format.sampleRate() * calculateDuration(format.sampleRate()) / 1000) {}
+      m_numSamples(format.sampleRate() * calculateDuration(format.sampleRate()) / 1000) { }
 
 QByteArray VocalEnhancer::enhance(const QByteArray& input) {
     qWarning() << "VocalEnhancer Input Data Size:" << input.size();
@@ -110,7 +111,9 @@ void VocalEnhancer::processPitchCorrection(QVector<double>& data) {
     // significant pitch correction while mitigating the formant shift issue.
     double bigShift = 0.2425625;
     QVector<double> scale = harmonicScale(data, pitchShiftRatio );
+    banner = QString("Second harmonicScale Pass");
     QVector<double> scaleUp = harmonicScale(scale, bigShift ); // pitch way high, for strong pitch correction
+    banner = QString("Last harmonicScale Pass");
     QVector<double> scaleDown = harmonicScale(scaleUp, 1.0 / bigShift ); // pitch down, back to Kansas
     data = scaleDown;
     
@@ -294,6 +297,8 @@ double VocalEnhancer::detectPitch(const QVector<double>& inputData) const {
     if (sampleSize == 0) {
         return 0.0;  // Return 0 for empty input
     }
+    
+    banner = QString("Analyze frequency magnitudes");
 
     // Allocate memory for FFTW input and output
     fftw_complex* fftwOutput = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * (sampleSize / 2 + 1));
@@ -314,7 +319,6 @@ double VocalEnhancer::detectPitch(const QVector<double>& inputData) const {
     double maxMagnitude = 0.0;
     int maxIndex = 0;
 
-    // Analyze frequency magnitudes
     for (int i = 0; i < (sampleSize / 2 + 1); ++i) {
         double magnitude = std::sqrt(fftwOutput[i][0] * fftwOutput[i][0] + fftwOutput[i][1] * fftwOutput[i][1]); // Calculate magnitude
         if (magnitude > maxMagnitude) {
@@ -333,11 +337,18 @@ double VocalEnhancer::detectPitch(const QVector<double>& inputData) const {
     fftw_free(fftwInput);
 
     qWarning() << "VocalEnhancer detected frequency: " << detectedFrequency << " Hz";
+    banner = "Detected frequency: " + QString::number(detectedFrequency) + " Hz";
     return detectedFrequency;
 }
 
 int VocalEnhancer::getProgress() {
 
     return progressValue * 100;
+
+}
+
+QString VocalEnhancer::getBanner() {
+
+    return banner;
 
 }

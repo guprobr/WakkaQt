@@ -3,6 +3,7 @@
 
 #include <QAudioFormat>
 #include <QByteArray>
+#include <QString>
 #include <QVector>
 
 class VocalEnhancer
@@ -11,6 +12,7 @@ public:
     explicit VocalEnhancer(const QAudioFormat& format);
     QByteArray enhance(const QByteArray& input);
     int getProgress();
+    QString getBanner();
 
 private:
     // Constants
@@ -24,6 +26,7 @@ private:
     int m_numSamples;
 
     double progressValue = 0;
+    mutable QString banner;
     
     double calculateDuration(int sampleRate) const;
     QVector<double> convertToDoubleArray(const QByteArray& input, int sampleCount);

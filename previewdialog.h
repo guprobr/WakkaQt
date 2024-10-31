@@ -39,6 +39,7 @@ private:
     VocalEnhancer *vocalEnhancer;
     
     QLabel *volumeLabel;
+    QLabel *bannerLabel;
     QProgressBar *progressBar;       
     QPushButton *startButton;
     QCheckBox *playbackMute_option;

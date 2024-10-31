@@ -32,6 +32,9 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
     volumeBanner->setToolTip("You can adjust the final volume for the render output.");
     volumeBanner->setFont(QFont("Arial", 11));
     volumeBanner->setWordWrap(true);
+    bannerLabel = new QLabel("Enhancing Vocals", this);
+    bannerLabel->setToolTip("VocalEnhancement");
+    bannerLabel->setFont(QFont("Arial", 16));
     volumeLabel = new QLabel("Current Volume: 100\%", this);
     volumeLabel->setToolTip("Values above 100\% amplifies, while values below reduce volume");
     volumeLabel->setFont(QFont("Courier", 14, QFont::Bold));
@@ -59,6 +62,7 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
     controls->addWidget(seekForwardButton);
 
     layout->addWidget(volumeBanner);
+    layout->addWidget(bannerLabel);
     layout->addWidget(progressBar);
     layout->addWidget(volumeLabel);
     layout->addWidget(startButton);
@@ -67,7 +71,7 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
     layout->addWidget(stopButton);
     layout->setAlignment(Qt::AlignHCenter);
     
-    setFixedSize(800, 544);
+    setFixedSize(800, 600);
 
     // Setup audio format
     format.setSampleRate(44100);
@@ -188,6 +192,7 @@ void PreviewDialog::setAudioFile(const QString &filePath) {
 
                 progressTimer->stop();
                 this->progressBar->setValue(100);
+                this->bannerLabel->setText("Vocal Enhancement complete!");
 
                 watcher->deleteLater();  // Clean up watcher
             });
@@ -195,6 +200,7 @@ void PreviewDialog::setAudioFile(const QString &filePath) {
             // update progress bar each 55 ms
             connect(progressTimer, &QTimer::timeout, this, [this]() {
                 this->progressBar->setValue(vocalEnhancer->getProgress());
+                this->bannerLabel->setText(vocalEnhancer->getBanner());
             });
             progressTimer->start(55);
 

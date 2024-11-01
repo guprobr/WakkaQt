@@ -27,7 +27,7 @@ const double VocalEnhancer::NOTE_FREQUENCIES[MIDI_NOTES] = {
 };
 
 VocalEnhancer::VocalEnhancer(const QAudioFormat& format)
-    : banner("VocalEnhancement"),
+    : banner("Begin Vocal Enhancement"),
       m_sampleSize(format.bytesPerSample()),
       m_sampleRate(format.sampleRate()),
       m_numSamples(format.sampleRate() * calculateDuration(format.sampleRate()) / 1000) { }
@@ -109,11 +109,11 @@ void VocalEnhancer::processPitchCorrection(QVector<double>& data) {
 
     // A large upward pitch shift followed by a downward shift!
     // significant pitch correction while mitigating the formant shift issue.
-    double bigShift = 0.2425625;
+    double bigShift = 0.5;
     QVector<double> scaleUp = harmonicScale(data, bigShift ); // pitch way high, for strong pitch correction
-    banner = QString("Second harmonicScale Pass");
+    banner = QString("2nd Harmonic-scale pass: scale down");
     QVector<double> scaleDown = harmonicScale(scaleUp, 1.0 / bigShift ); // pitch down, back to Kansas
-    banner = QString("Final harmonicScale Pass");
+    banner = QString("Final Harmonic-scale pass: pitch shift");
     QVector<double> scale = harmonicScale(scaleDown, pitchShiftRatio );
     data = scale;
     
@@ -337,7 +337,7 @@ double VocalEnhancer::detectPitch(const QVector<double>& inputData) const {
     fftw_free(fftwInput);
 
     qWarning() << "VocalEnhancer detected frequency: " << detectedFrequency << " Hz";
-    banner = "Detected frequency: " + QString::number(detectedFrequency) + " Hz";
+    banner = "Detected: " + QString::number(detectedFrequency) + " Hz\n1st harmonic-scale pass: scale up";
     return detectedFrequency;
 }
 

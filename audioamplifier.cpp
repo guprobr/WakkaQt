@@ -136,13 +136,13 @@ void AudioAmplifier::start() {
 }
 
 void AudioAmplifier::stop() {
-    if (audioSink->state() == QAudio::ActiveState) {
+    if (audioSink->state() != QAudio::State::StoppedState) {
         playbackPosition = audioBuffer->pos(); // Store current position before stopping
         audioSink->stop();  // Stop the audio sink
         qDebug() << "Stopped vocals.";
     }
 
-    if (playbackSink->state() == QAudio::ActiveState) {
+    if (playbackSink->state() != QAudio::State::StoppedState) {
         playbackSink->stop();  // Stop the playback sink
         qDebug() << "Stopped backingtrack.";
     }
@@ -152,7 +152,7 @@ void AudioAmplifier::stop() {
         audioBuffer->close();
         qDebug() << "Closed vocals buffer.";
     }
-    if (playbackBuffer->isOpen() && !isPlaying()) {
+    if (playbackBuffer->isOpen() && !isPlayingPlayback()) {
         playbackBuffer->close();
         qDebug() << "Closed backing track buffer.";
     }
@@ -163,7 +163,7 @@ void AudioAmplifier::stop() {
 void AudioAmplifier::seekForward() {
     if (audioBuffer->bytesAvailable() > 514000) {
         stop();
-        resetAudioComponents();
+        //resetAudioComponents();
         playbackPosition += 514000;
         start();
     }  
@@ -172,7 +172,7 @@ void AudioAmplifier::seekForward() {
 void AudioAmplifier::seekBackward() {
     if ( audioBuffer->pos() - 514000 > 0 ) {
         stop();
-        resetAudioComponents();
+        //resetAudioComponents();
         playbackPosition -= 514000;
         start();
     }
@@ -185,7 +185,7 @@ void AudioAmplifier::setVolumeFactor(double factor) {
         // Only restart playback if there is audio data
         if (!originalAudioData.isEmpty() && isPlaying()) {
             stop();
-            resetAudioComponents();
+            //resetAudioComponents();
             start();
         }
     }
@@ -227,6 +227,10 @@ void AudioAmplifier::applyAmplification() {
 
 bool AudioAmplifier::isPlaying() const {
     return audioSink->state() == QAudio::ActiveState; // Check if audio is currently playing
+}
+
+bool AudioAmplifier::isPlayingPlayback() const {
+    return playbackSink->state() == QAudio::ActiveState; // Check if audio is currently playing
 }
 
 void AudioAmplifier::rewind() {

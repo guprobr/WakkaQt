@@ -25,7 +25,8 @@ public:
     void setVolumeFactor(double factor);  
     void setAudioData(const QByteArray &data);
     void setPlaybackVol(bool flag);
-    bool isPlaying() const;  
+    bool isPlaying() const;
+    bool isPlayingPlayback() const;
     void rewind();
     void seekForward();
     void seekBackward();

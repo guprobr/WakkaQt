@@ -53,6 +53,8 @@ AudioAmplifier::~AudioAmplifier() {
 QString AudioAmplifier::checkBufferState() {
     if (!audioBuffer->isOpen() || !audioSink || audioSink->isNull()) return ".. .Encoding. ..";
 
+    playbackPosition = audioBuffer->pos();
+
     // Total duration based on the original audio size
     qint64 totalDuration = originalAudioData.size() * 1000000 / (audioSink->format().sampleRate() * 
                            audioSink->format().channelCount() * audioSink->format().bytesPerSample());
@@ -62,7 +64,7 @@ QString AudioAmplifier::checkBufferState() {
                               audioSink->format().channelCount() * audioSink->format().bytesPerSample());
     
     // Correct the processed duration to include the playback position (both in microseconds now)
-    qint64 processedDuration = playbackPositionUSecs + audioSink->processedUSecs();
+    qint64 processedDuration = playbackPositionUSecs; // + audioSink->processedUSecs();
     
     qint64 threshold = 500000;  // stop 500 ms before the end
 
@@ -162,19 +164,25 @@ void AudioAmplifier::stop() {
 
 void AudioAmplifier::seekForward() {
     if (audioBuffer->bytesAvailable() > 514000) {
-        stop();
+        //stop();
         //resetAudioComponents();
-        playbackPosition += 514000;
-        start();
+        playbackPosition = audioBuffer->pos() + 514000;
+        audioBuffer->seek(playbackPosition);
+        playbackBuffer->seek(playbackPosition);
+        checkBufferState();
+        //start();
     }  
 }
 
 void AudioAmplifier::seekBackward() {
     if ( audioBuffer->pos() - 514000 > 0 ) {
-        stop();
+        //stop();
         //resetAudioComponents();
-        playbackPosition -= 514000;
-        start();
+        playbackPosition = audioBuffer->pos() - 514000;
+        audioBuffer->seek(playbackPosition);
+        playbackBuffer->seek(playbackPosition);
+        checkBufferState();
+        //start();
     }
 }
 

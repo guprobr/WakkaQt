@@ -8,16 +8,17 @@
 
 # WakkaQt - Karaoke App
 
-WakkaQt is a karaoke application built with C++ and Qt6, designed to record vocals over a video/audio track and mix them into a rendered file. This app features webcam recording, YouTube video downloading, real-time sound visualization, and post-recording video rendering with FFmpeg. It automatically does some masterization on the vocal tracks. It also has a custom AutoTuner class called VocalEnhancer that provides slight pitch shift/correction and formant preservation.
+WakkaQt is a karaoke application built with C++ and Qt6, designed to record vocals over a video/audio track and mix them into a rendered file. This app features webcam recording, YouTube video downloading, real-time sound visualization, and post-recording video rendering with FFmpeg. It automatically does some masterization on the vocal tracks. It also has a custom automatic auto-tuner class called VocalEnhancer that provides slight pitch shift/correction and formant preservation.
 
 ## Features
 
 - **Record karaoke sessions** with synchronized video and audio playback.
 - **Mix webcam video and vocals** with the karaoke video and export the result.
-- **Real-time sound visualization** (green waveform volume meter).
+- **Real-time sound visualization** (green waveform microphone meter).
 - **Download YouTube videos** and use them as karaoke tracks.
-- **Audio device selection** for recording.
+- **Video and Audio device selection** for recording.
 - **Rendering** with FFmpeg for high-quality output, automatic masterization and vocal enhancement;
+- **Vocal enhancement** with some effects and a custom auto tuning class programmed with the intention to improve the vocals a little bit without distorting or corrupting vocal formants. All of this is automatic, but you can adjust volumes before each rendering operation.
 - **Intended Cross-platform compatibility** (Windows, macOS, Linux).
 
 ## Requirements
@@ -92,21 +93,19 @@ sudo zypper install qt6-qtbase-devel qt6-qtmultimedia-devel ffmpeg yt-dlp fftw3-
 
 ## Project Structure
 
-- **`mainwindow.cpp` / `mainwindow.h`:** Core application logic, including UI setup and media control, media downloads and rendering.
+- **`mainwindow.cpp` / `mainwindow.h`:** Core application logic, including UI setup and media control, audio and video recording orchestration, playback downloads from streaming services and rendering.
 - **`sndwidget.cpp` / `sndwidget.h`:** Custom widget for displaying sound levels from the current audio input source, the green audio visualizer at the top of the UI.
-- **`previewdialog.cpp` / `previewdialog.h`:** Preview dialog for reviewing and adjusting vocal levels before rendering.
-- **`audioamplifier.cpp` / `audioamplifier.h`:** Class to manipulate samples of preview volume adjustment.
-- **`audiorecorder.cpp` / `audiorecorder.h`:** Class to enable the configuration of different sample formats, channels and rates while recording sound, since QAudioInput with MediaCaptureSession don't do the job.
-- **`audiovizmediaplayer.cpp` / `audiovizmediaplayer.h`:** Class to mimic QMediaPlayer but extracting audio from playbacks and serve the AudioVisualizer widget.
+- **`previewdialog.cpp` / `previewdialog.h`:** Preview dialog for reviewing and adjusting vocal levels before rendering. Here the masterization and vocal enhancement takes place, allowing the user to amplify or reduce volume while listening to the backing track at the same time. Note that the final rendering with FFmpeg will sound much better, this is a low quality preview.
+- **`audioamplifier.cpp` / `audioamplifier.h`:** Class to manipulate samples for volume adjustment, and to act as a media player to mix backing track with the recorded vocals.
+- **`audiorecorder.cpp` / `audiorecorder.h`:** Class to record audio. It enables the configuration of different sample formats, channels and rates while recording sound, since QAudioInput with MediaCaptureSession refuses to record in different formats.
+- **`audiovizmediaplayer.cpp` / `audiovizmediaplayer.h`:** Class to mimic QMediaPlayer but extracting audio from playbacks and serve the AudioVisualizer widget with visualization data.
 - **`audiovisualizerwidget.cpp` / `audiovisualizerwidget.h`:** Class that implements the Yelloopy© audio visualizer widget.
-- **`vocalenhancer.cpp` / `vocalenhancer.h`:** Class that implements a custom pitch shifter VocalEnhancer automatically applied right after each recording. The VocalEnhancer class provides a multi-step process for enhancing vocals in audio data by combining pitch detection, harmonic scaling, gain normalization, and windowed overlap-add techniques. Its two-pass scaling approach for pitch correction achieves a robust enhancement without distorting vocal characteristics. This modular design allows each step to be fine-tuned, providing a flexible framework for vocal processing.
+- **`vocalenhancer.cpp` / `vocalenhancer.h`:** Class that implements a custom pitch shifter VocalEnhancer automatically applied right after each recording. The VocalEnhancer class provides a multi-step process for enhancing vocals in audio data by combining pitch detection, harmonic scaling, gain normalization, and windowed overlap-add techniques. Its three-pass scaling approach for pitch correction achieves enhancement without distorting vocal characteristics.
 - **`resources.qrc`:** Resource file for including images like the app logo.
 
 ## FFmpeg Integration
 
-The application uses FFmpeg to mix the recorded webcam video and vocals with the karaoke video. It applies various audio filters like normalization, echo, and compression to enhance vocal quality.
-
-Ensure that FFmpeg is correctly installed, compiled with LV2 plugin support, and added to your system's `PATH` for the app to work as expected. **Same for yt-dlp**. Except on windows, because:
+The application uses FFmpeg to mix the recorded webcam video and vocals with the karaoke video. It applies various audio filters like normalization, echo, and compression to enhance vocal quality. We benefit from working with several different media formats for input/output that way.
 
 ## About Windows bundle ZIP
 

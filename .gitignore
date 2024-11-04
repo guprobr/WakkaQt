@@ -5,4 +5,11 @@ build/
 *.xz
 *.zip
 *.swp
+*.mp4
+*.mkv
+*.avi
+*.webm
+*.wav
+*.flac
+*.mp3
 debian/

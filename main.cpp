@@ -89,6 +89,7 @@ int main(int argc, char *argv[]) {
         darkPalette.setColor(QPalette::Text, Qt::white);
         darkPalette.setColor(QPalette::Button, QColor(53, 53, 53));
         darkPalette.setColor(QPalette::ButtonText, Qt::white);
+        darkPalette.setColor(QPalette::Disabled, QPalette::ButtonText, Qt::gray); 
         darkPalette.setColor(QPalette::BrightText, Qt::red);
 
         darkPalette.setColor(QPalette::Link, QColor(42, 130, 218));

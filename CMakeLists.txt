@@ -18,10 +18,21 @@ find_package(Qt6 REQUIRED COMPONENTS
     MultimediaWidgets
     Concurrent
 )
-find_package(PkgConfig REQUIRED)
 
 # Add FFTW3 library
-pkg_check_modules(FFTW3 REQUIRED fftw3)
+if(WIN32)
+# Manually specify FFTW3 path (adjust the path to where FFTW3 is installed)
+    if (NOT DEFINED FFTW3_PATH)
+        set (FFTW3_PATH "C:/Program Files (x86)/fftw")
+    endif()
+    set(FFTW3_INCLUDE_DIR "${FFTW3_PATH}/include")
+    set(FFTW3_LIBRARIES "${FFTW3_PATH}/lib/fftw3.lib")
+    set(FFTW3_DIR "${FFTW3_PATH}/lib/cmake/fftw3")
+    link_directories("${FFTW3_PATH}/lib")
+else()
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(FFTW3 REQUIRED fftw3)
+endif()
 
 if(UNIX AND NOT APPLE)
     pkg_check_modules(GLIB2 REQUIRED glib-2.0)
@@ -57,7 +68,7 @@ add_executable(${PROJECT_NAME}
     ${resources}
 )
 
-# Link libraries in the correct order
+# Link libraries
 target_link_libraries(${PROJECT_NAME}
     Qt6::Core
     Qt6::Gui
@@ -72,12 +83,13 @@ target_link_libraries(${PROJECT_NAME}
 # Include headers
 target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
+    ${FFTW3_INCLUDE_DIR}
 )
 
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DQT_NO_DEBUG_OUTPUT")
     if(WIN32)
-        # Add the WIN32 flag to remove the console window in Windows
+    # Add the WIN32 flag to remove the console window in Windows
         set_target_properties(${PROJECT_NAME} PROPERTIES WIN32_EXECUTABLE TRUE)
     endif()
 endif()

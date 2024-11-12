@@ -35,6 +35,7 @@ private:
     double detectPitch(const QVector<double>& data) const;
     double findClosestNoteFrequency(double pitch) const;
     QVector<double> harmonicScale(const QVector<double>& data, double scaleFactor);
+    void resizeOutputToMatchInput(QVector<double>& outputData, int targetSize);
 
     void normalizeAndApplyGain(QVector<double>& data, double gain);
     void convertToQByteArray(const QVector<double>& inputData, QByteArray& output);

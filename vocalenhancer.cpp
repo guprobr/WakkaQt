@@ -38,12 +38,14 @@ QByteArray VocalEnhancer::enhance(const QByteArray& input) {
 
     int sampleCount = input.size() / m_sampleSize;
     QByteArray output(sampleCount * m_sampleSize, 0);
+    
 
     QVector<double> inputData = convertToDoubleArray(input, sampleCount);
     normalizeAndApplyGain(inputData, 0.8); // sanitize for pich correction and effects
     qWarning() << "VocalEnhancer processing pitch correction";
     processPitchCorrection(inputData);
     normalizeAndApplyGain(inputData, 0.8); // normalize again at the very end
+    resizeOutputToMatchInput(inputData, inputData.size()); // fix sync issues 
     convertToQByteArray(inputData, output);
 
     return output;
@@ -340,6 +342,39 @@ double VocalEnhancer::detectPitch(const QVector<double>& inputData) const {
     banner = "Detected: " + QString::number(detectedFrequency) + " Hz\n1st harmonic-scale pass: scale up";
     return detectedFrequency;
 }
+
+void VocalEnhancer::resizeOutputToMatchInput(QVector<double>& outputData, int targetSize) {
+    int currentSize = outputData.size();
+    QVector<double> resizedOutput(targetSize, 0.0);
+
+    if (currentSize == targetSize) {
+        resizedOutput = outputData;
+    } else if (currentSize < targetSize) {
+        // Stretch output to match target size with interpolation
+        for (int i = 0; i < targetSize; ++i) {
+            double scale = static_cast<double>(i) * currentSize / targetSize;
+            int index = static_cast<int>(scale);
+            if (index < currentSize - 1) {
+                double fraction = scale - index;
+                resizedOutput[i] = outputData[index] * (1.0 - fraction) + outputData[index + 1] * fraction;
+            } else {
+                resizedOutput[i] = outputData[index];
+            }
+        }
+    } else {
+        // Shrink output to match target size with nearest-neighbor
+        for (int i = 0; i < targetSize; ++i) {
+            int index = static_cast<int>(i * currentSize / targetSize);
+            if (index < currentSize) {
+                resizedOutput[i] = outputData[index];
+            }
+        }
+    }
+
+    outputData = resizedOutput;
+}
+
+
 
 int VocalEnhancer::getProgress() {
 

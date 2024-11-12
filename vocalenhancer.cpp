@@ -41,11 +41,12 @@ QByteArray VocalEnhancer::enhance(const QByteArray& input) {
     
 
     QVector<double> inputData = convertToDoubleArray(input, sampleCount);
+    int targetSize = inputData.size();
     normalizeAndApplyGain(inputData, 0.8); // sanitize for pich correction and effects
     qWarning() << "VocalEnhancer processing pitch correction";
     processPitchCorrection(inputData);
     normalizeAndApplyGain(inputData, 0.8); // normalize again at the very end
-    resizeOutputToMatchInput(inputData, inputData.size()); // fix sync issues 
+    resizeOutputToMatchInput(inputData, targetSize); // fix sync issues 
     convertToQByteArray(inputData, output);
 
     return output;

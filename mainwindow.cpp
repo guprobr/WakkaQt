@@ -1512,6 +1512,10 @@ void MainWindow::addVideoDisplayWidgetInDialog() {
         return;
     }
 
+    // workaround for bug in Qt6.4 that freezes videoWidget
+    videoWidget->hide();
+    placeholderLabel->show();
+
     // Create and configure the dialog
     webcamDialog = new QDialog(this);
     webcamDialog->setWindowTitle("WakkaQt - Webcam Preview");
@@ -1547,6 +1551,9 @@ void MainWindow::addVideoDisplayWidgetInDialog() {
             webcamPreviewItem->setPos(0, 0);  // Reset position to (0, 0)
             webcamView->scene()->setSceneRect(webcamView->rect());
         }
+        
+        placeholderLabel->hide();
+        videoWidget->show();
     });
 
     // Show the dialog

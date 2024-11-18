@@ -1,7 +1,6 @@
 #include "mainwindow.h"
 #include "complexes.h"
 #include "sndwidget.h"
-#include "previewdialog.h"
 
 #include <QCoreApplication>
 #include <QMenu>
@@ -976,12 +975,13 @@ void MainWindow::renderAgain()
         qDebug() << "Will vstack each video with resolution:" << setRez;
 
         // Show the preview dialog
-        PreviewDialog dialog(audioOffset, this);
-        dialog.setAudioFile(audioRecorded);
-        if (dialog.exec() == QDialog::Accepted)
+        previewDialog.reset(new PreviewDialog(audioOffset, this));
+        previewDialog->setAudioFile(audioRecorded);
+        if (previewDialog->exec() == QDialog::Accepted)
         {
 
-            double vocalVolume = dialog.getVolume();
+            double vocalVolume = previewDialog->getVolume();
+            previewDialog.reset();
             mixAndRender(vocalVolume);
 
         } else {
@@ -990,6 +990,7 @@ void MainWindow::renderAgain()
             chooseInputAction->setEnabled(true);
             singButton->setEnabled(false);
             singAction->setEnabled(false);
+            previewDialog.reset();
             QMessageBox::warning(this, "Performance cancelled", "Performance cancelled during volume adjustment.");
         }
     } else {

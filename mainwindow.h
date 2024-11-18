@@ -5,6 +5,7 @@
 #include "audiorecorder.h"
 #include "audiovizmediaplayer.h"
 #include "audiovisualizerwidget.h"
+#include "previewdialog.h"
 
 #include <QMainWindow>
 #include <QScopedPointer>
@@ -100,6 +101,8 @@ private:
     QScopedPointer<QMediaRecorder> mediaRecorder;
     QScopedPointer<QMediaCaptureSession> mediaCaptureSession;
     QScopedPointer<QCamera> camera;
+
+    QScopedPointer<PreviewDialog> previewDialog;
     
     QAction *loadPlaybackAction;
     QAction *chooseInputAction;

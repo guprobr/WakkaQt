@@ -6,10 +6,14 @@
 #include <QString>
 #include <QVector>
 
-class VocalEnhancer
+class VocalEnhancer : public QObject
 {
+    Q_OBJECT
+
 public:
-    explicit VocalEnhancer(const QAudioFormat& format);
+    explicit VocalEnhancer(const QAudioFormat& format, QObject *parent);
+    ~VocalEnhancer();
+    
     QByteArray enhance(const QByteArray& input);
     int getProgress();
     QString getBanner();

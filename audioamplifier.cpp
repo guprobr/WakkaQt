@@ -14,40 +14,57 @@ AudioAmplifier::AudioAmplifier(const QAudioFormat &format, QObject *parent)
       volumeFactor(1.0),
       playbackPosition(0)
 {
-    // Initialize audio sink with scoped pointer
+    // Initialize audio sinks
     playbackSink.reset(new QAudioSink(format, this));
     audioSink.reset(new QAudioSink(format, this));
     connect(audioSink.data(), &QAudioSink::stateChanged, this, &AudioAmplifier::handleStateChanged);
-    
-    // Initialize QBuffer
-    audioBuffer.reset(new QBuffer());
-    audioBuffer->setBuffer(new QByteArray());
 
-    playbackBuffer.reset(new QBuffer());
-    playbackBuffer->setBuffer(new QByteArray());
+    // Initialize QBuffer
+    audioBuffer.reset(new QBuffer(new QByteArray()));  // QBuffer owns QByteArray
+    playbackBuffer.reset(new QBuffer(new QByteArray()));
 
     playbackFile.setFileName(extractedTmpPlayback);
-    // Open the playback extracted WAVE
-    if ( playbackFile.isOpen() )
+    if (playbackFile.isOpen())
         playbackFile.close();
     if (!playbackFile.open(QIODevice::ReadOnly)) {
         qWarning() << "Failed to open playback file!";
         return;
     }
-    playbackData.clear();
-    // Read the entire contents of the file into a QByteArray
-    playbackData = playbackFile.readAll();
-    
+    playbackData = playbackFile.readAll(); // Read all data
+
     // Initialize timer for probing end of stream
     dataPushTimer.reset(new QTimer(this));
     connect(dataPushTimer.data(), &QTimer::timeout, this, &AudioAmplifier::checkBufferState);
 }
 
 AudioAmplifier::~AudioAmplifier() {
-    stop();  // Ensure audio stops and resources are cleaned up
-    playbackBuffer->reset();
-    playbackSink->reset();
-    audioBuffer->reset();
+    stop();
+
+    if (audioBuffer && audioBuffer->isOpen()) {
+        audioBuffer->close();
+    }
+    if (playbackBuffer && playbackBuffer->isOpen()) {
+        playbackBuffer->close();
+    }
+
+    // Release QByteArrays
+    if (audioBuffer) {
+        audioBuffer->setData(QByteArray());
+    }
+    if (playbackBuffer) {
+        playbackBuffer->setData(QByteArray());
+    }
+
+    dataPushTimer->stop();
+
+    playbackSink.reset();
+    audioSink.reset();
+    audioBuffer.reset();
+    playbackBuffer.reset();
+
+    QObject::disconnect(audioSink.data(), &QAudioSink::stateChanged, this, &AudioAmplifier::handleStateChanged);
+    QObject::disconnect(dataPushTimer.data(), &QTimer::timeout, this, &AudioAmplifier::checkBufferState);
+
 }
 
 QString AudioAmplifier::checkBufferState() {
@@ -200,6 +217,8 @@ void AudioAmplifier::setVolumeFactor(double factor) {
 }
 
 void AudioAmplifier::setAudioData(const QByteArray &data) {
+    // Release old data
+    QByteArray().swap(originalAudioData);
     originalAudioData = data;  // Store the new audio data
 }
 
@@ -265,16 +284,22 @@ void AudioAmplifier::handleStateChanged(QAudio::State newState) {
 }
 
 void AudioAmplifier::resetAudioComponents() {
+    // Stop any active sinks
     if (audioSink && audioSink->state() == QAudio::ActiveState) {
         audioSink->stop();
     }
-
     if (playbackSink && playbackSink->state() == QAudio::ActiveState) {
         playbackSink->stop();
     }
 
+    // Properly release old sinks before creating new ones
+    playbackSink.reset();
+    audioSink.reset();
+
+    // Recreate sinks
     playbackSink.reset(new QAudioSink(audioFormat, this));
     audioSink.reset(new QAudioSink(audioFormat, this));
+
+    // Reconnect signals
     connect(audioSink.data(), &QAudioSink::stateChanged, this, &AudioAmplifier::handleStateChanged);
-    
 }

@@ -26,8 +26,9 @@ const double VocalEnhancer::NOTE_FREQUENCIES[MIDI_NOTES] = {
     3135.96348785, 3322.43758064, 3520.0, 3729.31009214, 3951.06641005, 4186.00904481
 };
 
-VocalEnhancer::VocalEnhancer(const QAudioFormat& format)
-    : banner("Begin Vocal Enhancement"),
+VocalEnhancer::VocalEnhancer(const QAudioFormat& format, QObject *parent)
+    : QObject(parent),  
+      banner("Begin Vocal Enhancement"),
       m_sampleSize(format.bytesPerSample()),
       m_sampleRate(format.sampleRate()),
       m_numSamples(format.sampleRate() * calculateDuration(format.sampleRate()) / 1000) { }
@@ -386,5 +387,11 @@ int VocalEnhancer::getProgress() {
 QString VocalEnhancer::getBanner() {
 
     return banner;
+
+}
+
+VocalEnhancer::~VocalEnhancer() {
+    
+    fftw_cleanup(); // Clean up any leftover resources managed by FFTW
 
 }

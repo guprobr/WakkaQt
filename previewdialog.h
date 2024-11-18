@@ -35,8 +35,8 @@ private slots:
 
 private:
     QAudioFormat format;
-    AudioAmplifier *amplifier;
-    VocalEnhancer *vocalEnhancer;
+    QScopedPointer<AudioAmplifier> amplifier;
+    QScopedPointer<VocalEnhancer> vocalEnhancer;
     
     QLabel *volumeLabel;
     QLabel *bannerLabel;

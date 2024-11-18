@@ -79,7 +79,7 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
     format.setSampleFormat(QAudioFormat::SampleFormat::Int16);  // Set sample format to 16 bit
 
     // Initialize Audio Amplifier
-    amplifier = new AudioAmplifier(format, this);
+    amplifier.reset(new AudioAmplifier(format, this));
 
     // Connect UI elements
     connect(startButton, &QPushButton::clicked, this, &PreviewDialog::replayAudioPreview);
@@ -109,14 +109,17 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
     // Init the progress bar timer
     progressTimer = new QTimer(this);
 
-    vocalEnhancer = new VocalEnhancer(format);
+    vocalEnhancer.reset(new VocalEnhancer(format, this));
 
 }
 
 PreviewDialog::~PreviewDialog() {
     amplifier->stop();
-    delete amplifier;
-    delete vocalEnhancer;
+    amplifier.reset();
+    vocalEnhancer.reset();
+    delete volumeChangeTimer;
+    delete progressTimer;
+    delete chronosTimer;
 }
 
 void PreviewDialog::setAudioFile(const QString &filePath) {
@@ -194,6 +197,7 @@ void PreviewDialog::setAudioFile(const QString &filePath) {
                 this->progressBar->setValue(100);
                 this->bannerLabel->setText("Vocal Enhancement complete!");
 
+                vocalEnhancer.reset();
                 watcher->deleteLater();  // Clean up watcher
             });
             
@@ -251,8 +255,6 @@ void PreviewDialog::replayAudioPreview() {
 }
 
 void PreviewDialog::stopAudioPreview() {
-    chronosTimer->stop();
-    amplifier->stop();
     qWarning() << "Set Volume factor to:" << volume;
     accept();
 }

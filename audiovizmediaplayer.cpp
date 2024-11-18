@@ -66,7 +66,7 @@ void AudioVizMediaPlayer::mute(bool toggle) {
                 m_visualizer_left->mute(false);
                 m_visualizer_right->mute(false);
                 if (m_mediaPlayer->playbackState() == QMediaPlayer::PlayingState)
-                    seek(m_mediaPlayer->position());
+                    seek(m_mediaPlayer->position(), false);
         }
         
 }
@@ -119,7 +119,7 @@ void AudioVizMediaPlayer::stop()
         m_visualizer_right->clear();  // Clear visualizations
 }
 
-void AudioVizMediaPlayer::seek(qint64 position)
+void AudioVizMediaPlayer::seek(qint64 position, bool seekPlayback)
 {
     if (!m_mediaPlayer) {
         qWarning() << "Media player is null";
@@ -151,7 +151,8 @@ void AudioVizMediaPlayer::seek(qint64 position)
         }
 
     // Update media player position
-    m_mediaPlayer->setPosition(position);
+    if ( seekPlayback )
+        m_mediaPlayer->setPosition(position);
 
     // Update the audio position to the closest frame position
     m_audioPosition = closestFramePos;

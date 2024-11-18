@@ -24,7 +24,7 @@ public:
     void pause();
     void stop();
     void mute(bool toggle);
-    void seek(qint64 position);
+    void seek(qint64 position, bool seekPlayback);
 
 signals:
     void ffmpegExtractionFinished(const QString &audioFile, const QString &sourceFile);

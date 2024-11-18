@@ -635,7 +635,7 @@ void MainWindow::chooseVideo()
     } else
         if ( isPlayback )
             QTimer::singleShot(500, this, [this, lastPos]() {
-                vizPlayer->seek(lastPos);
+                vizPlayer->seek(lastPos, true);
                 #if QT_VERSION < QT_VERSION_CHECK(6, 6, 2)
                 #ifdef __linux__
                     player->setAudioOutput(nullptr); // first, detach the audio output 
@@ -726,7 +726,7 @@ void MainWindow::startRecording() {
             camera->start(); // prep camera first
 
             // rewind current playback to start performance
-            vizPlayer->seek(0);
+            vizPlayer->seek(0, true);
             player->pause();
 
 #if QT_VERSION < QT_VERSION_CHECK(6, 6, 2)
@@ -760,7 +760,6 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
         singAction->setText("Finish recording");
         singButton->setEnabled(true);
         singAction->setEnabled(true);
-        vizCheckbox->setEnabled(false);
 
     }
     
@@ -1354,7 +1353,7 @@ bool MainWindow::eventFilter(QObject *object, QEvent *event) {
                     // Set the new position based on the click
                         qint64 newPosition = static_cast<qint64>(progress * player->duration());
 
-                        vizPlayer->seek(newPosition); // Seek the media player to the clicked position
+                        vizPlayer->seek(newPosition, true); // Seek the media player to the clicked position
 
 #if QT_VERSION < QT_VERSION_CHECK(6, 6, 2)
 #ifdef __linux__
@@ -1391,7 +1390,7 @@ void MainWindow::fetchVideo() {
     if (directory.isEmpty()) {
         if ( isPlayback )
             QTimer::singleShot(500, this, [this, lastPos]() {
-                vizPlayer->seek(lastPos);
+                vizPlayer->seek(lastPos, true);
                 #if QT_VERSION < QT_VERSION_CHECK(6, 6, 2)
                 #ifdef __linux__
                         player->setAudioOutput(nullptr); // first, detach the audio output 
@@ -1443,7 +1442,7 @@ void MainWindow::fetchVideo() {
         } else {
             if ( isPlayback )
                 QTimer::singleShot(500, this, [this, lastPos]() {
-                    vizPlayer->seek(lastPos);
+                    vizPlayer->seek(lastPos, true);
                     #if QT_VERSION < QT_VERSION_CHECK(6, 6, 2)
                     #ifdef __linux__
                             player->setAudioOutput(nullptr); // first, detach the audio output 

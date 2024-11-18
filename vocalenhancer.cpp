@@ -192,12 +192,12 @@ QVector<double> VocalEnhancer::extractSegment(const QVector<double>& data, const
 
 
 QVector<double> VocalEnhancer::timeStretch(const QVector<double>& segment, double shiftRatio) {
-    int newSize = static_cast<int>(segment.size() * shiftRatio);
+    qint64 newSize = static_cast<qint64>(segment.size() * shiftRatio);
     QVector<double> output(newSize, 0.0);
 
-    for (int i = 1; i < newSize - 1; ++i) {
+    for (qint64 i = 1; i < newSize - 1; ++i) {
         double t = static_cast<double>(i) / shiftRatio;
-        int idx = static_cast<int>(t);
+        qint64 idx = static_cast<int>(t);
 
         // Boundary check for cubic interpolation
         if (idx > 0 && idx + 2 < segment.size()) {

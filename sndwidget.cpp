@@ -82,6 +82,9 @@ void SndWidget::paintEvent(QPaintEvent *event) {
 
     if (numSamples == 0) return;
 
+    // Sensitivity factor to amplify or attenuate the waveform
+    float sensitivity = 2.0f; // Increase or decrease this value (e.g., 1.0f for no change)
+
     // Draw the waveform
     for (int i = 0; i < width; ++i) {
         int sampleIndex = (i * numSamples) / width;
@@ -89,7 +92,7 @@ void SndWidget::paintEvent(QPaintEvent *event) {
         int sampleValue = audioData[sampleIndex];
 
         // Scale the sample to fit in the widget's height
-        int y = middle - (sampleValue * middle / 32768);
+        int y = middle - (std::clamp(sampleValue * sensitivity, -32768.0f, 32767.0f) * middle / 32768);
         painter.drawLine(i, middle, i, y);
     }
 }

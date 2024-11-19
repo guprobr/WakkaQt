@@ -258,8 +258,8 @@ MainWindow::MainWindow(QWidget *parent)
     QWidget *containerWidget = new QWidget(this);
     QVBoxLayout *layout = new QVBoxLayout(containerWidget);
     layout->addLayout(indicatorLayout);
-    layout->addLayout(vizLayout);
     layout->addWidget(banner);
+    layout->addLayout(vizLayout);
     layout->addWidget(progressView);
     layout->addWidget(soundLevelWidget);
     layout->addWidget(placeholderLabel);  

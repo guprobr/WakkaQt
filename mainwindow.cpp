@@ -1069,11 +1069,11 @@ void MainWindow::mixAndRender(double vocalVolume) {
           << "-i" << webcamRecorded // recorded camera INPUT file
           << "-i" << currentVideoFile // playback song INPUT file
           << "-filter_complex"      // NOW, masterization and vocal enhancement of recorded audio
-          << QString("[0:a]%1 volume=%2[vocals]; \
+          << QString("[0:a]volume=%1,%2[vocals]; \
                         [2:a][vocals]amix=inputs=2:normalize=0,aresample=async=1[wakkamix];%3" 
                         )
-                        .arg(_filterTreble)
                         .arg(vocalVolume)
+                        .arg(_filterTreble)
                         .arg(videorama);
 
     if ( !videorama.isEmpty() ) {

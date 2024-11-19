@@ -2,6 +2,7 @@
 #include "complexes.h"
 
 #include <QApplication>
+
 #include <QDebug>
 
 AudioRecorder::AudioRecorder(QAudioDevice selectedDevice, QObject* parent)
@@ -19,6 +20,9 @@ AudioRecorder::AudioRecorder(QAudioDevice selectedDevice, QObject* parent)
         m_audioFormat.setSampleFormat(QAudioFormat::SampleFormat::Int16);
     }
 
+    if ( m_audioFormat.sampleFormat() == QAudioFormat::SampleFormat::Float ) // a bug on windows, always returning Float
+        m_audioFormat.setSampleFormat(QAudioFormat::SampleFormat::Int16); // to avoid audio corruption fallback to 16 bit    
+    
     m_selectedDevice = selectedDevice;
     m_audioSource = new QAudioSource(m_selectedDevice, m_audioFormat, this);
     m_audioSource->setVolume(1.0f);

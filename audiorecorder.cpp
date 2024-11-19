@@ -12,17 +12,8 @@ AudioRecorder::AudioRecorder(QAudioDevice selectedDevice, QObject* parent)
 
     m_audioFormat = selectedDevice.preferredFormat();
  
-    if (!m_audioFormat.sampleRate()) { // a sort of bug in preferredFormat() returns zero on some high-fidelity audio interfaces
-        m_audioFormat.setSampleRate(192000);
-        m_audioFormat.setChannelCount(1);
-        m_audioFormat.setSampleFormat(QAudioFormat::SampleFormat::Int32);
-    }
-
-    if (m_audioFormat.sampleFormat() == QAudioFormat::Float) // also after Qt 6.4 it bugs on Windows always returning float
-        m_audioFormat.setSampleFormat(QAudioFormat::Int16); // we force 16 bit :(
-    
     if ( !selectedDevice.isFormatSupported(m_audioFormat) ) {
-        qDebug() << "Preferred format is bogus.";
+        qWarning() << "Audio input device Preferred format is bogus.";
         m_audioFormat.setSampleRate(44100);
         m_audioFormat.setChannelCount(1);
         m_audioFormat.setSampleFormat(QAudioFormat::SampleFormat::Int16);
@@ -129,13 +120,13 @@ QString AudioRecorder::sampleFormatToString(QAudioFormat::SampleFormat format) {
         case QAudioFormat::Unknown:
             return "Unknown";
         case QAudioFormat::UInt8:
-            return "8bit";
+            return "UInt8";
         case QAudioFormat::Int16:
-            return "16bit";
+            return "Int16";
         case QAudioFormat::Int32:
-            return "24bit";
+            return "Int32";
         case QAudioFormat::Float:
-            return "Float 32bit";
+            return "Float";
         default:
             return "Unknown";
     }

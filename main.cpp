@@ -1,6 +1,7 @@
 #include "mainwindow.h"
 
 #include <QApplication>
+#include <QIcon>
 #include <QPalette>
 #include <QStyleFactory>
 #include <QStyleHints>
@@ -73,6 +74,8 @@ int main(int argc, char *argv[]) {
 #endif
 
     QApplication WakkaQt(argc, argv);
+
+    WakkaQt.setWindowIcon(QIcon(":/images/icon.png"));
 
     // If enabled on the OS, Switch to dark mode on supported platforms (Windows/Mac/GNOME)
     if ( isDarkModeEnabled() ) {

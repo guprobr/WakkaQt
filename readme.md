@@ -1,9 +1,7 @@
 
 ![wakkalogo](https://github.com/user-attachments/assets/0dc389ce-0678-4eaf-a888-04ba306ff2b4)
 
-- This software is currently in **Alpha stage** for developers to test. It is working great in Ubuntu 24.10 and Windows but 24.04 has SEVERAL problems. I recommend switching to the latest version of your Linux distro. *If you have video recording issues, try installing gstreamer1.0 "bad" plugins package.*
-
-- Help requested: for Windows and MacOS tests. 
+- Help requested: for MacOS tests. 
 
 **Windows x86_64 zip bundle available at the end of this readme**, please follow instructions (mostly unpack, then run WakkaQt.exe)
 

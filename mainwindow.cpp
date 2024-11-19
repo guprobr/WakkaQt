@@ -207,7 +207,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Device label
     deviceLabel = new QLabel("Selected Device: None", this);
-    deviceLabel->setFont(QFont("Arial", 8));
+    deviceLabel->setFont(QFont("Arial", 9));
     deviceLabel->setToolTip("Changing the default source input in the system cfg will not reflect the information here");
     
     // YT downloader
@@ -232,7 +232,7 @@ MainWindow::MainWindow(QWidget *parent)
     logUI(Wakka_welcome);
     logTextEdit->setMinimumHeight(50);
     logTextEdit->setMaximumHeight(90);
-    logTextEdit->setFont(QFont("Arial", 8));
+    logTextEdit->setFont(QFont("Arial", 10));
     logTextEdit->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     // Move cursor to the end of the text when text is appended
     connect(logTextEdit, &QTextEdit::textChanged, this, [=]() {

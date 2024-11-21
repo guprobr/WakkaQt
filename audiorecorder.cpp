@@ -12,16 +12,53 @@ AudioRecorder::AudioRecorder(QAudioDevice selectedDevice, QObject* parent)
 {
 
     m_audioFormat = selectedDevice.preferredFormat();
- 
+
     if ( !selectedDevice.isFormatSupported(m_audioFormat) ) {
         qWarning() << "Audio input device Preferred format is bogus.";
-        m_audioFormat.setSampleRate(44100);
-        m_audioFormat.setChannelCount(1);
-        m_audioFormat.setSampleFormat(QAudioFormat::SampleFormat::Int16);
+
+        // Create a format to give a chance to 24-bit configuration
+        QAudioFormat format;
+        format.setSampleFormat(QAudioFormat::SampleFormat::Int32); // Use Int32 to test
+        format.setChannelCount(1); 
+        format.setSampleRate(48000);
+
+        // Check if the device supports this configuration
+        if (selectedDevice.isFormatSupported(format)) {
+
+            m_audioFormat.setSampleRate(48000);
+            m_audioFormat.setChannelCount(1);
+            m_audioFormat.setSampleFormat(QAudioFormat::SampleFormat::Int32);
+
+        } else {
+
+            m_audioFormat.setSampleRate(44100);
+            m_audioFormat.setChannelCount(1);
+            m_audioFormat.setSampleFormat(QAudioFormat::SampleFormat::Int16);
+
+        }
     }
 
+#ifdef WIN32
     if ( m_audioFormat.sampleFormat() == QAudioFormat::SampleFormat::Float ) // a bug on windows, always returning Float
-        m_audioFormat.setSampleFormat(QAudioFormat::SampleFormat::Int16); // to avoid audio corruption fallback to 16 bit    
+    {
+        // Create a format to give a chance to 24-bit configuration
+        QAudioFormat format;
+        format.setSampleFormat(QAudioFormat::SampleFormat::Int32); // Use Int32 to test
+        format.setChannelCount(m_audioFormat.channelCount()); 
+        format.setSampleRate(m_audioFormat.sampleRate());
+
+        // Check if the device supports this configuration
+        if (selectedDevice.isFormatSupported(format)) {
+
+            m_audioFormat.setSampleFormat(QAudioFormat::SampleFormat::Int32);
+
+        } else {
+
+            m_audioFormat.setSampleFormat(QAudioFormat::SampleFormat::Int16);
+
+        }
+    }
+#endif
     
     m_selectedDevice = selectedDevice;
     m_audioSource = new QAudioSource(m_selectedDevice, m_audioFormat, this);

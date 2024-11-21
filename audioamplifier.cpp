@@ -127,6 +127,8 @@ void AudioAmplifier::start() {
             return; 
         }
 
+        stop();
+
         // Verify if buffer is open, then close before starting
         if (audioBuffer->isOpen()) {
             audioBuffer->close();

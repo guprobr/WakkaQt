@@ -48,12 +48,15 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
     seekBackwardButton->setToolTip("Seek backwards");
 
     offsetSlider = new QSlider(Qt::Horizontal, this);
-    offsetSlider->setRange(-5000, 5000); // Offset range in milliseconds
+    offsetSlider->setRange(-1500, 1500); // Offset range in milliseconds
     offsetSlider->setValue(newOffset); // Default offset value = 0
-    offsetSlider->setTickPosition(QSlider::TicksBelow);
-    offsetSlider->setTickInterval(50); // 50 ms intervals
-    offsetSlider->setFixedWidth(640);
+    offsetSlider->setTickPosition(QSlider::TicksBothSides);
+    offsetSlider->setTickInterval(250); // 250 ms intervals
+    offsetSlider->setFixedWidth(480);
+    offsetSlider->setTracking(false);
+    offsetSlider->setSingleStep(50);
     offsetLabel = new QLabel(QString("Manual Sync Offset: %1 ms").arg(newOffset), this);
+    offsetLabel->setToolTip("Adjust, in milliseconds, playback and vocals sync if required; negative values cause delay while positive values cause to trim.");
 
     progressBar = new QProgressBar(this);
     progressBar->setRange(0, 100);
@@ -112,7 +115,6 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
     chronosTimer = new QTimer(this);
     connect(chronosTimer, &QTimer::timeout, this, &PreviewDialog::updateChronos);
     chronosTimer->start(250);
-
     // Initialize the volume change timer
     volumeChangeTimer = new QTimer(this);
     connect(volumeChangeTimer, &QTimer::timeout, this, &PreviewDialog::updateVolume);
@@ -255,7 +257,6 @@ void PreviewDialog::onOffsetSliderChanged(int value) {
     }
 
 }
-
 
 double PreviewDialog::getVolume() const {
     return volume;  // Returns the current volume level (we send this to render function)

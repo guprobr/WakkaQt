@@ -848,7 +848,7 @@ void MainWindow::stopRecording() {
                 if (QFile::exists(destinationFilePath)) {
                     // delete the existing file
                     if (!QFile::remove(destinationFilePath)) {
-                        qDebug() << "Failed to remove existing file:" << destinationFilePath;
+                        qWarning() << "Failed to remove existing file:" << destinationFilePath;
                         return;
                     }
                 }
@@ -857,10 +857,10 @@ void MainWindow::stopRecording() {
                 if (QFile::copy(sourceFilePath, destinationFilePath)) {
                     qDebug() << "File copied successfully to" << destinationFilePath;
                 } else {
-                    qDebug() << "Failed to copy file to" << destinationFilePath;
+                    qWarning() << "Failed to copy file to" << destinationFilePath;
                 }
             } else {
-                qDebug() << "Source file does not exist:" << sourceFilePath;
+                qWarning() << "Source file does not exist:" << sourceFilePath;
             }
 
             qWarning() << "Recording saved successfully";
@@ -966,7 +966,7 @@ void MainWindow::renderAgain()
         int response = QMessageBox::question(
             this, 
             "Resolution", 
-            "Do you want 1920x1080 high-resolution video? Low resolution 640x480 renders much more faster.", 
+            "Do you want 1920x1080 high-resolution video? Low resolution 640x480 renders much faster.", 
             QMessageBox::Yes | QMessageBox::No, 
             QMessageBox::No
         );
@@ -980,8 +980,9 @@ void MainWindow::renderAgain()
         {
 
             double vocalVolume = previewDialog->getVolume();
+            qint64 manualOffset = previewDialog->getOffset();
             previewDialog.reset();
-            mixAndRender(vocalVolume);
+            mixAndRender(vocalVolume, manualOffset);
 
         } else {
             enable_playback(true);
@@ -1002,7 +1003,7 @@ void MainWindow::renderAgain()
     }
 }
 
-void MainWindow::mixAndRender(double vocalVolume) {
+void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset) {
     
     videoWidget->hide();
     placeholderLabel->show();
@@ -1064,14 +1065,24 @@ void MainWindow::mixAndRender(double vocalVolume) {
                                     .arg(stopDuration);
             }
 
+    QString offsetFilter;
+    if (manualOffset < 0) {
+        // Handle negative offset with adelay
+        offsetFilter = QString("adelay=%1|%1").arg(-manualOffset);
+    } else {
+        // Handle positive offset with atrim
+        offsetFilter = QString("atrim=%1ms").arg(manualOffset);
+    }
+
     arguments << "-y"               // Overwrite output file if it exists
           << "-i" << tunedRecorded  // tuned audio vocals INPUT file
           << "-i" << webcamRecorded // recorded camera INPUT file
           << "-i" << currentVideoFile // playback song INPUT file
           << "-filter_complex"      // NOW, masterization and vocal enhancement of recorded audio
-          << QString("[0:a]volume=%1,%2[vocals]; \
-                        [2:a][vocals]amix=inputs=2:normalize=0,aresample=async=1[wakkamix];%3" 
+          << QString("[0:a]%1,volume=%2,%3[vocals]; \
+                        [2:a][vocals]amix=inputs=2:normalize=0,aresample=async=1[wakkamix];%4" 
                         )
+                        .arg(offsetFilter)
                         .arg(vocalVolume)
                         .arg(_filterTreble)
                         .arg(videorama);

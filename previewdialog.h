@@ -11,6 +11,7 @@
 #include <QDial>
 #include <QPushButton>
 #include <QCheckBox>
+#include <QSlider>
 #include <QLabel>
 #include <QProcess>
 #include <QTimer>
@@ -26,11 +27,13 @@ public:
 
     void setAudioFile(const QString &filePath);
     double getVolume() const;
+    qint64 getOffset() const;
     
 private slots:
     void replayAudioPreview();
     void stopAudioPreview();
     void onDialValueChanged(int value);
+    void onOffsetSliderChanged(int value);
     void updateVolume();
 
 private:
@@ -46,7 +49,11 @@ private:
     QPushButton *seekForwardButton;
     QDial *volumeDial;
     QPushButton *seekBackwardButton;
-    QPushButton *stopButton;    
+    QPushButton *stopButton;
+
+    QSlider *offsetSlider;
+    QLabel *offsetLabel;
+    qint64 newOffset = 0; 
     
     QTimer *progressTimer;
     QTimer *volumeChangeTimer;

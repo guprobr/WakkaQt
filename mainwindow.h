@@ -149,7 +149,7 @@ private:
     void addProgressSong(QGraphicsScene *scene, qint64 duration);
     void updateProgress(const QString& output, QProgressBar* progressBar, int totalDuration);
     
-    void mixAndRender(double vocalVolume);
+    void mixAndRender(double vocalVolume, qint64 manualOffset);
     void renderAgain();
 
     void resetMediaComponents(bool isStarting);

@@ -118,7 +118,8 @@ QString AudioAmplifier::checkBufferState() {
 void AudioAmplifier::start() {
     // Verify if there is original data to amplify
     if (!originalAudioData.isEmpty()) {
-        applyAmplification();
+        setAudioOffset(audioFormat.durationForBytes(byteOffset)/1000);
+        //applyAmplification();
 
         // Validate initial buffer size
         if (amplifiedAudioData.size() < 512) { 
@@ -273,6 +274,59 @@ void AudioAmplifier::rewind() {
 
     playbackPosition = 0;  // Reset playback position
 }
+
+void AudioAmplifier::setAudioOffset(qint64 offsetMs) {
+    // Calculate the byte offset corresponding to the time offset
+    byteOffset = audioFormat.bytesForDuration(offsetMs * 1000); // Convert ms to µs
+    qDebug() << "Setting audio offset:" << offsetMs << "ms (" << byteOffset << "bytes)";
+
+    // Restore the original audio data
+    applyAmplification();
+        
+    if (byteOffset < 0) {
+        // Negative offset: Prepend silence
+        qint64 silenceBytes = -byteOffset;
+
+        qDebug() << "Negative offset detected. Prepending" << silenceBytes << "bytes of silence.";
+
+        // Create a buffer with silence
+        QByteArray silence(silenceBytes, 0);
+
+        // Prepend silence to the audio data
+        amplifiedAudioData.prepend(silence);
+    
+        //playbackPosition = 0;
+    } else {
+        // Positive offset: Trim the audio data
+        qint64 trimBytes = byteOffset;
+
+        qDebug() << "Positive offset detected. Trimming" << trimBytes << "bytes from the start.";
+
+        if (trimBytes < amplifiedAudioData.size()) {
+            amplifiedAudioData = amplifiedAudioData.mid(trimBytes);
+        } else {
+            qWarning() << "Trim exceeds audio size. Clearing buffer.";
+            amplifiedAudioData.clear();
+        }
+        
+        //playbackPosition = 0;
+    }
+
+    if (audioSink->state() != QAudio::State::StoppedState) {
+        audioSink->stop();  // Stop the audio sink
+        qDebug() << "Stopped vocals.";
+    }
+    // Verify if buffer is open, then close before starting
+    if (audioBuffer->isOpen()) {
+        audioBuffer->close();
+    }
+    audioBuffer->setData(amplifiedAudioData); // Configure with new QBuffer data 
+    audioBuffer->open(QIODevice::ReadOnly); // and open for reading
+    audioBuffer->seek(playbackPosition);     // Resume prior position
+    audioSink->start(audioBuffer.data()); // play amplified vocals
+
+}
+
 
 void AudioAmplifier::handleStateChanged(QAudio::State newState) {
     if (newState == QAudio::StoppedState) {

@@ -47,6 +47,14 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
     seekBackwardButton = new QPushButton("<<", this);
     seekBackwardButton->setToolTip("Seek backwards");
 
+    offsetSlider = new QSlider(Qt::Horizontal, this);
+    offsetSlider->setRange(-5000, 5000); // Offset range in milliseconds
+    offsetSlider->setValue(newOffset); // Default offset value = 0
+    offsetSlider->setTickPosition(QSlider::TicksBelow);
+    offsetSlider->setTickInterval(50); // 50 ms intervals
+    offsetSlider->setFixedWidth(640);
+    offsetLabel = new QLabel(QString("Manual Sync Offset: %1 ms").arg(newOffset), this);
+
     progressBar = new QProgressBar(this);
     progressBar->setRange(0, 100);
     progressBar->setFixedSize(QSize(600, 50));
@@ -68,6 +76,8 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
     layout->addWidget(startButton);
     layout->addWidget(playbackMute_option);
     layout->addLayout(controls);
+    layout->addWidget(offsetLabel);
+    layout->addWidget(offsetSlider);
     layout->addWidget(stopButton);
     layout->setAlignment(Qt::AlignHCenter);
     
@@ -87,6 +97,7 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
     connect(seekBackwardButton, &QPushButton::clicked, this, &PreviewDialog::seekBackward);
     connect(seekForwardButton, &QPushButton::clicked, this, &PreviewDialog::seekForward);
     connect(volumeDial, &QDial::valueChanged, this, &PreviewDialog::onDialValueChanged);
+    connect(offsetSlider, &QSlider::valueChanged, this, &PreviewDialog::onOffsetSliderChanged);
 
     connect(playbackMute_option, &QCheckBox::stateChanged, this, [this]() {
         
@@ -132,6 +143,7 @@ void PreviewDialog::setAudioFile(const QString &filePath) {
     seekBackwardButton->setEnabled(false);
     seekForwardButton->setEnabled(false);
     volumeDial->setEnabled(false);
+    offsetSlider->setEnabled(false);
     playbackMute_option->setEnabled(false);
 
     // Initialize the QProcess
@@ -191,6 +203,7 @@ void PreviewDialog::setAudioFile(const QString &filePath) {
                 seekBackwardButton->setEnabled(true);
                 seekForwardButton->setEnabled(true);
                 volumeDial->setEnabled(true);
+                offsetSlider->setEnabled(true);
                 playbackMute_option->setEnabled(true);
 
                 progressTimer->stop();
@@ -232,24 +245,39 @@ void PreviewDialog::setAudioFile(const QString &filePath) {
     }
 }
 
+void PreviewDialog::onOffsetSliderChanged(int value) {
+    newOffset = value;
+    offsetLabel->setText(QString("Manual Sync Offset: %1 ms").arg(newOffset));
+
+    // Update the playback system with the new offset.
+    if (amplifier) {
+        amplifier->setAudioOffset(newOffset);
+    }
+
+}
+
 
 double PreviewDialog::getVolume() const {
     return volume;  // Returns the current volume level (we send this to render function)
 }
 
+qint64 PreviewDialog::getOffset() const {
+    return newOffset;  // Returns the current manual audio sync offset (we send this to render function)
+}
+
 void PreviewDialog::replayAudioPreview() {
     
     // Check if amplifier is playing
-    if (amplifier->isPlaying()) {
+    //if (amplifier->isPlaying()) {
         // Stop playback and reset the audio components before replaying
-        chronosTimer->stop();
-        amplifier->stop();
-        amplifier->resetAudioComponents();  // Reset the amplifier components
-    }
+    //    chronosTimer->stop();
+    //    amplifier->stop();
+    //    amplifier->resetAudioComponents();  // Reset the amplifier components
+    //}
         
         amplifier->rewind();
-        chronosTimer->start();
-        amplifier->start();
+        //chronosTimer->start();
+        //amplifier->start();
         amplifier->setPlaybackVol(!playbackMute_option->isChecked());
 
 }

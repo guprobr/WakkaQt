@@ -30,6 +30,7 @@ public:
     void rewind();
     void seekForward();
     void seekBackward();
+    void setAudioOffset(qint64 offset);
     QString checkBufferState();
 
     void resetAudioComponents(); 
@@ -52,7 +53,8 @@ private:
     QFile playbackFile;
 
     double volumeFactor;  
-    qint64 playbackPosition; 
+    qint64 playbackPosition;
+    qint64 byteOffset = 0;
 
     bool playbackVol = true; 
 };

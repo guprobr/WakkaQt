@@ -1487,6 +1487,10 @@ void MainWindow::onPreviewCheckboxToggled(bool enable) {
         if ( camera->isAvailable() && !camera->isActive() )
             camera->start();
     } else {
+
+        if ( webcamDialog )
+            webcamDialog->close();
+
         webcamView->hide();
         qDebug() << "Camera preview hidden.";
     }
@@ -1552,8 +1556,10 @@ void MainWindow::addVideoDisplayWidgetInDialog() {
             webcamView->scene()->setSceneRect(webcamView->rect());
         }
         
-        placeholderLabel->hide();
-        videoWidget->show();
+        if ( isPlayback ) {
+            placeholderLabel->hide();
+            videoWidget->show();
+        }
     });
 
     // Show the dialog

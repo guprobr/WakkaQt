@@ -43,10 +43,10 @@ QByteArray VocalEnhancer::enhance(const QByteArray& input) {
 
     QVector<double> inputData = convertToDoubleArray(input, sampleCount);
     int targetSize = inputData.size();
-    //normalizeAndApplyGain(inputData, 0.8); // sanitize for pich correction and effects
+    //normalizeAndApplyGain(inputData, 0.75); // sanitize for pich correction and effects
     qWarning() << "VocalEnhancer processing pitch correction";
     processPitchCorrection(inputData);
-    //normalizeAndApplyGain(inputData, 0.8); // normalize again at the very end
+    //normalizeAndApplyGain(inputData, 0.84); // normalize again at the very end
     resizeOutputToMatchInput(inputData, targetSize); // fix sync issues 
     convertToQByteArray(inputData, output);
 
@@ -120,7 +120,7 @@ void VocalEnhancer::processPitchCorrection(QVector<double>& data) {
     
     compressDynamics(data, 1.5, 0.5);
     harmonicExciter(data, 1.8, 0.4);
-    applyEcho(data, 0.8, 0.7, 84, 200, 0.25, 0.15);
+    applyEcho(data, 0.8, 0.7, 110, 255, 0.25, 0.15);
 
 }
 

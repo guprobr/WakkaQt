@@ -6,6 +6,7 @@
 #include <QTime>
 #include <QTimer>
 #include <QAudioSink>
+#include <QMediaDevices>
 #include <cmath>  // Amplification logic
 
 AudioAmplifier::AudioAmplifier(const QAudioFormat &format, QObject *parent)
@@ -15,8 +16,8 @@ AudioAmplifier::AudioAmplifier(const QAudioFormat &format, QObject *parent)
       playbackPosition(0)
 {
     // Initialize audio sinks
-    playbackSink.reset(new QAudioSink(format, this));
-    audioSink.reset(new QAudioSink(format, this));
+    playbackSink.reset(new QAudioSink(QMediaDevices::defaultAudioOutput(), format, this));
+    audioSink.reset(new QAudioSink(QMediaDevices::defaultAudioOutput(), format, this));
     connect(audioSink.data(), &QAudioSink::stateChanged, this, &AudioAmplifier::handleStateChanged);
 
     // Initialize QBuffer
@@ -353,8 +354,8 @@ void AudioAmplifier::resetAudioComponents() {
     audioSink.reset();
 
     // Recreate sinks
-    playbackSink.reset(new QAudioSink(audioFormat, this));
-    audioSink.reset(new QAudioSink(audioFormat, this));
+    playbackSink.reset(new QAudioSink(QMediaDevices::defaultAudioOutput(), audioFormat, this));
+    audioSink.reset(new QAudioSink(QMediaDevices::defaultAudioOutput(), audioFormat, this));
 
     // Reconnect signals
     connect(audioSink.data(), &QAudioSink::stateChanged, this, &AudioAmplifier::handleStateChanged);

@@ -409,7 +409,7 @@ void MainWindow::configureMediaComponents()
     // Setup Media recorder
     mediaRecorder->setMediaFormat(*format);
     mediaRecorder->setOutputLocation(QUrl::fromLocalFile(webcamRecorded));
-    mediaRecorder->setQuality(QMediaRecorder::VeryHighQuality);
+    mediaRecorder->setQuality(QMediaRecorder::VeryLowQuality);
     //mediaRecorder->setVideoFrameRate(25); 
     
     qDebug() << "Configuring mediaCaptureSession..";
@@ -611,6 +611,8 @@ void MainWindow::chooseVideo()
 
     qint64 lastPos = player->position();
     vizPlayer->stop(); // stop to prevent "Unexpected FFmpeg behaviour"
+    videoWidget->hide();
+    placeholderLabel->show();
 
     QFileDialog* fileDialog = new QFileDialog(this);
     fileDialog->setWindowTitle("Open Playback File");
@@ -642,6 +644,12 @@ void MainWindow::chooseVideo()
                     player->setAudioOutput(audioOutput.data()); // now gimme back my sound mon
                 #endif
                 #endif
+                if ( !( (currentPlayback.endsWith("mp3", Qt::CaseInsensitive))             \
+                ||  (currentPlayback.endsWith("wav", Qt::CaseInsensitive))             \
+                ||  (currentPlayback.endsWith("flac", Qt::CaseInsensitive)) )) {
+                    placeholderLabel->hide();
+                    videoWidget->show();
+                }
                 vizPlayer->play();
             }); // resume play
 
@@ -658,6 +666,15 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status) {
         if ( !playbackTimer->isActive())
             playbackTimer->start(1000);
 
+        if ( !( (currentPlayback.endsWith("mp3", Qt::CaseInsensitive))             \
+                ||  (currentPlayback.endsWith("wav", Qt::CaseInsensitive))             \
+                ||  (currentPlayback.endsWith("flac", Qt::CaseInsensitive)) )) {
+            placeholderLabel->hide();
+            videoWidget->show();
+        } else {
+            videoWidget->hide();
+            placeholderLabel->show();
+        }
         vizPlayer->play();
                 
     }
@@ -1396,6 +1413,8 @@ void MainWindow::fetchVideo() {
 
     qint64 lastPos = player->position();
     vizPlayer->stop(); // stop to prevent "Unexpected FFmpeg behaviour"
+    videoWidget->hide();
+    placeholderLabel->show();
 
     QString directory = QFileDialog::getExistingDirectory(this, "Choose Directory to Save Video");
     if (directory.isEmpty()) {
@@ -1408,6 +1427,12 @@ void MainWindow::fetchVideo() {
                         player->setAudioOutput(audioOutput.data()); // now gimme back my sound mon
                 #endif
                 #endif
+                if ( !( (currentVideoFile.endsWith("mp3", Qt::CaseInsensitive))             \
+                ||  (currentVideoFile.endsWith("wav", Qt::CaseInsensitive))             \
+                ||  (currentVideoFile.endsWith("flac", Qt::CaseInsensitive)) )) {
+                    placeholderLabel->hide();
+                    videoWidget->show();
+                }
                 vizPlayer->play();
             }); // resume play
 
@@ -1439,6 +1464,8 @@ void MainWindow::fetchVideo() {
             currentVideoFile = fetchVideoPath;  // Store the video playback file path
             if ( player && vizPlayer ) {
                 vizPlayer->stop();
+                videoWidget->hide();
+                placeholderLabel->show();
                 playbackTimer->stop();
                 
                 playVideo(currentVideoFile);     
@@ -1460,6 +1487,8 @@ void MainWindow::fetchVideo() {
                             player->setAudioOutput(audioOutput.data()); // now gimme back my sound mon
                     #endif
                     #endif
+                    placeholderLabel->hide();
+                    videoWidget->show();
                     vizPlayer->play();
                     fetchButton->setEnabled(true);
                 }); // resume play

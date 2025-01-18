@@ -1596,10 +1596,14 @@ void MainWindow::addVideoDisplayWidgetInDialog() {
             webcamView->scene()->setSceneRect(webcamView->rect());
         }
         
-        if ( isPlayback ) {
-            placeholderLabel->hide();
-            videoWidget->show();
-        }
+        if ( isPlayback ) 
+            if ( !( (currentPlayback.endsWith("mp3", Qt::CaseInsensitive))             \
+                ||  (currentPlayback.endsWith("wav", Qt::CaseInsensitive))             \
+                ||  (currentPlayback.endsWith("flac", Qt::CaseInsensitive)) )) 
+                {
+                    placeholderLabel->hide();
+                    videoWidget->show();
+                }
     });
 
     // Show the dialog

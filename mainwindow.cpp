@@ -683,6 +683,9 @@ void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status) {
 
         if ( isRecording && mediaRecorder->duration() )
             stopRecording();
+        
+        videoWidget->hide();
+        placeholderLabel->show();
 
     }
 
@@ -840,21 +843,25 @@ void MainWindow::stopRecording() {
         QFile fileCam(webcamRecorded);
         if (fileAudio.size() > 0 && fileCam.size() > 0 ) {
 
-            // DETERMINE videoOffset
-            qint64 recDuration = 1000 * getMediaDuration(webcamRecorded);
-            videoOffset = offset + recDuration - pos;
-            // DETERMINE audioOffset
-            recDuration = 1000 * getMediaDuration(audioRecorded);
-            audioOffset = offset + recDuration - pos;
+            QTimer::singleShot(3000, this, [=]() {
+            // Ugly: need to introduce a slight delay before performing operations on the file
+            
+                // DETERMINE audioOffset
+                qint64 recDuration = 1000 * getMediaDuration(audioRecorded);
+                audioOffset = offset + recDuration - pos;
+                // DETERMINE videoOffset
+                recDuration = 1000 * getMediaDuration(webcamRecorded);
+                videoOffset = offset + recDuration - pos;
 
-            qWarning() << "System Latency: " << offset << " ms";
-            qWarning() << "Audio Gap: " << audioOffset << " ms";
-            qWarning() << "Video Gap: " << videoOffset << " ms";
-            logUI(QString("System Latency: %1 ms").arg(offset));
-            logUI(QString("Calculated Camera Offset: %1 ms").arg(videoOffset));
-            logUI(QString("Calculated Audio Offset: %1 ms").arg(audioOffset));
-            
-            
+                qWarning() << "System Latency: " << offset << " ms";
+                qWarning() << "Audio Gap: " << audioOffset << " ms";
+                qWarning() << "Video Gap: " << videoOffset << " ms";
+                logUI(QString("System Latency: %1 ms").arg(offset));
+                logUI(QString("Calculated Camera Offset: %1 ms").arg(videoOffset));
+                logUI(QString("Calculated Audio Offset: %1 ms").arg(audioOffset));
+
+            });
+
             QString sourceFilePath = extractedPlayback;
             QString destinationFilePath = extractedTmpPlayback;
 
@@ -955,6 +962,7 @@ void MainWindow::handleRecordingError() {
 // render //
 void MainWindow::renderAgain()
 {
+
     vizPlayer->stop();
     playbackTimer->stop();
     
@@ -1056,6 +1064,15 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset) {
     QFileInfo videofileInfo(currentVideoFile);
     QString videorama = "";
 
+    QString offsetFilter;
+    if (manualOffset < 0) {
+        // Handle negative offset with adelay
+        offsetFilter = QString("delay=%1|%1").arg(-manualOffset);
+    } else {
+        // Handle positive offset with atrim
+        offsetFilter = QString("trim=%1ms").arg(manualOffset);
+    }
+
             // if OUTPUT is video and playback song is not AUDIO only...
         if ((outputFilePath.endsWith(".mp4", Qt::CaseInsensitive)                       \
         || outputFilePath.endsWith(".avi", Qt::CaseInsensitive)                         \
@@ -1065,24 +1082,24 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset) {
                 ||  (currentVideoFile.endsWith("wav", Qt::CaseInsensitive))             \
                 ||  (currentVideoFile.endsWith("flac", Qt::CaseInsensitive)) )) {
                 // ...Combine both recorded and playback videos
-                videorama = QString("[1:v]trim=%1ms,setpts=PTS-STARTPTS,scale=%2[webcam]; \
+                videorama = QString("[1:v]%1,setpts=PTS-STARTPTS,scale=%2[webcam]; \
                                     [2:v]scale=%2[video]; \
                                     [video][webcam]vstack[videorama];")
-                                    .arg(videoOffset)
+                                    .arg(offsetFilter)
                                     .arg(setRez);
                                     
             } else { // output is VIDEO but input playback is AUDIO only
                 QStringList partsRez = setRez.split("x");
                 QString fullRez = QString("%1x%2").arg(partsRez[0].toInt()).arg(partsRez[1].toInt() * 2);
                 // No video on playback, work only with webcam recorded video
-                videorama = QString("[1:v]trim=%1ms,setpts=PTS-STARTPTS, \
+                videorama = QString("[1:v]%1,setpts=PTS-STARTPTS, \
                                     scale=%2,tpad=stop_mode=clone:stop_duration=%3[videorama];")
-                                    .arg(videoOffset)
+                                    .arg(offsetFilter)
                                     .arg(fullRez)
                                     .arg(stopDuration);
             }
 
-    QString offsetFilter;
+    //QString offsetFilter;
     if (manualOffset < 0) {
         // Handle negative offset with adelay
         offsetFilter = QString("adelay=%1|%1").arg(-manualOffset);

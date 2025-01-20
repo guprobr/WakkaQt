@@ -1419,6 +1419,12 @@ bool MainWindow::eventFilter(QObject *object, QEvent *event) {
                         player->setAudioOutput(audioOutput.data()); // now gimme back my sound mon
 #endif
 #endif
+                        if ( !( (currentVideoFile.endsWith("mp3", Qt::CaseInsensitive))             \
+                        ||  (currentVideoFile.endsWith("wav", Qt::CaseInsensitive))             \
+                        ||  (currentVideoFile.endsWith("flac", Qt::CaseInsensitive)) )) {
+                            placeholderLabel->hide();
+                            videoWidget->show();
+                        }
                         vizPlayer->play();
 
                         return true;  // Event handled

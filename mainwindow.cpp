@@ -1062,88 +1062,99 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset) {
 
     QFileInfo outfileInfo(outputFilePath);
     QFileInfo videofileInfo(currentVideoFile);
+    
     QString videorama = "";
-
     QString offsetFilter;
+
     if (manualOffset < 0) {
-        // Handle negative offset with adelay
         offsetFilter = QString("delay=%1|%1").arg(-manualOffset);
     } else {
-        // Handle positive offset with atrim
-        offsetFilter = QString("trim=%1ms").arg(manualOffset);
+        offsetFilter = QString("trim=%1ms").arg(manualOffset); //trim needs start and end
     }
 
-            // if OUTPUT is video and playback song is not AUDIO only...
-        if ((outputFilePath.endsWith(".mp4", Qt::CaseInsensitive)                       \
-        || outputFilePath.endsWith(".avi", Qt::CaseInsensitive)                         \
-        || outputFilePath.endsWith(".mkv", Qt::CaseInsensitive)                         \
-        || outputFilePath.endsWith(".webm", Qt::CaseInsensitive) )) 
-            if ( !( (currentVideoFile.endsWith("mp3", Qt::CaseInsensitive))             \
-                ||  (currentVideoFile.endsWith("wav", Qt::CaseInsensitive))             \
-                ||  (currentVideoFile.endsWith("flac", Qt::CaseInsensitive)) )) {
-                // ...Combine both recorded and playback videos
-                videorama = QString("[1:v]%1,setpts=PTS-STARTPTS,scale=%2[webcam]; \
-                                    [2:v]scale=%2[video]; \
-                                    [video][webcam]vstack[videorama];")
-                                    .arg(offsetFilter)
-                                    .arg(setRez);
-                                    
-            } else { // output is VIDEO but input playback is AUDIO only
-                QStringList partsRez = setRez.split("x");
-                QString fullRez = QString("%1x%2").arg(partsRez[0].toInt()).arg(partsRez[1].toInt() * 2);
-                // No video on playback, work only with webcam recorded video
-                videorama = QString("[1:v]%1,setpts=PTS-STARTPTS, \
-                                    scale=%2,tpad=stop_mode=clone:stop_duration=%3[videorama];")
-                                    .arg(offsetFilter)
-                                    .arg(fullRez)
-                                    .arg(stopDuration);
-            }
+    // Get input durations using ffprobe
+    double videoDuration = getMediaDuration(currentVideoFile);
+    double webcamDuration = getMediaDuration(webcamRecorded);
+    double audioDuration = getMediaDuration(tunedRecorded);
 
-    //QString offsetFilter;
+    // Determine the longest duration to use for padding
+    double maxDuration = std::max({videoDuration, webcamDuration, audioDuration});
+    double webcamPadding = maxDuration - webcamDuration;
+    double videoPadding = maxDuration - videoDuration;
+
+    // Construct filters (Correct Order of Filters)
+    QString webcamScale = QString("scale=s=%1").arg(setRez);
+    QString videoScale = "";
+
+    // Calculate Picture-in-Picture size (25% of the main video)
+    QStringList mainResParts = setRez.split("x");
+    int pipWidth = mainResParts[0].toInt() / 4;  // 25% width
+    int pipHeight = mainResParts[1].toInt() / 4; // 25% height
+    QString pipSize = QString("%1x%2").arg(pipWidth).arg(pipHeight);
+    videoScale = QString("scale=s=%1").arg(pipSize);
+
+    QString webcamFilter = QString("[1:v]%1,setpts=PTS-STARTPTS,").arg(offsetFilter);
+    webcamFilter += webcamScale;
+    if (webcamPadding > 0) {
+        webcamFilter += QString(",pad=width=%1:height=%2:x=(ow-iw)/2:y=(oh-ih)/2:color=black").arg(mainResParts[0]).arg(mainResParts[1]);
+    }
+    webcamFilter += "[webcam];";
+
+    QString videoFilter = videoScale;
+    if (videoPadding > 0) {
+        videoFilter += QString(",pad=width=%1:height=%2:x=(ow-iw)/2:y=(oh-ih)/2:color=black").arg(pipWidth).arg(pipHeight);
+    }
+    videoFilter += "[video];";
+
+    if ((outputFilePath.endsWith(".mp4", Qt::CaseInsensitive) ||
+        outputFilePath.endsWith(".avi", Qt::CaseInsensitive) ||
+        outputFilePath.endsWith(".mkv", Qt::CaseInsensitive) ||
+        outputFilePath.endsWith(".webm", Qt::CaseInsensitive))) {
+
+        if (!(currentVideoFile.endsWith("mp3", Qt::CaseInsensitive) ||
+            currentVideoFile.endsWith("wav", Qt::CaseInsensitive) ||
+            currentVideoFile.endsWith("flac", Qt::CaseInsensitive))) {
+
+            // Combine both recorded and playback videos using overlay (Picture-in-Picture)
+            int x = mainResParts[0].toInt() - pipWidth;   // X position (top right)
+            int y = 0;                                   // Y position (top right)
+
+            videorama = webcamFilter + videoFilter + QString("[webcam][video]overlay=x=%1:y=%2[videorama];").arg(x).arg(y);
+        } else {
+            // Output is VIDEO but input playback is AUDIO only. Create a blank video.
+            QStringList partsRez = setRez.split("x");
+            int width = partsRez[0].toInt();
+            int height = partsRez[1].toInt();
+
+            // Create a black video of the required duration
+            videorama = QString("color=c=black:s=%1:d=%2:r=30[black];[1:v]setpts=PTS-STARTPTS,scale=s=%3[webcam];[black][webcam]overlay=0:0[videorama];").arg(QString::number(width) + "x" + QString::number(height)).arg(maxDuration).arg(setRez);
+        }
+    }
+
     if (manualOffset < 0) {
-        // Handle negative offset with adelay
         offsetFilter = QString("adelay=%1|%1").arg(-manualOffset);
     } else {
-        // Handle positive offset with atrim
-        offsetFilter = QString("atrim=%1ms").arg(manualOffset);
+        offsetFilter = QString("atrim=%1ms").arg(manualOffset); //atrim needs start and end
     }
 
-    arguments << "-y"               // Overwrite output file if it exists
-          << "-i" << tunedRecorded  // tuned audio vocals INPUT file
-          << "-i" << webcamRecorded // recorded camera INPUT file
-          << "-i" << currentVideoFile // playback song INPUT file
-          << "-filter_complex"      // NOW, masterization and vocal enhancement of recorded audio
-          << QString("[0:a]%1,volume=%2,%3[vocals]; \
-                        [2:a][vocals]amix=inputs=2:normalize=0,aresample=async=1[wakkamix];%4" 
-                        )
-                        .arg(offsetFilter)
-                        .arg(vocalVolume)
-                        .arg(_filterTreble)
-                        .arg(videorama);
+    arguments << "-y"
+            << "-i" << tunedRecorded
+            << "-i" << webcamRecorded
+            << "-i" << currentVideoFile
+            << "-filter_complex"
+            << QString("[0:a]%1,volume=%2,%3,asetpts=PTS-STARTPTS[vocals];"
+                        "[2:a][vocals]amix=inputs=2:normalize=0,aresample=async=1[wakkamix];%4")
+                    .arg(offsetFilter)
+                    .arg(vocalVolume)
+                    .arg(_filterTreble)
+                    .arg(videorama)
+            << "-map" << "[wakkamix]";
 
-    if ( !videorama.isEmpty() ) {
-        arguments << "-map" << "[videorama]";    // ensure video mix goes on the pack
-    }
-    // Map audio output
-    arguments  << "-map" << "[wakkamix]"          // ensure audio mix goes on the pack
-                << "-ac" << "2";                 // Force stereo
-
-    // Audio switch per container format to set the best options
-    if (outputFilePath.endsWith(".mp4", Qt::CaseInsensitive)) {
-        // MP4 container: use AAC for audio, with higher bitrate
-        arguments << "-c:a" << "aac" << "-b:a" << "320k";
-    } else if (outputFilePath.endsWith(".mkv", Qt::CaseInsensitive)) {
-        // MKV container: use FLAC for lossless audio
-        arguments << "-c:a" << "flac";
-    } else if (outputFilePath.endsWith(".avi", Qt::CaseInsensitive)) {
-        // AVI container: use PCM for uncompressed audio
-        arguments << "-c:a" << "pcm_s16le";
-    } else if (outputFilePath.endsWith(".webm", Qt::CaseInsensitive)) {
-        // WebM container: use Opus
-        arguments << "-c:a" << "libopus" << "-b:a" << "128k";
+    if (!videorama.isEmpty()) {
+        arguments << "-map" << "[videorama]";
     }
 
-    arguments << outputFilePath;              // OUTPUT!
+    arguments << outputFilePath;
     
     // Connect signals to display output and errors
     connect(process, &QProcess::readyReadStandardOutput, [process, progressLabel, this]() {

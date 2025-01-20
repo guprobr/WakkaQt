@@ -93,6 +93,7 @@ QString AudioAmplifier::checkBufferState() {
         resetAudioComponents();
         rewind();
         start();
+        rewind();
         return "NaN";
     }
 
@@ -103,6 +104,7 @@ QString AudioAmplifier::checkBufferState() {
         resetAudioComponents();
         rewind();
         start();
+        rewind();
         return "NaN";
     }
 

@@ -199,6 +199,7 @@ void PreviewDialog::setAudioFile(const QString &filePath) {
 
                 amplifier->setAudioData(tunedData);
                 amplifier->start();
+                amplifier->rewind(); // as of Qt 6.8.1 we need this to sync vocals with playback to fix a Win11 problem
 
                 // Re-enable controls
                 startButton->setEnabled(true);

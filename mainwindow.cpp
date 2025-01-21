@@ -963,6 +963,9 @@ void MainWindow::handleRecordingError() {
 void MainWindow::renderAgain()
 {
 
+    videoWidget->hide();
+    placeholderLabel->show();
+    
     vizPlayer->stop();
     playbackTimer->stop();
     

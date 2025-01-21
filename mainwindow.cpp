@@ -583,6 +583,9 @@ void MainWindow::updateDeviceLabel(const QString &deviceLabelText) {
 
         isPlayback = false; // disable seeking while decoding/loading new media
 
+        videoWidget->hide();
+        placeholderLabel->show();
+
         vizPlayer->stop();
         playbackTimer->stop();
         

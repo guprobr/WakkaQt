@@ -63,7 +63,7 @@ private:
     QDialog *webcamDialog;
 
     QColor highlightColor;
-    QString setRez = "1920x540"; // its a vstack, same width, half the height
+    QString setRez = "1920x1080"; // its a vstack, same width, half the height
 
     QGraphicsScene *progressScene;
     QGraphicsView *progressView;

@@ -995,8 +995,8 @@ void MainWindow::renderAgain()
             QMessageBox::Yes | QMessageBox::No, 
             QMessageBox::No
         );
-        setRez = (response == QMessageBox::Yes) ? "1920x540" : "640x240";
-        qDebug() << "Will vstack each video with resolution:" << setRez;
+        setRez = (response == QMessageBox::Yes) ? "1920x1080" : "640x480";
+        qDebug() << "Will overlay each video with resolution:" << setRez;
 
         // Show the preview dialog
         previewDialog.reset(new PreviewDialog(audioOffset, this));

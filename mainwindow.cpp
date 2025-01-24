@@ -156,7 +156,7 @@ MainWindow::MainWindow(QWidget *parent)
     durationTextItem->setDefaultTextColor(palette.color(QPalette::Text));
     durationTextItem->setFont(QFont("Courier", 12, QFont::Bold));
     durationTextItem->setPlainText("00:00:00 / 00:00:00");
-    durationTextItem->setY(progressView->height()/2);
+
     progressScene->addItem(durationTextItem);
     progressScene->setSceneRect(0, 0, viewWidth, viewHeight);
 
@@ -1333,38 +1333,47 @@ void MainWindow::updatePlaybackDuration() {
 }
 
 void MainWindow::addProgressSong(QGraphicsScene *scene, qint64 duration) {
-     
     disconnect(player.data(), &QMediaPlayer::positionChanged, this, nullptr);
 
+    // Remove and delete existing progressSongFull
     if (progressSongFull) {
         scene->removeItem(progressSongFull);
         delete progressSongFull;
         progressSongFull = nullptr;
     }
-    // Song progress Bar
-    progressSongFull = new QGraphicsRectItem(0, 0, 640, 20);
+
+    // Centered position for progressSongFull
+    qreal progressBarWidth = 640;
+    qreal progressBarHeight = 10;
+    qreal progressBarX = (this->progressView->width() - progressBarWidth) / 2;
+    qreal progressBarY = (this->progressView->height() - progressBarHeight * 2);
+
+    // Song progress full bar
+    progressSongFull = new QGraphicsRectItem(0, 0, progressBarWidth, progressBarHeight);
     progressSongFull->setToolTip("Click to seek");
     scene->addItem(progressSongFull);
-    progressSongFull->setPos((this->progressView->width() - progressSongFull->boundingRect().width()) / 2, 0);
-    
+    progressSongFull->setPos(progressBarX, progressBarY);
+
+    // Remove and delete existing progressSong
     if (progressSong) {
         scene->removeItem(progressSong);
         delete progressSong;
         progressSong = nullptr;
     }
-    // Song progress Bar
-    progressSong = new QGraphicsRectItem(0, 0, 0, 20);
+
+    // Song progress bar (current progress)
+    progressSong = new QGraphicsRectItem(0, 0, 0, progressBarHeight);
     progressSong->setBrush(QBrush(highlightColor));
     scene->addItem(progressSong);
-    progressSong->setPos((this->progressView->width() - progressSongFull->boundingRect().width()) / 2, 0);
+    progressSong->setPos(progressBarX, progressBarY);
 
     // Update progress bar as media plays
     connect(player.data(), &QMediaPlayer::positionChanged, this, [=](qint64 currentPosition) {
         qreal progress = qreal(currentPosition) / (duration * 1000);
-        progressSong->setRect(0, 0, 640 * progress, 20);
+        progressSong->setRect(0, 0, progressBarWidth * progress, progressBarHeight);
     });
-
 }
+
 
 bool MainWindow::eventFilter(QObject *object, QEvent *event) {
 

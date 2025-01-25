@@ -403,14 +403,15 @@ void MainWindow::configureMediaComponents()
     soundLevelWidget->setInputDevice(selectedDevice);
     
     format->setFileFormat(QMediaFormat::FileFormat::MPEG4);
-    format->setVideoCodec(QMediaFormat::VideoCodec::H264);
+    format->setVideoCodec(QMediaFormat::VideoCodec::MPEG4);
     format->setAudioCodec(QMediaFormat::AudioCodec::AAC);
 
     // Setup Media recorder
     mediaRecorder->setMediaFormat(*format);
     mediaRecorder->setOutputLocation(QUrl::fromLocalFile(webcamRecorded));
-    mediaRecorder->setQuality(QMediaRecorder::VeryLowQuality);
-    //mediaRecorder->setVideoFrameRate(25); 
+    mediaRecorder->setQuality(QMediaRecorder::VeryHighQuality);
+    //mediaRecorder->setVideoFrameRate(30);
+    //mediaRecorder->setVideoBitRate(5000000);
     
     qDebug() << "Configuring mediaCaptureSession..";
     mediaCaptureSession->setVideoOutput(webcamPreviewItem);
@@ -846,8 +847,8 @@ void MainWindow::stopRecording() {
         QFile fileCam(webcamRecorded);
         if (fileAudio.size() > 0 && fileCam.size() > 0 ) {
 
-            QTimer::singleShot(3000, this, [=]() {
-            // Ugly: need to introduce a slight delay before performing operations on the file
+            QTimer::singleShot(6660, this, [=]() {
+            // Ugly: need to introduce a satanic delay before performing operations on the file
             
                 // DETERMINE audioOffset
                 qint64 recDuration = 1000 * getMediaDuration(audioRecorded);
@@ -863,36 +864,38 @@ void MainWindow::stopRecording() {
                 logUI(QString("Calculated Camera Offset: %1 ms").arg(videoOffset));
                 logUI(QString("Calculated Audio Offset: %1 ms").arg(audioOffset));
 
-            });
+                
 
-            QString sourceFilePath = extractedPlayback;
-            QString destinationFilePath = extractedTmpPlayback;
+                QString sourceFilePath = extractedPlayback;
+                QString destinationFilePath = extractedTmpPlayback;
 
-            QFile sourceFile(sourceFilePath);
+                QFile sourceFile(sourceFilePath);
 
-            if (sourceFile.exists()) {
-                // Check if the destination file exists
-                if (QFile::exists(destinationFilePath)) {
-                    // delete the existing file
-                    if (!QFile::remove(destinationFilePath)) {
-                        qWarning() << "Failed to remove existing file:" << destinationFilePath;
-                        return;
+                if (sourceFile.exists()) {
+                    // Check if the destination file exists
+                    if (QFile::exists(destinationFilePath)) {
+                        // delete the existing file
+                        if (!QFile::remove(destinationFilePath)) {
+                            qWarning() << "Failed to remove existing file:" << destinationFilePath;
+                            return;
+                        }
                     }
-                }
 
-                // Attempt to copy the file
-                if (QFile::copy(sourceFilePath, destinationFilePath)) {
-                    qDebug() << "File copied successfully to" << destinationFilePath;
+                    // Attempt to copy the file
+                    if (QFile::copy(sourceFilePath, destinationFilePath)) {
+                        qDebug() << "File copied successfully to" << destinationFilePath;
+                    } else {
+                        qWarning() << "Failed to copy file to" << destinationFilePath;
+                    }
                 } else {
-                    qWarning() << "Failed to copy file to" << destinationFilePath;
+                    qWarning() << "Source file does not exist:" << sourceFilePath;
                 }
-            } else {
-                qWarning() << "Source file does not exist:" << sourceFilePath;
-            }
 
-            qWarning() << "Recording saved successfully";
-            setBanner("Recording saved successfully!");
-            renderAgain();
+                qWarning() << "Recording saved successfully";
+                setBanner("Recording saved successfully!");
+                renderAgain();
+
+            });
 
         } else {
             qWarning() << "*FAILURE* File size is zero.";

@@ -97,7 +97,7 @@ MainWindow::MainWindow(QWidget *parent)
 
         aboutBox.setTextFormat(Qt::RichText);  
         aboutBox.setText(aboutText.arg(Wakka_welcome));  // Insert Wakka_welcome message
-        aboutBox.setFont(QFont("Arial", 10));
+        aboutBox.setFont(QFont("Arial", 11));
 
         // Enable clickable links
         QLabel *label = aboutBox.findChild<QLabel *>("qt_msgbox_label");
@@ -154,7 +154,7 @@ MainWindow::MainWindow(QWidget *parent)
     // Create playback chronometer text item
     durationTextItem = new QGraphicsTextItem;
     durationTextItem->setDefaultTextColor(palette.color(QPalette::Text));
-    durationTextItem->setFont(QFont("Courier", 12, QFont::Bold));
+    durationTextItem->setFont(QFont("Courier", 10, QFont::Bold));
     durationTextItem->setPlainText("00:00:00 / 00:00:00");
 
     progressScene->addItem(durationTextItem);
@@ -162,7 +162,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     banner = new QLabel(Wakka_welcome, this);
     banner->setTextFormat(Qt::TextFormat::RichText);
-    banner->setFont(QFont("Arial", 11, QFont::Bold));
+    banner->setFont(QFont("Arial", 10, QFont::Bold));
     banner->setAlignment(Qt::AlignCenter);
     banner->setToolTip("Here be the song title!");
     setBanner(Wakka_welcome);
@@ -172,8 +172,8 @@ MainWindow::MainWindow(QWidget *parent)
     chooseVideoButton = new QPushButton("Load playback from disk", this);
     chooseVideoButton->setToolTip("Load media files from disk");
     singButton = new QPushButton("♪ SING ♪", this);
-    singButton->setFont(QFont("Arial", 21));
-    singButton->setToolTip("Start/Stop recording after loaded playback");
+    singButton->setFont(QFont("Arial", 15));
+    singButton->setToolTip("Start/Stop recording");
     chooseInputButton = new QPushButton("Choose Input Devices", this);
     renderAgainButton = new QPushButton("RENDER AGAIN", this);
     renderAgainButton->setToolTip("Repeat render and adjustments without singing again");
@@ -188,7 +188,7 @@ MainWindow::MainWindow(QWidget *parent)
     previewCheckbox->setToolTip("Toggle camera preview");
     vizCheckbox = new QCheckBox("Audio Visualizer");
     vizCheckbox->setFont(QFont("Arial", 8));
-    vizCheckbox->setToolTip("Freeze Audio Visualizer");
+    vizCheckbox->setToolTip("Toggle Audio Visualizer");
     vizCheckbox->setChecked(true);
     
     QHBoxLayout *indicatorLayout = new QHBoxLayout();
@@ -200,14 +200,14 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Instantiate SndWidget
     soundLevelWidget = new SndWidget(this);
-    soundLevelWidget->setMinimumSize(640, 25);
-    soundLevelWidget->setMaximumHeight(32);
-    soundLevelWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    soundLevelWidget->setMinimumSize(640, 64);
+    //soundLevelWidget->setMaximumHeight(128);
+    soundLevelWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::MinimumExpanding);
     soundLevelWidget->setToolTip("Sound input visualization widget");
 
     // Device label
     deviceLabel = new QLabel("Selected Device: None", this);
-    deviceLabel->setFont(QFont("Arial", 9));
+    deviceLabel->setFont(QFont("Arial", 8));
     deviceLabel->setToolTip("Changing the default source input in the system cfg will not reflect the information here");
     
     // YT downloader
@@ -216,10 +216,10 @@ MainWindow::MainWindow(QWidget *parent)
     urlInput->setFont(QFont("Arial", 10));
     urlInput->setToolTip("Paste a URL here and fetch your karaoke media");
     fetchButton = new QPushButton("FETCH", this);
-    fetchButton->setFont(QFont("Arial", 12));
+    fetchButton->setFont(QFont("Arial", 10));
     fetchButton->setToolTip("Click here and download URL to disk");
     downloadStatusLabel = new QLabel("Download media", this);
-    downloadStatusLabel->setFont(QFont("Arial", 8));
+    downloadStatusLabel->setFont(QFont("Arial", 7));
     downloadStatusLabel->setToolTip("Several URL besides YouTube will work");
     QHBoxLayout *fetchLayout = new QHBoxLayout;
     fetchLayout->addWidget(urlInput);
@@ -230,9 +230,9 @@ MainWindow::MainWindow(QWidget *parent)
     logTextEdit = new QTextEdit(this);
     logTextEdit->setReadOnly(true);
     logUI(Wakka_welcome);
-    logTextEdit->setMinimumHeight(50);
+    logTextEdit->setMinimumHeight(25);
     logTextEdit->setMaximumHeight(90);
-    logTextEdit->setFont(QFont("Arial", 10));
+    logTextEdit->setFont(QFont("Arial", 8));
     logTextEdit->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     // Move cursor to the end of the text when text is appended
     connect(logTextEdit, &QTextEdit::textChanged, this, [=]() {
@@ -261,7 +261,7 @@ MainWindow::MainWindow(QWidget *parent)
     layout->addWidget(banner);
     layout->addLayout(vizLayout);
     layout->addWidget(progressView);
-    layout->addWidget(soundLevelWidget);
+    layout->addWidget(soundLevelWidget, 1);
     layout->addWidget(placeholderLabel);  
     layout->addWidget(videoWidget);       
     layout->addWidget(singButton);

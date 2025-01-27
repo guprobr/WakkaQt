@@ -201,7 +201,7 @@ MainWindow::MainWindow(QWidget *parent)
     // Instantiate SndWidget
     soundLevelWidget = new SndWidget(this);
     soundLevelWidget->setMinimumSize(640, 64);
-    //soundLevelWidget->setMaximumHeight(128);
+    soundLevelWidget->setMaximumHeight(84);
     soundLevelWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::MinimumExpanding);
     soundLevelWidget->setToolTip("Sound input visualization widget");
 

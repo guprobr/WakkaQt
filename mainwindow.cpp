@@ -662,7 +662,8 @@ void MainWindow::chooseVideo()
 
 void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status) {
 
-    if ( QMediaPlayer::MediaStatus::LoadedMedia == status && !isPlayback ) {
+    if ( QMediaPlayer::MediaStatus::LoadingMedia == status || \
+        ( QMediaPlayer::MediaStatus::LoadedMedia == status && !isPlayback ) ) {
 
         setBanner(currentVideoName); // video loaded, set title
         banner->setToolTip(currentVideoName);

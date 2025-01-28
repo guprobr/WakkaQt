@@ -810,7 +810,7 @@ void MainWindow::stopRecording() {
             QMessageBox::critical(this, "ERROR.", "Tried to stop Recording, but we are not recording. ERROR.");
             return;
         }
-        setBanner(".. .FINALIZING VIDEO.. .");
+        setBanner(".. .Finishing VIDEO.. .");
         isRecording = false;
         disconnect(player.data(), &QMediaPlayer::positionChanged, this, &MainWindow::onPlayerPositionChanged);
 
@@ -855,7 +855,7 @@ void MainWindow::stopRecording() {
             
                 // DETERMINE audioOffset
                 qint64 recDuration = 1000 * getMediaDuration(audioRecorded);
-                audioOffset = offset + recDuration - pos;
+                audioOffset = offset + recDuration - (pos - offset);
                 // DETERMINE videoOffset
                 recDuration = 1000 * getMediaDuration(webcamRecorded);
                 videoOffset = offset + recDuration - pos;

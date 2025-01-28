@@ -712,7 +712,7 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
 
 void MainWindow::onPlayerPositionChanged(qint64 position) {
     if ( isRecording ) {
-        pos = position - offset;
+        pos = position;
         sysLatency.restart();
     }
 }
@@ -810,7 +810,7 @@ void MainWindow::stopRecording() {
             QMessageBox::critical(this, "ERROR.", "Tried to stop Recording, but we are not recording. ERROR.");
             return;
         }
-        setBanner(".. .ENHANCING VOCALS.. .");
+        setBanner(".. .FINALIZING VIDEO.. .");
         isRecording = false;
         disconnect(player.data(), &QMediaPlayer::positionChanged, this, &MainWindow::onPlayerPositionChanged);
 
@@ -837,7 +837,9 @@ void MainWindow::stopRecording() {
         logUI("Recording Stopped");
 
         singButton->setText("♪ SING ♪");
+        singButton->setEnabled(false);
         singAction->setText("SING");
+        singAction->setEnabled(false);
         vizCheckbox->setEnabled(true);
         progressSongFull->setToolTip("Nothing to seek");
         
@@ -1076,10 +1078,10 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset) {
     QString videorama = "";
     QString offsetFilter;
 
-    if (manualOffset < 0) {
-        offsetFilter = QString("delay=%1|%1").arg(-manualOffset);
+    if (videoOffset < 0) {
+        offsetFilter = QString("delay=%1|%1").arg(-videoOffset);
     } else {
-        offsetFilter = QString("trim=%1ms").arg(manualOffset); //trim needs start and end
+        offsetFilter = QString("trim=%1ms").arg(videoOffset);
     }
 
     // Get input durations using ffprobe

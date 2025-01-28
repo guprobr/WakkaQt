@@ -855,7 +855,7 @@ void MainWindow::stopRecording() {
             
                 // DETERMINE audioOffset
                 qint64 recDuration = 1000 * getMediaDuration(audioRecorded);
-                audioOffset = offset + recDuration - (pos - offset);
+                audioOffset = offset + recDuration - pos;
                 // DETERMINE videoOffset
                 recDuration = 1000 * getMediaDuration(webcamRecorded);
                 videoOffset = offset + recDuration - pos;
@@ -1011,7 +1011,7 @@ void MainWindow::renderAgain()
         qDebug() << "Will overlay each video with resolution:" << setRez;
 
         // Show the preview dialog
-        previewDialog.reset(new PreviewDialog(audioOffset, this));
+        previewDialog.reset(new PreviewDialog(audioOffset, offset, this));
         previewDialog->setAudioFile(audioRecorded);
         if (previewDialog->exec() == QDialog::Accepted)
         {

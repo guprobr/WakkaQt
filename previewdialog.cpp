@@ -12,8 +12,8 @@
 #include <QTimer>
 #include <QString>
 
-PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
-    : QDialog(parent), audioOffset(offset), amplifier(nullptr), volume(1.0), pendingVolumeValue(100) {
+PreviewDialog::PreviewDialog(qint64 offset, qint64 sysLatency, QWidget *parent)
+    : QDialog(parent), audioOffset(offset), newOffset(sysLatency), amplifier(nullptr), volume(1.0), pendingVolumeValue(100) {
     setWindowTitle("Audio Preview with Amplification");
 
     // Setup UI
@@ -198,6 +198,9 @@ void PreviewDialog::setAudioFile(const QString &filePath) {
                 audioFile.close();
 
                 amplifier->setAudioData(tunedData);
+                if (amplifier) {
+                    amplifier->setAudioOffset(newOffset);
+                }
                 amplifier->start();
                 amplifier->rewind(); // as of Qt 6.8.1 we need this to sync vocals with playback to fix a Win11 problem
 

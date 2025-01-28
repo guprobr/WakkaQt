@@ -22,7 +22,7 @@ class PreviewDialog : public QDialog {
     Q_OBJECT
 
 public:
-    explicit PreviewDialog(qint64 offset, QWidget *parent = nullptr);
+    explicit PreviewDialog(qint64 offset, qint64 sysLatency, QWidget *parent = nullptr);
     ~PreviewDialog();
 
     void setAudioFile(const QString &filePath);

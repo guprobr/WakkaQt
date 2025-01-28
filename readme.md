@@ -4,6 +4,7 @@
 - Help requested: for MacOS tests. 
 
 **Windows x86_64 zip bundle available at the end of this readme**, please follow instructions (mostly unpack, then run WakkaQt.exe)
+On Windows 11 you *must* [disable Audio Enhancements on your microphone](https://support.microsoft.com/en-us/topic/disable-audio-enhancements-0ec686c4-8d79-4588-b7e7-9287dd296f72#:~:text=To%20disable%20audio%20enhancements%3A,Device%20Properties%20%3EAdditional%20device%20properties), because it messes the Qt6 recording process.
 
 # WakkaQt - Karaoke App
 

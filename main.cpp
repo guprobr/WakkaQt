@@ -69,8 +69,11 @@ int main(int argc, char *argv[]) {
 #endif
 
 #ifdef Q_OS_WIN
-    // do not use FFmpeg backend on windows
+    // do not use FFmpeg backend on windows, we can force windowsmedia
     qputenv("QT_MEDIA_BACKEND", "windows");
+#else
+    // "wayland" has issues with Ubuntu 24.04  and below, we can force xcb
+    qputenv("QT_QPA_PLATFORM", "xcb");
 #endif
 
     QApplication WakkaQt(argc, argv);

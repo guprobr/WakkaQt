@@ -44,7 +44,7 @@ To build and run this application, ensure you have the following:
    
     - Qt6: Install via your system package manager or the official [Qt website](https://www.qt.io/).
     - FFmpeg: Install from [FFmpeg website](https://ffmpeg.org/) or via your system package manager.
-    - yt-dlp: Install from [yt-dlp GitHub page](https://github.com/yt-dlp/yt-dlp).
+    - yt-dlp: Install from [yt-dlp GitHub page](https://github.com/yt-dlp/yt-dlp). *for Ubuntu 24.04 and below you must get a latest version from Github*
     - libfftw3: for our own custom VocalEnhancer class
 
 # Ubuntu/Debian

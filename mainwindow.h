@@ -33,6 +33,46 @@
 #include <QAudioSink>
 #include <QBuffer>
 
+#include <QCoreApplication>
+#include <QMenu>
+#include <QMenuBar>
+#include <QIcon>
+#include <QFileInfo>
+#include <QList>
+#include <QListWidget>
+#include <QListWidgetItem>
+#include <QRegularExpression>
+#include <QStringList>
+#include <QProcess>
+#include <QTime>
+#include <QTimer>
+
+#include <QVBoxLayout>
+#include <QWidget>
+#include <QPushButton>
+#include <QLabel>
+#include <QFileDialog>
+#include <QInputDialog>
+#include <QCheckBox>
+
+#include <QMediaDevices>
+#include <QMediaPlayer>
+#include <QMediaRecorder>
+#include <QMediaCaptureSession>
+
+#include <QAudioFormat>
+#include <QAudioOutput>
+#include <QAudioInput>
+
+#include <QVideoWidget>
+#include <QVideoFrame>
+#include <QVideoSink>
+#include <QGraphicsScene>
+#include <QGraphicsView>
+#include <QGraphicsSceneMouseEvent>
+
+#include <QDebug>
+
 class MainWindow : public QMainWindow
 {
     Q_OBJECT

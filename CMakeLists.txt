@@ -51,6 +51,10 @@ message(STATUS "Resources added: ${resources}")
 add_executable(${PROJECT_NAME}
     main.cpp
     mainwindow.cpp
+    mainwindowDevicesMgr.cpp
+    mainwindowPlaybackMgr.cpp
+    mainwindowRecorderMgr.cpp
+    mainwindowRenderMgr.cpp
     complexes.cpp
     sndwidget.cpp
     previewdialog.cpp

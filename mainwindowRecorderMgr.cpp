@@ -259,10 +259,13 @@ void MainWindow::waitForFileFinalization(const QString &filePath, std::function<
 
     connect(timer, &QTimer::timeout, this, [this, filePath, timer, callback, attempts, fileIsValid]() mutable {
         
+        attempts++;
+
         if (attempts > 30) {
-            qWarning() << "Timeout reached. File did not finalize properly.";
+            qWarning() << "Timeout reached. After " << attempts << "  check attempts it did not finalize properly.";
             timer->stop();
             timer->deleteLater();
+            QMessageBox::critical(this, "Recorder Error", "Timeout reached. Video did not finalize properly.");
             return;
         }
 
@@ -289,12 +292,12 @@ void MainWindow::waitForFileFinalization(const QString &filePath, std::function<
             fileIsValid = true;
             timer->stop();
             timer->deleteLater();
-            callback();  // Proceed with your logic
+            callback();  // Proceed with render logic
         } else {
             qDebug() << "File is not finalized yet or invalid MP4.";
         }
     });
 
-    timer->start(1000); // Check every 1000ms (1 second)
-    attempts++;
+    timer->start(1000); // Check every second
+   
 }

@@ -77,7 +77,6 @@ private slots:
     void onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status);
     void onPlayerPositionChanged(qint64 position);
     void handleRecorderError(QMediaRecorder::Error error);
-    void waitForFileFinalization(const QString &filePath, std::function<void()> callback);
     void onPreviewCheckboxToggled(bool checked);
     void onVizCheckboxToggled(bool enable);
 
@@ -169,6 +168,7 @@ private:
 
     void startRecording();
     void stopRecording();
+    void waitForFileFinalization(const QString &filePath, std::function<void()> callback);
     void handleRecordingError();
 
     void fetchVideo();

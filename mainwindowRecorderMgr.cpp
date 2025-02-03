@@ -133,8 +133,9 @@ void MainWindow::stopRecording() {
         QFile fileCam(webcamRecorded);
         if (fileAudio.size() > 0 && fileCam.size() > 0 ) {
 
-            QTimer::singleShot(6660, this, [=]() {
-            // Ugly: need to introduce a satanic delay before performing operations on the file
+            waitForFileFinalization(webcamRecorded, [this]() {
+                // Now video is ready, proceed safely
+                qWarning() << "VIDEO is ready. Proceeding...";
             
                 // DETERMINE audioOffset
                 qint64 recDuration = 1000 * getMediaDuration(audioRecorded);
@@ -249,4 +250,51 @@ void MainWindow::handleRecordingError() {
     chooseInputAction->setEnabled(true);
     vizCheckbox->setEnabled(true);
 
+}
+
+void MainWindow::waitForFileFinalization(const QString &filePath, std::function<void()> callback) {
+    QTimer *timer = new QTimer(this);
+    int attempts = 0;
+    bool fileIsValid = false;
+
+    connect(timer, &QTimer::timeout, this, [this, filePath, timer, callback, attempts, fileIsValid]() mutable {
+        
+        if (attempts > 30) {
+            qWarning() << "Timeout reached. File did not finalize properly.";
+            timer->stop();
+            timer->deleteLater();
+            return;
+        }
+
+        // Probe with ffprobe to check if the file is a valid MP4
+        QString command = "ffprobe";
+        QStringList arguments;
+        arguments << "-v" << "error"
+                  << "-select_streams" << "v:0"
+                  << "-show_entries" << "stream=codec_type"
+                  << "-of" << "default=noprint_wrappers=1:nokey=1"
+                  << filePath;
+
+        QProcess *process = new QProcess(this);
+        process->start(command, arguments);
+
+        process->waitForFinished();
+
+        QByteArray output = process->readAllStandardOutput();
+        process->deleteLater();
+
+        // If ffprobe output indicates the file is a valid video stream
+        if (!output.isEmpty() && output.trimmed() == "video") {
+            qDebug() << "File is a valid MP4 video.";
+            fileIsValid = true;
+            timer->stop();
+            timer->deleteLater();
+            callback();  // Proceed with your logic
+        } else {
+            qDebug() << "File is not finalized yet or invalid MP4.";
+        }
+    });
+
+    timer->start(1000); // Check every 1000ms (1 second)
+    attempts++;
 }

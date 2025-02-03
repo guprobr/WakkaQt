@@ -180,7 +180,7 @@ void MainWindow::fetchVideo() {
     downloadStatusLabel->setText("Getting file name...");
     QProcess *filenameProcess = new QProcess(this);
 
-    QString outputTemplate = directory + "/%(title)s.%(ext)s";
+    QString outputTemplate = directory + "/%(title)s.%(ext)s";  // Using title for filename
     QStringList filenameArgs;
     filenameArgs << "--print" << "filename"
                  << "--output" << outputTemplate
@@ -188,13 +188,24 @@ void MainWindow::fetchVideo() {
 
     this->downloadedVideoPath.clear();
 
-    connect(filenameProcess, &QProcess::readyReadStandardOutput, this, [this, filenameProcess]() {
+    connect(filenameProcess, &QProcess::readyReadStandardOutput, this, [this, directory, filenameProcess]() {
         QByteArray outputData = filenameProcess->readAllStandardOutput();
         QString output = QString::fromUtf8(outputData).trimmed();
         if (!output.isEmpty()) {
-            this->downloadedVideoPath = output;
+            // Get the base filename and extension
+            QFileInfo fileInfo(output);
+            QString baseName = fileInfo.completeBaseName();  // Get the title part
+            QString extension = fileInfo.suffix();  // Get the extension
+
+            // Sanitize the title part only (baseName)
+            QRegularExpression regex("[^a-zA-Z0-9_\\-\\.\\ ]");  // Allow alphanumeric, space, hyphen, dot, and underscore
+            baseName.replace(regex, "_");  // Replace invalid characters with underscore
+
+            // Rebuild the complete file path with the sanitized base name and the original extension
+            this->downloadedVideoPath = directory + "/" + baseName + "." + extension;
+
             qDebug() << "Predicted filename:" << this->downloadedVideoPath;
-            logUI("yt-dlp predicted filename: " + output);
+            logUI("yt-dlp predicted filename: " + this->downloadedVideoPath);
         }
     });
 
@@ -212,7 +223,7 @@ void MainWindow::fetchVideo() {
         QProcess *downloadProcess = new QProcess(this);
 
         QStringList downloadArgs;
-        downloadArgs << "--output" << (directory + "/%(title)s.%(ext)s")
+        downloadArgs << "--output" << this->downloadedVideoPath  // Use sanitized filename here
                      << url;
 
         connect(downloadProcess, &QProcess::finished, this, [this, downloadProcess, lastPos]() {
@@ -243,12 +254,6 @@ void MainWindow::fetchVideo() {
                 if (isPlayback)
                     QTimer::singleShot(500, this, [this, lastPos]() {
                         vizPlayer->seek(lastPos, true);
-                        #if QT_VERSION < QT_VERSION_CHECK(6, 6, 2)
-                        #ifdef __linux__
-                                player->setAudioOutput(nullptr);
-                                player->setAudioOutput(audioOutput.data());
-                        #endif
-                        #endif
                         if (!(currentPlayback.endsWith("mp3", Qt::CaseInsensitive) ||
                               currentPlayback.endsWith("wav", Qt::CaseInsensitive) ||
                               currentPlayback.endsWith("flac", Qt::CaseInsensitive))) {

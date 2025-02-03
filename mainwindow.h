@@ -130,7 +130,9 @@ private:
     QString currentPlayback;
     QString currentVideoFile;
     QString currentVideoName;
-    QString outputFilePath; 
+    QString outputFilePath;
+
+    QString downloadedVideoPath; 
 
     SndWidget *soundLevelWidget;
 

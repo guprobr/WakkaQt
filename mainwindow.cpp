@@ -1440,9 +1440,9 @@ bool MainWindow::eventFilter(QObject *object, QEvent *event) {
                         player->setAudioOutput(audioOutput.data()); // now gimme back my sound mon
 #endif
 #endif
-                        if ( !( (currentVideoFile.endsWith("mp3", Qt::CaseInsensitive))             \
-                        ||  (currentVideoFile.endsWith("wav", Qt::CaseInsensitive))             \
-                        ||  (currentVideoFile.endsWith("flac", Qt::CaseInsensitive)) )) {
+                        if ( !( (currentPlayback.endsWith("mp3", Qt::CaseInsensitive))             \
+                        ||  (currentPlayback.endsWith("wav", Qt::CaseInsensitive))             \
+                        ||  (currentPlayback.endsWith("flac", Qt::CaseInsensitive)) )) {
                             placeholderLabel->hide();
                             videoWidget->show();
                         }
@@ -1467,112 +1467,134 @@ void MainWindow::fetchVideo() {
     }
 
     qint64 lastPos = player->position();
-    vizPlayer->stop(); // stop to prevent "Unexpected FFmpeg behaviour"
+    vizPlayer->stop();
     videoWidget->hide();
     placeholderLabel->show();
 
     QString directory = QFileDialog::getExistingDirectory(this, "Choose Directory to Save Video");
     if (directory.isEmpty()) {
-        if ( isPlayback )
+        if (isPlayback)
             QTimer::singleShot(500, this, [this, lastPos]() {
                 vizPlayer->seek(lastPos, true);
                 #if QT_VERSION < QT_VERSION_CHECK(6, 6, 2)
                 #ifdef __linux__
-                        player->setAudioOutput(nullptr); // first, detach the audio output 
-                        player->setAudioOutput(audioOutput.data()); // now gimme back my sound mon
+                        player->setAudioOutput(nullptr);
+                        player->setAudioOutput(audioOutput.data());
                 #endif
                 #endif
-                if ( !( (currentVideoFile.endsWith("mp3", Qt::CaseInsensitive))             \
-                ||  (currentVideoFile.endsWith("wav", Qt::CaseInsensitive))             \
-                ||  (currentVideoFile.endsWith("flac", Qt::CaseInsensitive)) )) {
+                if (!(currentPlayback.endsWith("mp3", Qt::CaseInsensitive) ||
+                      currentPlayback.endsWith("wav", Qt::CaseInsensitive) ||
+                      currentPlayback.endsWith("flac", Qt::CaseInsensitive))) {
                     placeholderLabel->hide();
                     videoWidget->show();
                 }
                 vizPlayer->play();
-            }); // resume play
+            });
 
         return;
     }
 
     fetchButton->setEnabled(false);
-    downloadStatusLabel->setText("Downloading...");
-    QProcess *process = new QProcess(this);
-    
-    // Prepare the command for yt-dlp
-    QStringList arguments;
-    arguments << "--output" << (directory + "/%(title)s.%(ext)s")
-              << url;
+    downloadStatusLabel->setText("Getting file name...");
+    QProcess *filenameProcess = new QProcess(this);
 
-    connect(process, &QProcess::finished, [this, directory, process, lastPos]() {
-        downloadStatusLabel->setText("Download complete.");
-        process->deleteLater();
+    QString outputTemplate = directory + "/%(title)s.%(ext)s";
+    QStringList filenameArgs;
+    filenameArgs << "--print" << "filename"
+                 << "--output" << outputTemplate
+                 << url;
 
-        // Open the choose video dialog in the directory chosen to save video
-        QString fetchVideoPath = QFileDialog::getOpenFileName(this, "Choose the downloaded playback or any another", directory, "Videos (*.mp4 *.mkv *.webm *.avi)");
-        if (!fetchVideoPath.isEmpty()) {
+    this->downloadedVideoPath.clear();
 
-            resetMediaComponents(false);
-
-            placeholderLabel->hide();
-            videoWidget->show();
-            
-            currentVideoFile = fetchVideoPath;  // Store the video playback file path
-            if ( player && vizPlayer ) {
-                vizPlayer->stop();
-                videoWidget->hide();
-                placeholderLabel->show();
-                playbackTimer->stop();
-                
-                playVideo(currentVideoFile);     
-
-                downloadStatusLabel->setText("Download YouTube URL");
-                singButton->setEnabled(true); 
-                singAction->setEnabled(true);
-                logUI("Previewing playback. Press SING to start recording.");
-                fetchButton->setEnabled(true);
-            }
-            
-        } else {
-            if ( isPlayback )
-                QTimer::singleShot(500, this, [this, lastPos]() {
-                    vizPlayer->seek(lastPos, true);
-                    #if QT_VERSION < QT_VERSION_CHECK(6, 6, 2)
-                    #ifdef __linux__
-                            player->setAudioOutput(nullptr); // first, detach the audio output 
-                            player->setAudioOutput(audioOutput.data()); // now gimme back my sound mon
-                    #endif
-                    #endif
-                    placeholderLabel->hide();
-                    videoWidget->show();
-                    vizPlayer->play();
-                    fetchButton->setEnabled(true);
-                }); // resume play
-        }
-    });
-
-    // Connect signals to handle standard output
-    connect(process, &QProcess::readyReadStandardOutput, [this, process]() {
-        QByteArray outputData = process->readAllStandardOutput();
-        QString output = QString::fromUtf8(outputData).trimmed();  // Convert to QString
+    connect(filenameProcess, &QProcess::readyReadStandardOutput, this, [this, filenameProcess]() {
+        QByteArray outputData = filenameProcess->readAllStandardOutput();
+        QString output = QString::fromUtf8(outputData).trimmed();
         if (!output.isEmpty()) {
-            qDebug() << "yt-dlp:" << output;
-            logUI("yt-dlp: " + output);
+            this->downloadedVideoPath = output;
+            qDebug() << "Predicted filename:" << this->downloadedVideoPath;
+            logUI("yt-dlp predicted filename: " + output);
         }
     });
 
-    // Connect signals to handle standard error
-    connect(process, &QProcess::readyReadStandardError, [this, process]() {
-        QByteArray errorData = process->readAllStandardError();
-        QString error = QString::fromUtf8(errorData).trimmed();  // Convert to QString
-        if (!error.isEmpty()) {
-            qDebug() << "yt-dlp Error:" << error;
-            logUI("yt-dlp: " + error);
+    connect(filenameProcess, &QProcess::finished, this, [this, filenameProcess, directory, url, lastPos]() {
+        filenameProcess->deleteLater();
+
+        if (this->downloadedVideoPath.isEmpty()) {
+            downloadStatusLabel->setText("Failed to get filename.");
+            fetchButton->setEnabled(true);
+            return;
         }
+
+        // Now that we have the filename, start the actual download
+        downloadStatusLabel->setText("Downloading...");
+        QProcess *downloadProcess = new QProcess(this);
+
+        QStringList downloadArgs;
+        downloadArgs << "--output" << (directory + "/%(title)s.%(ext)s")
+                     << url;
+
+        connect(downloadProcess, &QProcess::finished, this, [this, downloadProcess, lastPos]() {
+            downloadStatusLabel->setText("Download complete.");
+            downloadProcess->deleteLater();
+
+            if (QFile::exists(this->downloadedVideoPath)) {
+                resetMediaComponents(false);
+                placeholderLabel->hide();
+                videoWidget->show();
+
+                currentVideoFile = this->downloadedVideoPath;
+                if (player && vizPlayer) {
+                    vizPlayer->stop();
+                    videoWidget->hide();
+                    placeholderLabel->show();
+                    playbackTimer->stop();
+
+                    playVideo(currentVideoFile);
+
+                    downloadStatusLabel->setText("Download YouTube URL");
+                    singButton->setEnabled(true);
+                    singAction->setEnabled(true);
+                    logUI("Previewing playback. Press SING to start recording.");
+                    fetchButton->setEnabled(true);
+                }
+            } else {
+                if (isPlayback)
+                    QTimer::singleShot(500, this, [this, lastPos]() {
+                        vizPlayer->seek(lastPos, true);
+                        #if QT_VERSION < QT_VERSION_CHECK(6, 6, 2)
+                        #ifdef __linux__
+                                player->setAudioOutput(nullptr);
+                                player->setAudioOutput(audioOutput.data());
+                        #endif
+                        #endif
+                        if (!(currentPlayback.endsWith("mp3", Qt::CaseInsensitive) ||
+                              currentPlayback.endsWith("wav", Qt::CaseInsensitive) ||
+                              currentPlayback.endsWith("flac", Qt::CaseInsensitive))) {
+                            placeholderLabel->hide();
+                            videoWidget->show();
+                        }
+                        vizPlayer->play();
+                        fetchButton->setEnabled(true);
+                    });
+            }
+        });
+
+        connect(downloadProcess, &QProcess::readyReadStandardError, this, [this, downloadProcess]() {
+            QByteArray errorData = downloadProcess->readAllStandardError();
+            QString error = QString::fromUtf8(errorData).trimmed();
+            if (!error.isEmpty()) {
+                qDebug() << "yt-dlp Error:" << error;
+                logUI("yt-dlp: " + error);
+            }
+        });
+
+        downloadProcess->start("yt-dlp", downloadArgs);
     });
 
-    process->start("yt-dlp", arguments);
-
+    filenameProcess->start("yt-dlp", filenameArgs);
 }
+
+
 
 void MainWindow::onPreviewCheckboxToggled(bool enable) {
 

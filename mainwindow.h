@@ -7,71 +7,57 @@
 #include "audiovisualizerwidget.h"
 #include "previewdialog.h"
 
-#include <QMainWindow>
-#include <QScopedPointer>
-#include <QCloseEvent>
-#include <QElapsedTimer>
-
-#include <QMessageBox>
-#include <QHBoxLayout>
-#include <QFile>
-#include <QFileInfo>
-#include <QLineEdit>
-#include <QTextEdit>
-#include <QProgressBar>
-
+#include <QWidget>
 #include <QVideoWidget>
+#include <QVideoSink>
+#include <QVideoFrame>
+#include <QVBoxLayout>
+#include <QTimer>
+#include <QTime>
+#include <QTextEdit>
+#include <QStringList>
+#include <QScopedPointer>
+#include <QRegularExpression>
+#include <QPushButton>
+#include <QProgressBar>
+#include <QProcess>
+#include <QMessageBox>
+#include <QMenuBar>
+#include <QMenu>
+#include <QMediaRecorder>
+#include <QMediaPlayer>
+#include <QMediaFormat>
+#include <QMediaDevices>
+#include <QMediaCaptureSession>
+#include <QMainWindow>
+#include <QListWidgetItem>
+#include <QListWidget>
+#include <QList>
+#include <QLineEdit>
+#include <QLabel>
+#include <QInputDialog>
+#include <QIcon>
+#include <QHBoxLayout>
 #include <QGraphicsView>
 #include <QGraphicsVideoItem>
-
-#include <QMediaFormat>
-#include <QMediaPlayer>
-#include <QMediaRecorder>
-#include <QMediaCaptureSession>
-#include <QCamera>
-
-#include <QAudioSink>
-#include <QBuffer>
-
-#include <QCoreApplication>
-#include <QMenu>
-#include <QMenuBar>
-#include <QIcon>
+#include <QGraphicsSceneMouseEvent>
+#include <QGraphicsScene>
 #include <QFileInfo>
-#include <QList>
-#include <QListWidget>
-#include <QListWidgetItem>
-#include <QRegularExpression>
-#include <QStringList>
-#include <QProcess>
-#include <QTime>
-#include <QTimer>
-
-#include <QVBoxLayout>
-#include <QWidget>
-#include <QPushButton>
-#include <QLabel>
 #include <QFileDialog>
-#include <QInputDialog>
+#include <QFile>
+#include <QElapsedTimer>
+#include <QCoreApplication>
+#include <QCloseEvent>
 #include <QCheckBox>
-
-#include <QMediaDevices>
-#include <QMediaPlayer>
-#include <QMediaRecorder>
-#include <QMediaCaptureSession>
-
-#include <QAudioFormat>
+#include <QCamera>
+#include <QBuffer>
+#include <QAudioSink>
 #include <QAudioOutput>
 #include <QAudioInput>
-
-#include <QVideoWidget>
-#include <QVideoFrame>
-#include <QVideoSink>
-#include <QGraphicsScene>
-#include <QGraphicsView>
-#include <QGraphicsSceneMouseEvent>
+#include <QAudioFormat>
 
 #include <QDebug>
+
 
 class MainWindow : public QMainWindow
 {

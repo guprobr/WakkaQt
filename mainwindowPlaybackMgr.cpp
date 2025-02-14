@@ -84,7 +84,7 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
 
 void MainWindow::onPlayerPositionChanged(qint64 position) {
     if ( isRecording ) {
-        pos = position;
+        pos = position - offset;
         sysLatency.restart();
     }
 }

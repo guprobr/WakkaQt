@@ -64,19 +64,20 @@ bool isDarkModeEnabled() {
 ///////////////////////////////////////////////
 
 int main(int argc, char *argv[]) {
+
 #ifdef __linux__
-    g_log_set_default_handler(my_log_handler, NULL); // Set our custom log handler
-#endif
-
-#ifdef Q_OS_WIN
-    // do not use FFmpeg backend on windows, we can force windowsmedia
-
-    //since  Qt 6.8.1  there's a bug in recording with windows backend
-    //qputenv("QT_MEDIA_BACKEND", "windows");
-#else
-    // "wayland" has issues with Ubuntu 24.04  and below, we can force xcb
+    // Set our custom log handler
+    g_log_set_default_handler(my_log_handler, NULL);
+    
+     // "wayland" has issues with Ubuntu 24.04  and below, we can force xcb
     qputenv("QT_QPA_PLATFORM", "xcb");
 #endif
+
+/* #ifdef Q_OS_WIN
+    // do not use FFmpeg backend on windows, we can force windowsmedia
+    //since  Qt 6.8.1  there's a bug while recording with windows backend
+    qputenv("QT_MEDIA_BACKEND", "windows");
+#endif */
 
     QApplication WakkaQt(argc, argv);
 

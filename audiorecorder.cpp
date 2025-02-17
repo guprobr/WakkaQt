@@ -38,8 +38,7 @@ AudioRecorder::AudioRecorder(QAudioDevice selectedDevice, QObject* parent)
         }
     }
 
-#ifdef WIN32
-    if ( m_audioFormat.sampleFormat() == QAudioFormat::SampleFormat::Float ) // a bug on windows, always returning Float
+if ( m_audioFormat.sampleFormat() == QAudioFormat::SampleFormat::Float ) // a bug since 6.8.2, always returning Float
     {
         // Create a format to give a chance to 24-bit configuration
         QAudioFormat format;
@@ -58,7 +57,6 @@ AudioRecorder::AudioRecorder(QAudioDevice selectedDevice, QObject* parent)
 
         }
     }
-#endif
     
     m_selectedDevice = selectedDevice;
     m_audioSource = new QAudioSource(m_selectedDevice, m_audioFormat, this);

@@ -21,14 +21,14 @@ void MainWindow::renderAgain()
     progressSongFull->setToolTip("Nothing to seek");
     setBanner("Let's preview performance and render!");
     // choose where to save rendered file
-    outputFilePath = QFileDialog::getSaveFileName(this, "Mix destination (default .MP4)", "", "Video or Audio Files (*.mp4 *.mkv *.webm *.avi *.mp3 *.flac *.wav)");
+    outputFilePath = QFileDialog::getSaveFileName(this, "Mix destination (default .MP4)", "", "Video or Audio Files (*.mp4 *.mkv *.webm *.avi *.mp3 *.flac *.wav *.opus)");
     if (!outputFilePath.isEmpty()) {
         // Check if the file path has a valid extension
-        QStringList allowedExtensions = QStringList() << "mp4" << "mkv" << "webm" << "avi" << "mp3" << "flac" << "wav";
+        QStringList allowedExtensions = QStringList() << "mp4" << "mkv" << "webm" << "avi" << "mp3" << "flac" << "wav" << "opus";
         QString selectedExtension = QFileInfo(outputFilePath).suffix().toLower(); 
 
         if (!allowedExtensions.contains(selectedExtension)) {
-            QMessageBox::warning(this, "Invalid File Extension", "Please choose a file with one of the following extensions:\n.mp4, .mkv, .webm, .avi, .mp3, .flac, .wav");
+            QMessageBox::warning(this, "Invalid File Extension", "Please choose a file with one of the following extensions:\n.mp4, .mkv, .webm, .avi, .mp3, .flac, .wav, .opus");
             // Go back to the save destination dialog
             return renderAgain();
         }
@@ -159,6 +159,7 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset) {
 
         if (!(currentVideoFile.endsWith("mp3", Qt::CaseInsensitive) ||
             currentVideoFile.endsWith("wav", Qt::CaseInsensitive) ||
+            currentVideoFile.endsWith("opus", Qt::CaseInsensitive) ||
             currentVideoFile.endsWith("flac", Qt::CaseInsensitive))) {
 
             // Combine both recorded and playback videos using overlay (Picture-in-Picture)

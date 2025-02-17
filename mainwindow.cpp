@@ -376,6 +376,7 @@ bool MainWindow::eventFilter(QObject *object, QEvent *event) {
 #endif
                         if ( !( (currentPlayback.endsWith("mp3", Qt::CaseInsensitive))             \
                         ||  (currentPlayback.endsWith("wav", Qt::CaseInsensitive))             \
+                        ||  (currentPlayback.endsWith("opus", Qt::CaseInsensitive))         \
                         ||  (currentPlayback.endsWith("flac", Qt::CaseInsensitive)) )) {
                             placeholderLabel->hide();
                             videoWidget->show();
@@ -472,6 +473,7 @@ void MainWindow::addVideoDisplayWidgetInDialog() {
         if ( isPlayback ) 
             if ( !( (currentPlayback.endsWith("mp3", Qt::CaseInsensitive))             \
                 ||  (currentPlayback.endsWith("wav", Qt::CaseInsensitive))             \
+                ||  (currentPlayback.endsWith("opus", Qt::CaseInsensitive))             \
                 ||  (currentPlayback.endsWith("flac", Qt::CaseInsensitive)) )) 
                 {
                     placeholderLabel->hide();

@@ -45,6 +45,7 @@ void MainWindow::playVideo(const QString& playbackVideoPath) {
 
         if ( !( (currentPlayback.endsWith("mp3", Qt::CaseInsensitive))             \
                 ||  (currentPlayback.endsWith("wav", Qt::CaseInsensitive))             \
+                ||  (currentPlayback.endsWith("opus", Qt::CaseInsensitive))             \
                 ||  (currentPlayback.endsWith("flac", Qt::CaseInsensitive)) )) {
             placeholderLabel->hide();
             videoWidget->show();
@@ -100,7 +101,7 @@ void MainWindow::chooseVideo()
 
     QFileDialog* fileDialog = new QFileDialog(this);
     fileDialog->setWindowTitle("Open Playback File");
-    fileDialog->setNameFilter("Video or Audio (*.mp4 *.mkv *.webm *.avi *.mov *.mp3 *.wav *.flac)");
+    fileDialog->setNameFilter("Video or Audio (*.mp4 *.mkv *.webm *.avi *.mov *.mp3 *.wav *.flac *.opus)");
     if (fileDialog->exec() == QDialog::Accepted) {
         QString loadVideoFile = fileDialog->selectedFiles().first();
         if (!loadVideoFile.isEmpty()) {
@@ -129,7 +130,8 @@ void MainWindow::chooseVideo()
                 #endif
                 #endif
                 if ( !( (currentPlayback.endsWith("mp3", Qt::CaseInsensitive))             \
-                ||  (currentPlayback.endsWith("wav", Qt::CaseInsensitive))             \
+                ||  (currentPlayback.endsWith("wav", Qt::CaseInsensitive))                  \
+                ||  (currentPlayback.endsWith("opus", Qt::CaseInsensitive))                  \
                 ||  (currentPlayback.endsWith("flac", Qt::CaseInsensitive)) )) {
                     placeholderLabel->hide();
                     videoWidget->show();
@@ -166,6 +168,7 @@ void MainWindow::fetchVideo() {
                 #endif
                 if (!(currentPlayback.endsWith("mp3", Qt::CaseInsensitive) ||
                       currentPlayback.endsWith("wav", Qt::CaseInsensitive) ||
+                      currentPlayback.endsWith("opus", Qt::CaseInsensitive) ||
                       currentPlayback.endsWith("flac", Qt::CaseInsensitive))) {
                     placeholderLabel->hide();
                     videoWidget->show();
@@ -256,6 +259,7 @@ void MainWindow::fetchVideo() {
                         vizPlayer->seek(lastPos, true);
                         if (!(currentPlayback.endsWith("mp3", Qt::CaseInsensitive) ||
                               currentPlayback.endsWith("wav", Qt::CaseInsensitive) ||
+                              currentPlayback.endsWith("opus", Qt::CaseInsensitive) ||
                               currentPlayback.endsWith("flac", Qt::CaseInsensitive))) {
                             placeholderLabel->hide();
                             videoWidget->show();

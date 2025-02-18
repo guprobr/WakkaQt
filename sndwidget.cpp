@@ -83,7 +83,7 @@ void SndWidget::paintEvent(QPaintEvent *event) {
     if (numSamples == 0) return;
 
     // Sensitivity factor to amplify or attenuate the waveform
-    float sensitivity = 2.0f; // Increase or decrease this value (e.g., 1.0f for no change)
+    float sensitivity = 2.5f; // Increase or decrease this value (e.g., 1.0f for no change)
 
     // Draw the waveform
     for (int i = 0; i < width; ++i) {

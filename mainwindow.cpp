@@ -580,7 +580,14 @@ void MainWindow::resizeEvent(QResizeEvent* event) {
 
 void MainWindow::closeEvent(QCloseEvent *event)
 {
-    // Here we would do something before closing window;
-    // Now allow the window to close
-    event->accept(); // Call the base class implementation
+    int response = QMessageBox::question(
+        this, 
+        "The show must go on!", 
+        "Are you really really sure you want to leave?", 
+        QMessageBox::Yes | QMessageBox::No, 
+        QMessageBox::No
+    );
+    if (response == QMessageBox::Yes) // Now allow the window to close
+        event->accept(); // Call the base class implementation
+    else event->ignore(); // Baby come back!
 }

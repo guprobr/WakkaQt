@@ -141,19 +141,6 @@ bool AudioRecorder::isRecording() const
     return m_isRecording;
 }
 
-void AudioRecorder::setSampleRate(int sampleRate)
-{
-    if (m_isRecording) {
-        qWarning() <<  "Cannot change sample rate while recording.";
-        return;
-    }
-
-    m_audioFormat.setSampleRate(sampleRate);
-    if (!m_selectedDevice.isFormatSupported(m_audioFormat)) {
-        qWarning() << "The selected AudioRecorder sample rate is not supported.";
-    }
-}
-
 QString AudioRecorder::sampleFormatToString(QAudioFormat::SampleFormat format) {
     switch (format) {
         case QAudioFormat::Unknown:

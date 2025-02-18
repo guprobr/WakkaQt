@@ -21,14 +21,14 @@ PreviewDialog::PreviewDialog(qint64 offset, qint64 sysLatency, QWidget *parent)
     QHBoxLayout *controls = new QHBoxLayout();
 
     volumeDial = new QDial(this);  // Change from QSlider to QDial
-    volumeDial->setRange(0, 300);   // 0% to 300% amplification
+    volumeDial->setRange(0, 500);   // 0% to 500% amplification
     volumeDial->setValue(100);       // Default 100% volume (no amplification)
     volumeDial->setNotchesVisible(true); // Show notches for better precision
     volumeDial->setToolTip("Adjust the knob to amplify or lower volume level");
     volumeDial->setFixedSize(200, 100);
     
     // Initialize UI elements
-    QLabel *volumeBanner = new QLabel("Vocal Enhancement and Volume Amplification: This is a low-quality preview.\nSometimes it takes a while to encode the 3-pass vocal enhancement.\nPlease be patient. ", this);
+    QLabel *volumeBanner = new QLabel("This is a low-quality preview.\nSometimes it takes a while to encode the 3-pass vocal enhancement.\nPlease be patient. ", this);
     volumeBanner->setToolTip("You can adjust the final volume for the render output.");
     volumeBanner->setFont(QFont("Arial", 11));
     volumeBanner->setWordWrap(true);
@@ -55,8 +55,8 @@ PreviewDialog::PreviewDialog(qint64 offset, qint64 sysLatency, QWidget *parent)
     offsetSlider->setFixedWidth(480);
     offsetSlider->setTracking(false);
     offsetSlider->setSingleStep(50);
-    offsetLabel = new QLabel(QString("Manual Sync Offset: %1 ms").arg(newOffset), this);
-    offsetLabel->setToolTip("Adjust, in milliseconds, playback and vocals sync if required; negative values cause delay while positive values cause to trim.");
+    offsetLabel = new QLabel(QString("Adjust sync offset: %1 ms").arg(newOffset), this);
+    offsetLabel->setToolTip("Adjust (in ms) playback and vocals sync, if required; negative values cause delay while positive values cause to trim.");
 
     progressBar = new QProgressBar(this);
     progressBar->setRange(0, 100);
@@ -64,7 +64,7 @@ PreviewDialog::PreviewDialog(qint64 offset, qint64 sysLatency, QWidget *parent)
     progressBar->setToolTip("VocalEnhancer progress bar");
 
     playbackMute_option = new QCheckBox("Preview vocals only", this);
-    playbackMute_option->setToolTip("Check to mute backing track and hear vocals only");
+    playbackMute_option->setToolTip("Check to mute backing track while previewing");
     playbackMute_option->setChecked(false);
     playbackMute_option->setFont(QFont("Arial", 8));
 

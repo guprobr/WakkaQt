@@ -4,7 +4,7 @@
 #include <QAudioFormat>
 
 // FFMpeg filter_complexes
-    QString _audioMasterization = "aformat=channel_layouts=stereo,adeclip,afftdn,deesser,speechnorm,acompressor=threshold=0.5:ratio=4,highpass=f=200,";
+    QString _audioMasterization = "aformat=channel_layouts=stereo,afftdn,adeclip,deesser,speechnorm,acompressor=threshold=0.5:ratio=4,highpass=f=200,";
     QString _filterEcho = "aecho=0.8:0.7:32|64:0.21|0.13,";
     QString _filterTreble = "treble=g=8,adeclip,deesser";
 

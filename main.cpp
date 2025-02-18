@@ -24,7 +24,7 @@ void my_log_handler(const gchar *log_domain,
         }
     }
 
-    // do Print all other messages!
+    // *do* Print all other messages!
     g_log_default_handler(log_domain, log_level, message, user_data);
 
 }
@@ -73,20 +73,13 @@ int main(int argc, char *argv[]) {
     qputenv("QT_QPA_PLATFORM", "xcb");
 #endif
 
-/* #ifdef Q_OS_WIN
-    // do not use FFmpeg backend on windows, we can force windowsmedia
-    //since  Qt 6.8.1  there's a bug while recording with windows backend
-    qputenv("QT_MEDIA_BACKEND", "windows");
-#endif */
-
     QApplication WakkaQt(argc, argv);
 
     WakkaQt.setWindowIcon(QIcon(":/images/icon.png"));
+    WakkaQt.setStyle(QStyleFactory::create("Fusion"));
 
     // If enabled on the OS, Switch to dark mode on supported platforms (Windows/Mac/GNOME)
     if ( isDarkModeEnabled() ) {
-
-        WakkaQt.setStyle(QStyleFactory::create("Fusion"));
 
         QPalette darkPalette;
         darkPalette.setColor(QPalette::Window, QColor(53, 53, 53));

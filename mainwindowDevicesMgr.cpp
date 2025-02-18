@@ -33,8 +33,8 @@ void MainWindow::configureMediaComponents()
     mediaRecorder->setMediaFormat(*format);
     mediaRecorder->setOutputLocation(QUrl::fromLocalFile(webcamRecorded));
     mediaRecorder->setQuality(QMediaRecorder::VeryHighQuality);
-    //mediaRecorder->setVideoFrameRate(30);
-    //mediaRecorder->setVideoBitRate(5000000);
+    mediaRecorder->setVideoFrameRate(30);
+    mediaRecorder->setVideoBitRate(5000000);
     
     qDebug() << "Configuring mediaCaptureSession..";
     mediaCaptureSession->setVideoOutput(webcamPreviewItem);

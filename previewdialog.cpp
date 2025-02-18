@@ -35,8 +35,8 @@ PreviewDialog::PreviewDialog(qint64 offset, qint64 sysLatency, QWidget *parent)
     bannerLabel = new QLabel("Enhancing Vocals", this);
     bannerLabel->setToolTip("VocalEnhancement");
     bannerLabel->setFont(QFont("Arial", 16));
-    volumeLabel = new QLabel("Current Volume: 100\%", this);
-    volumeLabel->setToolTip("Values above 100\% amplifies, while values below reduce volume");
+    volumeLabel = new QLabel("Current Volume: 100%", this);
+    volumeLabel->setToolTip("Values above 100% amplifies, while values below reduce volume");
     volumeLabel->setFont(QFont("Courier", 14, QFont::Bold));
     startButton = new QPushButton("REWIND", this);
     startButton->setToolTip("Restart playback");
@@ -311,7 +311,7 @@ void PreviewDialog::onDialValueChanged(int value) {
     pendingVolumeValue = value;
 
     // Start the timer to update volume after a delay (500 ms)
-    volumeChangeTimer->start(250);
+    volumeChangeTimer->start(150);
 }
 
 void PreviewDialog::updateVolume() {
@@ -321,12 +321,12 @@ void PreviewDialog::updateVolume() {
     amplifier->setPlaybackVol(!playbackMute_option->isChecked());
 
     // Update the volume label to inform the user
-    volumeLabel->setText(QString("Current Volume: %1\% Elapsed Time: %2").arg(pendingVolumeValue).arg(chronos));
+    volumeLabel->setText(QString("Current Volume: %1% Elapsed Time: %2").arg(pendingVolumeValue).arg(chronos));
 }
 
 void PreviewDialog::updateChronos() {
     chronos = amplifier->checkBufferState();
      // Update the volume label to inform the user
-    volumeLabel->setText(QString("Current Volume: %1\% Elapsed Time: %2").arg(pendingVolumeValue).arg(chronos));
+    volumeLabel->setText(QString("Current Volume: %1% Elapsed Time: %2").arg(pendingVolumeValue).arg(chronos));
 }
 

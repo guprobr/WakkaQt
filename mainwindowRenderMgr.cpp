@@ -112,10 +112,10 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset) {
     QString videorama = "";
     QString offsetFilter;
 
-    if (videoOffset < 0) {
-        offsetFilter = QString("delay=%1|%1").arg(-videoOffset);
+    if (videoOffset + manualOffset < 0) {
+        offsetFilter = QString("delay=%1|%1").arg(-videoOffset + manualOffset);
     } else {
-        offsetFilter = QString("trim=%1ms").arg(videoOffset);
+        offsetFilter = QString("trim=%1ms").arg(videoOffset + manualOffset);
     }
 
     // Get input durations using ffprobe

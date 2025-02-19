@@ -73,6 +73,10 @@ int main(int argc, char *argv[]) {
     qputenv("QT_QPA_PLATFORM", "xcb");
 #endif
 
+#ifdef Q_OS_WIN
+    qputenv("QT_MEDIA_BACKEND", "ffmpeg");
+#endif
+
     QApplication WakkaQt(argc, argv);
 
     WakkaQt.setWindowIcon(QIcon(":/images/icon.png"));

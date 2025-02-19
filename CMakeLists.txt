@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 # Project name
-project(WakkaQt VERSION 1.12.3 LANGUAGES CXX)
+project(WakkaQt VERSION 1.12.4 LANGUAGES CXX)
 
 # Set the C++ standard
 set(CMAKE_CXX_STANDARD 17)
@@ -10,10 +10,10 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
 # Set compiler flags for aggressive optimization
-if(UNIX AND NOT APPLE)  
+if(UNIX)  
     set(CMAKE_CXX_FLAGS "-O3 -ffast-math -fno-strict-aliasing -ftree-vectorize -ftree-loop-vectorize -funroll-loops -march=native -mtune=native")
 else() 
-    set(CMAKE_CXX_FLAGS "/O2 /GL /fp:fast /arch:AVX2 /GS- /Gy /Zc:inline /Zc:forScope /Zc:wchar_t /Zc:rvalueCast /Zc:throwingNew /Zc:referenceBinding /Zc:ternary /Zc:trigraphs /Zc:lambda /Zc:preprocessor /Zc:externConstexpr /Zc:alignedNew /Zc:char8_t /Zc:__cplusplus")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /Ox /fp:fast /fp:except- /Ob2 /arch:AVX2")
 endif()
 
 # Find the required Qt modules

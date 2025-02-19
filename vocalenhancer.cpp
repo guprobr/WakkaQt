@@ -42,12 +42,12 @@ QByteArray VocalEnhancer::enhance(const QByteArray& input) {
     
 
     QVector<double> inputData = convertToDoubleArray(input, sampleCount);
-    int targetSize = inputData.size();
+    //int targetSize = inputData.size();
     //normalizeAndApplyGain(inputData, 0.8); // sanitize for pitch correction and effects
     qWarning() << "VocalEnhancer processing pitch correction";
     processPitchCorrection(inputData);
-    //normalizeAndApplyGain(inputData, 0.8); // normalize again at the very end
-    resizeOutputToMatchInput(inputData, targetSize); // fix sync issues 
+    normalizeAndApplyGain(inputData, 0.8); // normalize again at the very end
+    //resizeOutputToMatchInput(inputData, targetSize); // fix sync issues 
     convertToQByteArray(inputData, output);
 
     return output;
@@ -138,7 +138,7 @@ void VocalEnhancer::normalizeAndApplyGain(QVector<double>& data, double gain) {
 }
 
 QVector<double> VocalEnhancer::harmonicScale(const QVector<double>& data, double scaleFactor) {
-    int windowSize = 4096; 
+    int windowSize = 8192; 
     int hopSize = windowSize / 4;
     QVector<double> outputData(data.size(), 0.0);
 
@@ -186,7 +186,6 @@ QVector<double> VocalEnhancer::extractSegment(const QVector<double>& data, const
 
     return segment;
 }
-
 
 QVector<double> VocalEnhancer::timeStretch(const QVector<double>& segment, double shiftRatio) {
     qint64 newSize = static_cast<qint64>(segment.size() * shiftRatio);
@@ -341,39 +340,6 @@ double VocalEnhancer::detectPitch(const QVector<double>& inputData) const {
     banner = "Detected: " + QString::number(detectedFrequency) + " Hz\n1st harmonic-scale pass: scale up";
     return detectedFrequency;
 }
-
-void VocalEnhancer::resizeOutputToMatchInput(QVector<double>& outputData, int targetSize) {
-    int currentSize = outputData.size();
-    QVector<double> resizedOutput(targetSize, 0.0);
-
-    if (currentSize == targetSize) {
-        resizedOutput = outputData;
-    } else if (currentSize < targetSize) {
-        // Stretch output to match target size with interpolation
-        for (int i = 0; i < targetSize; ++i) {
-            double scale = static_cast<double>(i) * currentSize / targetSize;
-            int index = static_cast<int>(scale);
-            if (index < currentSize - 1) {
-                double fraction = scale - index;
-                resizedOutput[i] = outputData[index] * (1.0 - fraction) + outputData[index + 1] * fraction;
-            } else {
-                resizedOutput[i] = outputData[index];
-            }
-        }
-    } else {
-        // Shrink output to match target size with nearest-neighbor
-        for (int i = 0; i < targetSize; ++i) {
-            int index = static_cast<int>(i * currentSize / targetSize);
-            if (index < currentSize) {
-                resizedOutput[i] = outputData[index];
-            }
-        }
-    }
-
-    outputData = resizedOutput;
-}
-
-
 
 int VocalEnhancer::getProgress() {
 

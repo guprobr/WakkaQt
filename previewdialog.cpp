@@ -159,11 +159,11 @@ void PreviewDialog::setAudioFile(const QString &filePath) {
     QStringList arguments;
     arguments   << "-y" << "-i" << audioFilePath 
                 << "-vn" << "-filter_complex" 
-                << QString("%1 atrim=%2ms,asetpts=PTS-STARTPTS;")
+                << QString("%1 atrim=%2ms,asetpts=PTS-STARTPTS,aresample=44100;")
                                                 .arg(_audioMasterization)
                                                 .arg(audioOffset)
                 << "-ac" << "2" 
-                << "-acodec" << "pcm_s16le" << "-ar" << "44100" << tempAudioFile;
+                << "-acodec" << "pcm_s16le" << "-ar" << "44100" << "-async" << "1" << tempAudioFile;
 
     // Connect the finished signal
     connect(ffmpegProcess, &QProcess::finished, this, [this, tempAudioFile, ffmpegProcess](int exitCode, QProcess::ExitStatus exitStatus) {

@@ -13,7 +13,7 @@ set(CMAKE_AUTORCC ON)
 if(UNIX AND NOT APPLE)  
     set(CMAKE_CXX_FLAGS "-O3 -ffast-math -fno-strict-aliasing -ftree-vectorize -ftree-loop-vectorize -funroll-loops -march=native -mtune=native")
 else() 
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /O2 /GL /fp:fast /arch:AVX2 /GS- /Gy /Zc:inline /Zc:forScope /Zc:wchar_t /Zc:rvalueCast /Zc:throwingNew /Zc:referenceBinding /Zc:ternary /Zc:trigraphs /Zc:lambda /Zc:preprocessor /Zc:externConstexpr /Zc:alignedNew /Zc:char8_t /Zc:__cplusplus")
+    set(CMAKE_CXX_FLAGS "/O2 /GL /fp:fast /arch:AVX2 /GS- /Gy /Zc:inline /Zc:forScope /Zc:wchar_t /Zc:rvalueCast /Zc:throwingNew /Zc:referenceBinding /Zc:ternary /Zc:trigraphs /Zc:lambda /Zc:preprocessor /Zc:externConstexpr /Zc:alignedNew /Zc:char8_t /Zc:__cplusplus")
 endif()
 
 # Find the required Qt modules

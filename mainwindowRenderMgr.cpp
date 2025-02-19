@@ -113,7 +113,7 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset) {
     QString offsetFilter;
 
     if (videoOffset + manualOffset < 0) {
-        offsetFilter = QString("delay=%1|%1").arg(-videoOffset + manualOffset);
+        offsetFilter = QString("delay=delay=%1|%1").arg(-videoOffset + manualOffset);
     } else {
         offsetFilter = QString("trim=%1ms").arg(videoOffset + manualOffset);
     }

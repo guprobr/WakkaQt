@@ -119,3 +119,12 @@ elseif(APPLE)
         BUNDLE DESTINATION /Applications             # macOS: install to /Applications (for app bundles)
     )
 endif()
+
+if(UNIX AND NOT APPLE)
+    # icon dir
+    set(ICON_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/share/icons/hicolor/256x256/apps")
+    # Install icon
+    install(FILES images/icon.png DESTINATION ${ICON_INSTALL_DIR} RENAME WakkaQt.png)
+    # Install .desktop file
+    install(FILES WakkaQt.desktop DESTINATION ${CMAKE_INSTALL_PREFIX}/share/applications)
+endif()

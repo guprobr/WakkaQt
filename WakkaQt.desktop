@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=WakkaQt
+Exec=/usr/bin/WakkaQt
+Icon=WakkaQt
+Terminal=false
+Categories=AudioVideo;

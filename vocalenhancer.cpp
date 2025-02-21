@@ -46,7 +46,7 @@ QByteArray VocalEnhancer::enhance(const QByteArray& input) {
     //normalizeAndApplyGain(inputData, 0.8); // sanitize for pitch correction and effects
     qWarning() << "VocalEnhancer processing pitch correction";
     processPitchCorrection(inputData);
-    normalizeAndApplyGain(inputData, 0.8); // normalize again at the very end
+    //normalizeAndApplyGain(inputData, 0.8); // normalize again at the very end
     //resizeOutputToMatchInput(inputData, targetSize); // fix sync issues 
     convertToQByteArray(inputData, output);
 
@@ -138,7 +138,7 @@ void VocalEnhancer::normalizeAndApplyGain(QVector<double>& data, double gain) {
 }
 
 QVector<double> VocalEnhancer::harmonicScale(const QVector<double>& data, double scaleFactor) {
-    int windowSize = 8192; 
+    int windowSize = 4096;
     int hopSize = windowSize / 4;
     QVector<double> outputData(data.size(), 0.0);
 

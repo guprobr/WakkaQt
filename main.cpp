@@ -80,7 +80,7 @@ int main(int argc, char *argv[]) {
     QApplication WakkaQt(argc, argv);
 
     WakkaQt.setWindowIcon(QIcon(":/images/icon.png"));
-    WakkaQt.setStyle(QStyleFactory::create("Fusion"));
+    //WakkaQt.setStyle(QStyleFactory::create("Fusion"));
 
     // If enabled on the OS, Switch to dark mode on supported platforms (Windows/Mac/GNOME)
     if ( isDarkModeEnabled() ) {

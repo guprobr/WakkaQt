@@ -187,7 +187,7 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset) {
 
     arguments << "-y"
             << "-i" << tunedRecorded
-            << "-ss" << QString("%1ms").arg(videoOffset) << "-i" << webcamRecorded
+            << "-ss" << QString("%1ms").arg(videoOffset + manualOffset) << "-i" << webcamRecorded
             << "-i" << currentVideoFile
             << "-filter_complex"
             << QString("[0:a]%1,volume=%2,%3[vocals];"

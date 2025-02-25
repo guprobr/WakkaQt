@@ -111,12 +111,12 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset) {
     
     QString videorama = "";
     QString offsetFilter;
-
-    if (videoOffset  < 0) {
-        offsetFilter = QString("tpad=start_duration=%1").arg((-videoOffset )/1000);
+/*
+    if (manualOffset < 0) {
+        offsetFilter = QString("setpts=PTS+%1/TB").arg((-videoOffset - manualOffset) / 1000.0);
     } else {
-        offsetFilter = QString("trim=%1ms").arg(videoOffset );
-    }
+        offsetFilter = QString("trim=start=%1, setpts=PTS-STARTPTS").arg((videoOffset + manualOffset) / 1000.0);
+    } */
 
     // Get input durations using ffprobe
     double videoDuration = getMediaDuration(currentVideoFile);
@@ -139,7 +139,7 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset) {
     QString pipSize = QString("%1x%2").arg(pipWidth).arg(pipHeight);
     videoScale = QString("scale=s=%1").arg(pipSize);
 
-    QString webcamFilter = QString("[1:v]%1,setpts=PTS-STARTPTS,").arg(offsetFilter);
+    QString webcamFilter = QString("[1:v]%1,").arg(offsetFilter);
     webcamFilter += webcamScale;
     if (webcamPadding > 0) {
         webcamFilter += QString(",pad=width=%1:height=%2:x=(ow-iw)/2:y=(oh-ih)/2:color=black").arg(mainResParts[0]).arg(mainResParts[1]);
@@ -177,19 +177,20 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset) {
             videorama = QString("color=c=black:s=%1:d=%2:r=30[black];[1:v]setpts=PTS-STARTPTS,scale=s=%3[webcam];[black][webcam]overlay=0:0[videorama];").arg(QString::number(width) + "x" + QString::number(height)).arg(maxDuration).arg(setRez);
         }
     }
-
+    
     if (manualOffset < 0) {
-        offsetFilter = QString("adelay=%1|%1").arg(-manualOffset);
+        offsetFilter = QString("adelay=%1|%1").arg((-manualOffset));
     } else {
-        offsetFilter = QString("atrim=%1ms").arg(manualOffset); //atrim needs start and end
+        offsetFilter = QString("atrim=start=%1, asetpts=PTS-STARTPTS").arg((manualOffset) / 1000.0);
     }
+
 
     arguments << "-y"
             << "-i" << tunedRecorded
-            << "-i" << webcamRecorded
+            << "-ss" << QString("%1ms").arg(videoOffset) << "-i" << webcamRecorded
             << "-i" << currentVideoFile
             << "-filter_complex"
-            << QString("[0:a]%1,volume=%2,%3,asetpts=PTS-STARTPTS[vocals];"
+            << QString("[0:a]%1,volume=%2,%3[vocals];"
                         "[2:a][vocals]amix=inputs=2:normalize=0,aresample=async=1[wakkamix];%4")
                     .arg(offsetFilter)
                     .arg(vocalVolume)

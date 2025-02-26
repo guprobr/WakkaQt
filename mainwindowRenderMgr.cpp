@@ -113,9 +113,9 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset) {
     QString offsetFilter;
 /*
     if (manualOffset < 0) {
-        offsetFilter = QString("setpts=PTS+%1/TB").arg((-videoOffset - manualOffset) / 1000.0);
+        offsetFilter = QString("setpts=PTS+%1/TB,").arg((-videoOffset - manualOffset) / 1000.0);
     } else {
-        offsetFilter = QString("trim=start=%1, setpts=PTS-STARTPTS").arg((videoOffset + manualOffset) / 1000.0);
+        offsetFilter = QString("trim=start=%1, setpts=PTS-STARTPTS,").arg((videoOffset + manualOffset) / 1000.0);
     } */
 
     // Get input durations using ffprobe
@@ -139,7 +139,7 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset) {
     QString pipSize = QString("%1x%2").arg(pipWidth).arg(pipHeight);
     videoScale = QString("scale=s=%1").arg(pipSize);
 
-    QString webcamFilter = QString("[1:v]%1,").arg(offsetFilter);
+    QString webcamFilter = QString("[1:v]%1").arg(offsetFilter);
     webcamFilter += webcamScale;
     if (webcamPadding > 0) {
         webcamFilter += QString(",pad=width=%1:height=%2:x=(ow-iw)/2:y=(oh-ih)/2:color=black").arg(mainResParts[0]).arg(mainResParts[1]);
@@ -190,8 +190,7 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset) {
             << "-ss" << QString("%1ms").arg(videoOffset + manualOffset) << "-i" << webcamRecorded
             << "-i" << currentVideoFile
             << "-filter_complex"
-            << QString("[0:a]%1,volume=%2,%3[vocals];"
-                        "[2:a][vocals]amix=inputs=2:normalize=0,aresample=async=1[wakkamix];%4")
+            << QString("[0:a]%1,volume=%2,%3[vocals];[2:a][vocals]amix=inputs=2:normalize=0,aresample=async=1[wakkamix];%4")
                     .arg(offsetFilter)
                     .arg(vocalVolume)
                     .arg(_filterTreble)

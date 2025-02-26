@@ -138,7 +138,7 @@ void VocalEnhancer::normalizeAndApplyGain(QVector<double>& data, double gain) {
 }
 
 QVector<double> VocalEnhancer::harmonicScale(const QVector<double>& data, double scaleFactor) {
-    int windowSize = 4096;
+    int windowSize = 2048;
     int hopSize = windowSize / 4;
     QVector<double> outputData(data.size(), 0.0);
 

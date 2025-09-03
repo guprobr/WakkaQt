@@ -10,10 +10,10 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
 # Set compiler flags for aggressive optimization
-if(UNIX)  
-    set(CMAKE_CXX_FLAGS "-O3 -ffast-math -fno-strict-aliasing -ftree-vectorize -ftree-loop-vectorize -funroll-loops -march=native -mtune=native")
-else() 
+if(WINDOWS)  
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /Ox /fp:fast /fp:except- /Ob2 /arch:AVX2")
+else() 
+    set(CMAKE_CXX_FLAGS "-O3 -ffast-math -fno-strict-aliasing -ftree-vectorize -ftree-loop-vectorize -funroll-loops -march=native -mtune=native")    
 endif()
 
 # Find the required Qt modules
@@ -27,19 +27,9 @@ find_package(Qt6 REQUIRED COMPONENTS
 )
 
 # Add FFTW3 library
-if(WIN32)
-# Manually specify FFTW3 path (adjust the path to where FFTW3 is installed)
-    if (NOT DEFINED FFTW3_PATH)
-        set (FFTW3_PATH "C:/Program Files (x86)/fftw")
-    endif()
-    set(FFTW3_INCLUDE_DIR "${FFTW3_PATH}/include")
-    set(FFTW3_LIBRARIES "${FFTW3_PATH}/lib/fftw3.lib")
-    set(FFTW3_DIR "${FFTW3_PATH}/lib/cmake/fftw3")
-    link_directories("${FFTW3_PATH}/lib")
-else()
-    find_package(PkgConfig REQUIRED)
-    pkg_check_modules(FFTW3 REQUIRED fftw3)
-endif()
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(FFTW3 REQUIRED fftw3)
+
 
 if(UNIX AND NOT APPLE)
     pkg_check_modules(GLIB2 REQUIRED glib-2.0)

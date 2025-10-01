@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 # Project name
-project(WakkaQt VERSION 1.12.4 LANGUAGES CXX)
+project(WakkaQt VERSION 1.12.5 LANGUAGES CXX)
 
 # Set the C++ standard
 set(CMAKE_CXX_STANDARD 17)
@@ -27,8 +27,14 @@ find_package(Qt6 REQUIRED COMPONENTS
 )
 
 # Add FFTW3 library
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(FFTW3 REQUIRED fftw3)
+if(UNIX OR APPLE)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(FFTW3 REQUIRED fftw3)
+else()
+    include_directories("C:/Program Files (x86)/fftw/include")
+    link_directories("C:/Program Files (x86)/fftw/lib")
+endif()
+
 
 
 if(UNIX AND NOT APPLE)

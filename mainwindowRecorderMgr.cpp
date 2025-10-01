@@ -1,5 +1,13 @@
 #include "mainwindow.h"
 
+
+void MainWindow::abortRecording() {
+    isAborting = true;
+    qWarning() << "Stop recording.";
+    stopRecording();
+    return;
+}
+
 void MainWindow::startRecording() {
     try {
         if (currentVideoFile.isEmpty()) {
@@ -68,6 +76,7 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
         singAction->setText("Finish recording");
         singButton->setEnabled(true);
         singAction->setEnabled(true);
+        abortButton->setVisible(true);
 
     }
     
@@ -121,6 +130,7 @@ void MainWindow::stopRecording() {
 
         singButton->setText("♪ SING ♪");
         singButton->setEnabled(false);
+        abortButton->setVisible(false);
         singAction->setText("SING");
         singAction->setEnabled(false);
         vizCheckbox->setEnabled(true);
@@ -128,6 +138,12 @@ void MainWindow::stopRecording() {
         
         videoWidget->hide();
         placeholderLabel->show();
+
+        if ( isAborting ) {
+            isAborting = false;
+            handleRecordingError();
+            return;
+        }
 
         QFile fileAudio(audioRecorded);
         QFile fileCam(webcamRecorded);

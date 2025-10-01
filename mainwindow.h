@@ -64,7 +64,7 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    QString Wakka_versione = "v1.12.4";
+    QString Wakka_versione = "v1.12.5";
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
@@ -101,6 +101,7 @@ private:
     QElapsedTimer sysLatency;
     
     bool isRecording = false;
+    bool isAborting = false;
     bool isPlayback = false;
     
     qint64 pos = 0;
@@ -135,6 +136,7 @@ private:
     QAction *singAction;
 
     QPushButton *singButton;
+    QPushButton *abortButton;
     QPushButton *chooseVideoButton;
     QPushButton *chooseInputButton;
     QPushButton *renderAgainButton;
@@ -168,6 +170,7 @@ private:
 
     void startRecording();
     void stopRecording();
+    void abortRecording();
     void waitForFileFinalization(const QString &filePath, std::function<void()> callback);
     void handleRecordingError();
 

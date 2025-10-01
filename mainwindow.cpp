@@ -133,6 +133,9 @@ MainWindow::MainWindow(QWidget *parent)
     singButton = new QPushButton("♪ SING ♪", this);
     singButton->setFont(QFont("Arial", 15));
     singButton->setToolTip("Start/Stop recording");
+    abortButton = new QPushButton("* A B O R T *", this);
+    abortButton->setFont(QFont("Arial", 15));
+    abortButton->setToolTip("TRASH recording");
     chooseInputButton = new QPushButton("Choose Input Devices", this);
     renderAgainButton = new QPushButton("RENDER AGAIN", this);
     renderAgainButton->setToolTip("Repeat render and adjustments without singing again");
@@ -224,6 +227,7 @@ MainWindow::MainWindow(QWidget *parent)
     layout->addWidget(placeholderLabel);  
     layout->addWidget(videoWidget);       
     layout->addWidget(singButton);
+    layout->addWidget(abortButton);
     layout->addWidget(chooseVideoButton);
     layout->addWidget(chooseInputButton);
     layout->addWidget(renderAgainButton);
@@ -237,6 +241,7 @@ MainWindow::MainWindow(QWidget *parent)
     // Widget visibility
     chooseVideoButton->setVisible(true);
     chooseInputButton->setVisible(false);
+    abortButton->setVisible(false);
     soundLevelWidget->setVisible(true);
     webcamPreviewItem->setVisible(true);
     recordingIndicator->hide();
@@ -255,6 +260,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(loadPlaybackAction, &QAction::triggered, this, &MainWindow::chooseVideo);
     connect(chooseInputAction, &QAction::triggered, this, &MainWindow::chooseInputDevice);
     connect(singButton, &QPushButton::clicked, this, &MainWindow::startRecording);
+    connect(abortButton, &QPushButton::clicked, this, &MainWindow::abortRecording);
     connect(singAction, &QAction::triggered, this, &MainWindow::startRecording);
     connect(fetchButton, &QPushButton::clicked, this, &MainWindow::fetchVideo);
     connect(renderAgainButton, &QPushButton::clicked, this, &MainWindow::renderAgain);

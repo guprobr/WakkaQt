@@ -102,7 +102,7 @@ PreviewDialog::PreviewDialog(qint64 offset, qint64 sysLatency, QWidget *parent)
     connect(volumeDial, &QDial::valueChanged, this, &PreviewDialog::onDialValueChanged);
     connect(offsetSlider, &QSlider::valueChanged, this, &PreviewDialog::onOffsetSliderChanged);
 
-    connect(playbackMute_option, &QCheckBox::stateChanged, this, [this]() {
+    connect(playbackMute_option, &QCheckBox::checkStateChanged, this, [this]() {
     // Warning: use checkStateChanged on the future, because stateChanged is deprecated in Qt 6.8.1
     
         if ( playbackMute_option->isChecked() )

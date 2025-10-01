@@ -26,7 +26,7 @@ void MainWindow::configureMediaComponents()
     soundLevelWidget->setInputDevice(selectedDevice);
     
     format->setFileFormat(QMediaFormat::FileFormat::MPEG4);
-    format->setVideoCodec(QMediaFormat::VideoCodec::MPEG4);
+    format->setVideoCodec(QMediaFormat::VideoCodec::H264);
     format->setAudioCodec(QMediaFormat::AudioCodec::AAC);
 
     // Setup Media recorder

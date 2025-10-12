@@ -443,7 +443,7 @@ void MainWindow::addVideoDisplayWidgetInDialog() {
     // Create and configure the dialog
     webcamDialog = new QDialog(this);
     webcamDialog->setWindowTitle("WakkaQt - Webcam Preview");
-    webcamDialog->setFixedSize(960, 544); 
+    webcamDialog->setFixedSize(320, 200); 
     webcamPreviewLayout->removeWidget(webcamView);
 
     // Add webcamView to the dialog's layout
@@ -452,8 +452,8 @@ void MainWindow::addVideoDisplayWidgetInDialog() {
     webcamDialog->setLayout(layout);
 
     // Set the size of the view and the preview item
-    webcamView->setFixedSize(960, 544);
-    webcamPreviewItem->setSize(QSizeF(960, 544));
+    webcamView->setFixedSize(320, 200);
+    webcamPreviewItem->setSize(QSizeF(320, 200));
 
     // Set the scene size based on the view size
     webcamView->scene()->setSceneRect(0, 0, webcamView->width(), webcamView->height());

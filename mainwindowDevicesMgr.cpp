@@ -25,17 +25,21 @@ void MainWindow::configureMediaComponents()
     // Setup SndWidget
     soundLevelWidget->setInputDevice(selectedDevice);
     
-    format->setFileFormat(QMediaFormat::FileFormat::MPEG4);
-    format->setVideoCodec(QMediaFormat::VideoCodec::H264);
-    format->setAudioCodec(QMediaFormat::AudioCodec::AAC);
+    // Setup CAMERA
+    format->setFileFormat(QMediaFormat::FileFormat::MPEG4); // .mkv is more dessync stable
+    //format->setVideoCodec(QMediaFormat::VideoCodec::H264); 
+    //format->setAudioCodec(QMediaFormat::AudioCodec::Opus);
 
-    // Setup Media recorder
     mediaRecorder->setMediaFormat(*format);
+    mediaRecorder->setEncodingMode(QMediaRecorder::ConstantBitRateEncoding); // respect bitrate
     mediaRecorder->setOutputLocation(QUrl::fromLocalFile(webcamRecorded));
-    mediaRecorder->setQuality(QMediaRecorder::VeryHighQuality);
+    mediaRecorder->setQuality(QMediaRecorder::VeryLowQuality); // rly?
+
+    // Vídeo: force CFR e parâmetros estáveis
     mediaRecorder->setVideoFrameRate(30);
-    mediaRecorder->setVideoBitRate(5000000);
-    
+    mediaRecorder->setVideoBitRate(5'000'000);
+    //mediaRecorder->setVideoResolution(QSize(W, H));       // future: set resolution
+
     qDebug() << "Configuring mediaCaptureSession..";
     mediaCaptureSession->setVideoOutput(webcamPreviewItem);
     mediaCaptureSession->setCamera(camera.data());

@@ -179,7 +179,7 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset) {
     }
     
     if (manualOffset < 0) {
-        offsetFilter = QString("adelay=%1|%1").arg((-manualOffset));
+        offsetFilter = QString("adelay=%1|%1").arg((manualOffset));
     } else {
         offsetFilter = QString("atrim=start=%1, asetpts=PTS-STARTPTS").arg((manualOffset) / 1000.0);
     }

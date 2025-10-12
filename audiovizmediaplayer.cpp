@@ -93,7 +93,7 @@ void AudioVizMediaPlayer::play()
         m_mediaPlayer->play();
 
         if (!m_audioTimer->isActive() && !is_Mute  ) {
-            m_audioTimer->start(100);  // Start the timer to update the visualizer, if needed
+            m_audioTimer->start(1000);  // Start the timer to update the visualizer, if needed
         }
     }
 }
@@ -147,7 +147,7 @@ void AudioVizMediaPlayer::seek(qint64 position, bool seekPlayback)
     }
 
     if (!m_audioTimer->isActive() && !is_Mute ) {
-            m_audioTimer->start(100);  // Start the timer to update the visualizer, if needed
+            m_audioTimer->start(1000);  // Start the timer to update the visualizer, if needed
         }
 
     // Update media player position
@@ -215,7 +215,7 @@ void AudioVizMediaPlayer::updateVisualizer()
         return;
     }
 
-    const qint64 bytesPerFrame = m_audioFormat.bytesForDuration(100000);  // 100ms worth of audio
+    const qint64 bytesPerFrame = m_audioFormat.bytesForDuration(1000000);  // 100ms worth of audio
     qint64 bytesToVisualize = qMin(bytesPerFrame, m_decodedAudioData->size() - m_audioPosition);
 
     if (bytesToVisualize > 0) {
@@ -304,7 +304,7 @@ void AudioVizMediaPlayer::loadAudioData(const QString &audioFile, const QString 
     file.close();
 
     m_framePositions->clear();  // Clear any previous data
-    for (int i = 0; i < m_decodedAudioData->size(); i += m_audioFormat.bytesForDuration(100000)) {
+    for (int i = 0; i < m_decodedAudioData->size(); i += m_audioFormat.bytesForDuration(1000000)) {
         m_framePositions->append(i);  // Append the byte position for visualization
     }
 

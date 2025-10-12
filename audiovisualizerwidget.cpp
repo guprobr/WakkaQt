@@ -33,10 +33,10 @@ AudioVisualizerWidget::AudioVisualizerWidget(QWidget *parent)
         
     });
 
-    colorTimer->start(1669);
+    colorTimer->start(100);
     QTimer *timer = new QTimer(this);
     connect(timer, &QTimer::timeout, this, &AudioVisualizerWidget::updatePainter);
-    timer->start(100);
+    timer->start(1000);
 
 
 }
@@ -74,7 +74,7 @@ void AudioVisualizerWidget::paintEvent(QPaintEvent *event)
     QFrame::paintEvent(event);
 
     QPainter painter(this);
-    //////////painter.setRenderHint(QPainter::Antialiasing);
+    painter.setRenderHint(QPainter::Antialiasing);
     //painter.fillRect(rect(), bgColor);
 
     // Ensure that the brush is set for filling

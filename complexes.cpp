@@ -9,7 +9,7 @@
     QString _filterTreble = "treble=g=8,adeclip,deesser";
 
 // fixed tmp file paths
-    QString webcamRecorded = QDir::temp().filePath("WakkaQt_tmp_recording.webm");
+    QString webcamRecorded = QDir::temp().filePath("WakkaQt_tmp_recording.mp4");
     QString audioRecorded = QDir::temp().filePath("WakkaQt_tmp_recording.wav");
     QString tunedRecorded = QDir::temp().filePath("WakkaQt_tmp_tuned.wav");
     QString extractedPlayback = QDir::temp().filePath("WakkaQt_playback.wav");

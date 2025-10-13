@@ -36,7 +36,7 @@ AudioVisualizerWidget::AudioVisualizerWidget(QWidget *parent)
     colorTimer->start(100);
     QTimer *timer = new QTimer(this);
     connect(timer, &QTimer::timeout, this, &AudioVisualizerWidget::updatePainter);
-    timer->start(1000);
+    timer->start(50);
 
 
 }
@@ -74,12 +74,9 @@ void AudioVisualizerWidget::paintEvent(QPaintEvent *event)
     QFrame::paintEvent(event);
 
     QPainter painter(this);
-    painter.setRenderHint(QPainter::Antialiasing);
-    //painter.fillRect(rect(), bgColor);
-
+    //painter.setRenderHint(QPainter::Antialiasing);
     // Ensure that the brush is set for filling
     painter.setBrush(m_brush);
-
     QPen pen(Qt::darkYellow); // Color of the rectangle border
     pen.setStyle(Qt::PenStyle::DotLine);
     painter.setPen(pen);
@@ -114,30 +111,11 @@ void AudioVisualizerWidget::paintEvent(QPaintEvent *event)
     int barWidth = qMax(1, widgetWidth / numSamples);
 
     // Draw filled rectangles (bars) for each audio sample
-    for (int i = 0; i < numSamples; i += step) {
+    for (int i = 0; i < numSamples; i += step*5) {
         int sampleValue = 0;
 
-        // Read sample value based on the format
-        switch (m_format.sampleFormat()) {
-            case QAudioFormat::Int16: {
-                qint16 sample = *reinterpret_cast<const qint16*>(m_visualizationData.constData() + i * bytesPerSample);
-                sampleValue = static_cast<int>(sample);
-                break;
-            }
-            case QAudioFormat::UInt8: {
-                quint8 sample = *reinterpret_cast<const quint8*>(m_visualizationData.constData() + i * bytesPerSample);
-                sampleValue = static_cast<int>(sample) - 128; // Center 8-bit sample
-                break;
-            }
-            case QAudioFormat::Int32: {
-                qint32 sample = *reinterpret_cast<const qint32*>(m_visualizationData.constData() + i * bytesPerSample);
-                sampleValue = static_cast<int>(sample);
-                break;
-            }
-            default:
-                continue; // Skip if format is not handled
-        }
-
+         qint16 sample = *reinterpret_cast<const qint16*>(m_visualizationData.constData() + i * bytesPerSample);
+         sampleValue = static_cast<int>(sample);
         // Normalize sample value
         int normalizationFactor = (1 << (8 * bytesPerSample - 1));
 

@@ -215,7 +215,7 @@ void AudioVizMediaPlayer::updateVisualizer()
         return;
     }
 
-    const qint64 bytesPerFrame = m_audioFormat.bytesForDuration(1000000);  // 100ms worth of audio
+    const qint64 bytesPerFrame = m_audioFormat.bytesForDuration(500000);  // 500ms worth of audio
     qint64 bytesToVisualize = qMin(bytesPerFrame, m_decodedAudioData->size() - m_audioPosition);
 
     if (bytesToVisualize > 0) {

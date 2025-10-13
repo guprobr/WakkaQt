@@ -77,6 +77,9 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
             addProgressSong(progressScene, static_cast<int>(getMediaDuration(currentPlayback)));
         }            
 
+        if ( isRecording )
+            sysLatency.restart();
+
         isPlayback = true; // enable seeking now
 
     }
@@ -86,7 +89,7 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
 void MainWindow::onPlayerPositionChanged(qint64 position) {
     if ( isRecording ) {
         pos = position;
-        sysLatency.restart();
+        //sysLatency.restart();
     }
 }
 

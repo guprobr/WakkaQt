@@ -33,8 +33,8 @@ void MainWindow::configureMediaComponents()
     mediaRecorder->setMediaFormat(*format);
     mediaRecorder->setOutputLocation(QUrl::fromLocalFile(webcamRecorded));    
     mediaRecorder->setEncodingMode(QMediaRecorder::ConstantBitRateEncoding); // respect bitrate
-    mediaRecorder->setQuality(QMediaRecorder::VeryHighQuality); // rly?
-    mediaRecorder->setVideoFrameRate(25);
+    mediaRecorder->setQuality(QMediaRecorder::VeryLowQuality); // rly?
+    mediaRecorder->setVideoFrameRate(60);
     //mediaRecorder->setVideoBitRate(5'000'000);            // let ffmpeg decide?
     //mediaRecorder->setVideoResolution(QSize(W, H));       // future: set resolution
 

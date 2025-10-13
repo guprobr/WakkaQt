@@ -33,10 +33,10 @@ AudioVisualizerWidget::AudioVisualizerWidget(QWidget *parent)
         
     });
 
-    colorTimer->start(100);
+    colorTimer->start(3500);
     QTimer *timer = new QTimer(this);
     connect(timer, &QTimer::timeout, this, &AudioVisualizerWidget::updatePainter);
-    timer->start(50);
+    timer->start(500);
 
 
 }
@@ -111,7 +111,7 @@ void AudioVisualizerWidget::paintEvent(QPaintEvent *event)
     int barWidth = qMax(1, widgetWidth / numSamples);
 
     // Draw filled rectangles (bars) for each audio sample
-    for (int i = 0; i < numSamples; i += step*5) {
+    for (int i = 0; i < numSamples; i += step) {
         int sampleValue = 0;
 
          qint16 sample = *reinterpret_cast<const qint16*>(m_visualizationData.constData() + i * bytesPerSample);

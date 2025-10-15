@@ -26,13 +26,40 @@ find_package(Qt6 REQUIRED COMPONENTS
     Concurrent
 )
 
-# Add FFTW3 library
-if(UNIX OR APPLE)
-    find_package(PkgConfig REQUIRED)
-    pkg_check_modules(FFTW3 REQUIRED fftw3)
+# --- FFTW (Windows / MinGW) ---
+if(WIN32)
+  # Prefer Program Files (x86), fall back to Program Files
+  set(_PF "$ENV{ProgramFiles\(x86\)}")
+  if(NOT _PF)
+    set(_PF "$ENV{ProgramFiles}")
+  endif()
+  file(TO_CMAKE_PATH "${_PF}" _PF)
+  set(FFTW_ROOT "${_PF}/fftw")
+
+  # Headers
+  find_path(FFTW3_INCLUDE_DIR
+    NAMES fftw3.h
+    HINTS "${FFTW_ROOT}/include")
+
+  # Libraries (double precision: fftw_* symbols)
+  find_library(FFTW3_LIBRARIES
+    NAMES fftw3-3 fftw3 libfftw3-3 libfftw3
+    HINTS "${FFTW_ROOT}/lib")
+
+  # (optional) threads and single-precision — only link if you use them
+  find_library(FFTW3_THREADS_LIBRARIES
+    NAMES fftw3_threads-3 fftw3_threads libfftw3_threads-3 libfftw3_threads
+    HINTS "${FFTW_ROOT}/lib")
+  find_library(FFTW3F_LIBRARIES         # for fftwf_* symbols
+    NAMES fftw3f-3 fftw3f libfftw3f-3 libfftw3f
+    HINTS "${FFTW_ROOT}/lib")
+
+  if(NOT FFTW3_INCLUDE_DIR OR NOT FFTW3_LIBRARIES)
+    message(FATAL_ERROR "FFTW not found under ${FFTW_ROOT}. Check install paths.")
+  endif()
 else()
-    include_directories("C:/Program Files (x86)/fftw/include")
-    link_directories("C:/Program Files (x86)/fftw/lib")
+  find_package(PkgConfig REQUIRED)
+  pkg_check_modules(FFTW3 REQUIRED fftw3)
 endif()
 
 

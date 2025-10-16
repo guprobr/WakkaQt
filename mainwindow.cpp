@@ -597,3 +597,5 @@ void MainWindow::closeEvent(QCloseEvent *event)
         event->accept(); // Call the base class implementation
     else event->ignore(); // Baby come back!
 }
+
+

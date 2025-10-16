@@ -90,6 +90,7 @@ add_executable(${PROJECT_NAME}
     audiovizmediaplayer.cpp
     audiovisualizerwidget.cpp
     vocalenhancer.cpp
+    DownloadDialog.cpp
     mainwindow.h
     complexes.h
     sndwidget.h
@@ -99,6 +100,7 @@ add_executable(${PROJECT_NAME}
     audiovizmediaplayer.h
     audiovisualizerwidget.h
     vocalenhancer.h
+    DownloadDialog.h
     ${resources}
 )
 

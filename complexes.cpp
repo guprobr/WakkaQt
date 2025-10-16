@@ -15,6 +15,31 @@
     QString extractedPlayback = QDir::temp().filePath("WakkaQt_playback.wav");
     QString extractedTmpPlayback = QDir::temp().filePath("WakkaQt_tmp_playback.wav");
 
+bool isSingleYouTubeVideoUrl(const QUrl& url) {
+    if (!isYouTubeHost(url.host())) return false;
+
+    // Block playlists
+    QUrlQuery q(url);
+    if (q.hasQueryItem("list")) return false;
+
+    // OK watch?v=, youtu.be/<id>, shorts/<id>
+    const QString path = url.path();
+    if (path.startsWith("/watch")) {
+        return q.hasQueryItem("v");
+    }
+    if (url.host().contains("youtu.be")) {
+        // youtu.be/<id>
+        return path.size() > 1; // is there something after '/' ?
+    }
+    if (path.startsWith(QStringLiteral("/shorts/"))) {
+        return path.length() > int(sizeof("/shorts/") - 1);
+    }
+
+    // fallback: allow std "?watch"
+    return q.hasQueryItem("v");
+}
+
+
 // utility function to write the WAVE headers
 void writeWavHeader(QFile &file, const QAudioFormat &format, qint64 dataSize, const QByteArray &pcmData)
 {
@@ -51,3 +76,9 @@ void writeWavHeader(QFile &file, const QAudioFormat &format, qint64 dataSize, co
 
     qDebug() << "WAV header and audio data written.";
 }
+
+static bool isYouTubeHost(const QString& host) {
+    const QString h = host.toLower();
+    return h.contains("youtube.com") || h.contains("youtu.be");
+}
+

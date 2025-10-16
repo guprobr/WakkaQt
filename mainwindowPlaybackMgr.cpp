@@ -1,4 +1,6 @@
 #include "mainwindow.h"
+#include "complexes.h"
+#include "DownloadDialog.h"
 
 void MainWindow::playVideo(const QString& playbackVideoPath) {
 
@@ -146,27 +148,37 @@ void MainWindow::chooseVideo()
 }
 
 void MainWindow::fetchVideo() {
-
-    QString url = urlInput->text();
-    if (url.isEmpty()) {
+    const QString urlStr = urlInput->text().trimmed();
+    if (urlStr.isEmpty()) {
         QMessageBox::warning(this, "Input Error", "Please enter a YouTube URL.");
         return;
     }
 
-    qint64 lastPos = player->position();
+    const QUrl url(urlStr);
+    if (!isSingleYouTubeVideoUrl(url)) {
+        QMessageBox::warning(
+            this, "Invalid URL",
+            "Please paste a single *video* URL from YouTube.\n"
+            "Tip: Use YouTube's \"Share\" button and copy that link.\n"
+            "Playlists are not supported.");
+        return;
+    }
+
+    // Pausa/oculta como você já fazia
+    const qint64 lastPos = player ? player->position() : 0;
     vizPlayer->stop();
     videoWidget->hide();
     placeholderLabel->show();
 
-    QString directory = QFileDialog::getExistingDirectory(this, "Choose Directory to Save Video");
+    const QString directory = QFileDialog::getExistingDirectory(this, "Choose Directory to Save Video");
     if (directory.isEmpty()) {
-        if (isPlayback)
+        if (isPlayback) {
             QTimer::singleShot(500, this, [this, lastPos]() {
                 vizPlayer->seek(lastPos, true);
                 #if QT_VERSION < QT_VERSION_CHECK(6, 6, 2)
                 #ifdef __linux__
-                        player->setAudioOutput(nullptr);
-                        player->setAudioOutput(audioOutput.data());
+                    player->setAudioOutput(nullptr);
+                    player->setAudioOutput(audioOutput.data());
                 #endif
                 #endif
                 if (!(currentPlayback.endsWith("mp3", Qt::CaseInsensitive) ||
@@ -178,112 +190,56 @@ void MainWindow::fetchVideo() {
                 }
                 vizPlayer->play();
             });
-
+        }
         return;
     }
 
     fetchButton->setEnabled(false);
-    downloadStatusLabel->setText("Getting file name...");
-    QProcess *filenameProcess = new QProcess(this);
 
-    QString outputTemplate = directory + "/%(title)s.%(ext)s";  // Using title for filename
-    QStringList filenameArgs;
-    filenameArgs << "--print" << "filename"
-                 << "--output" << outputTemplate
-                 << url;
+    DownloadDialog dlg(this);
+    dlg.start(urlStr, directory);
 
-    this->downloadedVideoPath.clear();
+    if (dlg.exec() == QDialog::Accepted) {
+        // Sucess        
+        
+        this->downloadedVideoPath = dlg.downloadedFilePath();
 
-    connect(filenameProcess, &QProcess::readyReadStandardOutput, this, [this, directory, filenameProcess]() {
-        QByteArray outputData = filenameProcess->readAllStandardOutput();
-        QString output = QString::fromUtf8(outputData).trimmed();
-        if (!output.isEmpty()) {
-            // Get the base filename and extension
-            QFileInfo fileInfo(output);
-            QString baseName = fileInfo.completeBaseName();  // Get the title part
-            QString extension = fileInfo.suffix();  // Get the extension
+        if (QFile::exists(this->downloadedVideoPath)) {
+            resetMediaComponents(false);
+            placeholderLabel->hide();
+            videoWidget->show();
 
-            // Sanitize the title part only (baseName)
-            QRegularExpression regex("[^a-zA-Z0-9_\\-\\.\\ ]");  // Allow alphanumeric, space, hyphen, dot, and underscore
-            baseName.replace(regex, "_");  // Replace invalid characters with underscore
+            currentVideoFile = this->downloadedVideoPath;
+            if (player && vizPlayer) {
+                vizPlayer->stop();
+                videoWidget->hide();
+                placeholderLabel->show();
+                playbackTimer->stop();
 
-            // Rebuild the complete file path with the sanitized base name and the original extension
-            this->downloadedVideoPath = directory + "/" + baseName + "." + extension;
+                playVideo(currentVideoFile);
 
-            qDebug() << "Predicted filename:" << this->downloadedVideoPath;
-            logUI("yt-dlp predicted filename: " + this->downloadedVideoPath);
+                downloadStatusLabel->setText("Download YouTube URL");
+                singButton->setEnabled(true);
+                singAction->setEnabled(true);
+                logUI("Previewing playback. Press SING to start recording.");
+            }
         }
-    });
-
-    connect(filenameProcess, &QProcess::finished, this, [this, filenameProcess, directory, url, lastPos]() {
-        filenameProcess->deleteLater();
-
-        if (this->downloadedVideoPath.isEmpty()) {
-            downloadStatusLabel->setText("Failed to get filename.");
-            fetchButton->setEnabled(true);
-            return;
-        }
-
-        // Now that we have the filename, start the actual download
-        downloadStatusLabel->setText("Downloading...");
-        QProcess *downloadProcess = new QProcess(this);
-
-        QStringList downloadArgs;
-        downloadArgs << "--output" << this->downloadedVideoPath  // Use sanitized filename here
-                     << url;
-
-        connect(downloadProcess, &QProcess::finished, this, [this, downloadProcess, lastPos]() {
-            downloadStatusLabel->setText("Download complete.");
-            downloadProcess->deleteLater();
-
-            if (QFile::exists(this->downloadedVideoPath)) {
-                resetMediaComponents(false);
-                placeholderLabel->hide();
-                videoWidget->show();
-
-                currentVideoFile = this->downloadedVideoPath;
-                if (player && vizPlayer) {
-                    vizPlayer->stop();
-                    videoWidget->hide();
-                    placeholderLabel->show();
-                    playbackTimer->stop();
-
-                    playVideo(currentVideoFile);
-
-                    downloadStatusLabel->setText("Download YouTube URL");
-                    singButton->setEnabled(true);
-                    singAction->setEnabled(true);
-                    logUI("Previewing playback. Press SING to start recording.");
-                    fetchButton->setEnabled(true);
+        fetchButton->setEnabled(true);
+    } else {
+        // Cancelado ou falhou — restaurar playback se estava ativo
+        if (isPlayback) {
+            QTimer::singleShot(500, this, [this, lastPos]() {
+                vizPlayer->seek(lastPos, true);
+                if (!(currentPlayback.endsWith("mp3", Qt::CaseInsensitive) ||
+                      currentPlayback.endsWith("wav", Qt::CaseInsensitive) ||
+                      currentPlayback.endsWith("opus", Qt::CaseInsensitive) ||
+                      currentPlayback.endsWith("flac", Qt::CaseInsensitive))) {
+                    placeholderLabel->hide();
+                    videoWidget->show();
                 }
-            } else {
-                if (isPlayback)
-                    QTimer::singleShot(500, this, [this, lastPos]() {
-                        vizPlayer->seek(lastPos, true);
-                        if (!(currentPlayback.endsWith("mp3", Qt::CaseInsensitive) ||
-                              currentPlayback.endsWith("wav", Qt::CaseInsensitive) ||
-                              currentPlayback.endsWith("opus", Qt::CaseInsensitive) ||
-                              currentPlayback.endsWith("flac", Qt::CaseInsensitive))) {
-                            placeholderLabel->hide();
-                            videoWidget->show();
-                        }
-                        vizPlayer->play();
-                        fetchButton->setEnabled(true);
-                    });
-            }
-        });
-
-        connect(downloadProcess, &QProcess::readyReadStandardError, this, [this, downloadProcess]() {
-            QByteArray errorData = downloadProcess->readAllStandardError();
-            QString error = QString::fromUtf8(errorData).trimmed();
-            if (!error.isEmpty()) {
-                qDebug() << "yt-dlp Error:" << error;
-                logUI("yt-dlp: " + error);
-            }
-        });
-
-        downloadProcess->start("yt-dlp", downloadArgs);
-    });
-
-    filenameProcess->start("yt-dlp", filenameArgs);
+                vizPlayer->play();
+            });
+        }
+        fetchButton->setEnabled(true);
+    }
 }

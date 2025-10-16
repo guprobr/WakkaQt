@@ -142,6 +142,7 @@ void MainWindow::stopRecording() {
         if ( isAborting ) {
             isAborting = false;
             handleRecordingError();
+            resetMediaComponents(false);
             return;
         }
 
@@ -273,6 +274,7 @@ void MainWindow::handleRecordingError() {
     chooseInputButton->setEnabled(true);
     chooseInputAction->setEnabled(true);
     vizCheckbox->setEnabled(true);
+    abortButton->hide();
 
 }
 
@@ -322,6 +324,6 @@ void MainWindow::waitForFileFinalization(const QString &filePath, std::function<
         }
     });
 
-    timer->start(1000); // Check every second
+    timer->start(222); // Check often
    
 }

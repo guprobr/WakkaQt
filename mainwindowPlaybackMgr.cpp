@@ -1,5 +1,4 @@
 #include "mainwindow.h"
-#include "complexes.h"
 #include "DownloadDialog.h"
 
 void MainWindow::playVideo(const QString& playbackVideoPath) {
@@ -164,7 +163,6 @@ void MainWindow::fetchVideo() {
         return;
     }
 
-    // Pausa/oculta como você já fazia
     const qint64 lastPos = player ? player->position() : 0;
     vizPlayer->stop();
     videoWidget->hide();
@@ -226,7 +224,7 @@ void MainWindow::fetchVideo() {
         }
         fetchButton->setEnabled(true);
     } else {
-        // Cancelado ou falhou — restaurar playback se estava ativo
+
         if (isPlayback) {
             QTimer::singleShot(500, this, [this, lastPos]() {
                 vizPlayer->seek(lastPos, true);

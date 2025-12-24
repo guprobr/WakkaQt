@@ -14,12 +14,12 @@ SndWidget::SndWidget(QWidget *parent)
       audioBuffer(new QBuffer(this)) {
 
     // Set up the default audio format
-    format.setSampleRate(22050);
+    format.setSampleRate(44100);
     format.setChannelCount(1);
     format.setSampleFormat(QAudioFormat::Int16);
 
     connect(timer, &QTimer::timeout, this, &SndWidget::updateWaveform);
-    timer->start(333); // Update every 333 milliseconds
+    timer->start(100); // Update every 100 milliseconds
 }
 
 SndWidget::~SndWidget() {
@@ -82,7 +82,7 @@ void SndWidget::paintEvent(QPaintEvent *event) {
     if (numSamples == 0) return;
 
     // Sensitivity factor to amplify or attenuate the waveform
-    float sensitivity = 1.5f; // Increase or decrease this value (e.g., 1.0f for no change)
+    float sensitivity = 3.5f; // Increase or decrease this value (e.g., 1.0f for no change)
 
     // Draw the waveform
     for (int i = 0; i < width; ++i) {

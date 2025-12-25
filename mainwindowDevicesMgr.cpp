@@ -26,16 +26,16 @@ void MainWindow::configureMediaComponents()
     soundLevelWidget->setInputDevice(selectedDevice);
     
     // Setup CAMERA
-    format->setFileFormat(QMediaFormat::FileFormat::AVI); // .mkv less dessync
+    format->setFileFormat(QMediaFormat::FileFormat::Matroska); // .mkv less dessync
     format->setVideoCodec(QMediaFormat::VideoCodec::MotionJPEG);
     format->setAudioCodec(QMediaFormat::AudioCodec::Wave);
 
     mediaRecorder->setMediaFormat(*format);
     mediaRecorder->setOutputLocation(QUrl::fromLocalFile(webcamRecorded));    
-    mediaRecorder->setEncodingMode(QMediaRecorder::ConstantBitRateEncoding); // respect bitrate
-    mediaRecorder->setQuality(QMediaRecorder::VeryHighQuality); // rly?
+    mediaRecorder->setEncodingMode(QMediaRecorder::AverageBitRateEncoding); // respect bitrate
+    mediaRecorder->setQuality(QMediaRecorder::HighQuality); 
     mediaRecorder->setVideoFrameRate(30);
-    mediaRecorder->setVideoBitRate(50'000'000);            // let ffmpeg decide?
+    mediaRecorder->setVideoBitRate(8'000'000);            // let ffmpeg decide?
     //mediaRecorder->setVideoResolution(QSize(W, H));       // future: set resolution
 
     qDebug() << "Configuring mediaCaptureSession..";

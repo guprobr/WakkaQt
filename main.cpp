@@ -89,8 +89,8 @@ int main(int argc, char *argv[]) {
     //WakkaQt.setStyle(QStyleFactory::create("Fusion"));
 
     // If enabled on the OS, Switch to dark mode on supported platforms (Windows/Mac/GNOME)
-    if ( isDarkModeEnabled() ) {
-
+    //if ( isDarkModeEnabled() ) {
+    if ( 0 ) {
         QPalette darkPalette;
         darkPalette.setColor(QPalette::Window, QColor(53, 53, 53));
         darkPalette.setColor(QPalette::WindowText, Qt::white);

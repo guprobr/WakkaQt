@@ -94,10 +94,31 @@ void MainWindow::onPlayerPositionChanged(qint64 position) {
     }
 }
 
+void MainWindow::chooseLast()
+{
+    qint64 lastPos = player->position();
+    vizPlayer->stop(); // stop to prevent "Unexpected FFmpeg behaviour"
+       
+    if (!currentPlayback.isEmpty()) {
+
+            resetMediaComponents(false);
+
+            singButton->setEnabled(true);
+            singAction->setEnabled(true);
+            renderAgainButton->setVisible(false);
+            chooseLastButton->setVisible(true);
+            placeholderLabel->hide();
+            videoWidget->show();
+
+            currentVideoFile = currentPlayback;
+            playVideo(currentVideoFile);
+            logUI("Press SING to start recording.");
+
+        }
+}
 
 void MainWindow::chooseVideo()
 {
-
     qint64 lastPos = player->position();
     vizPlayer->stop(); // stop to prevent "Unexpected FFmpeg behaviour"
     videoWidget->hide();
@@ -115,6 +136,7 @@ void MainWindow::chooseVideo()
             singButton->setEnabled(true);
             singAction->setEnabled(true);
             renderAgainButton->setVisible(false);
+            chooseLastButton->setVisible(true);
             placeholderLabel->hide();
             videoWidget->show();
 

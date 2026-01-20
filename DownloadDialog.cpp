@@ -7,13 +7,13 @@ DownloadDialog::DownloadDialog(QWidget* parent)
     : QDialog(parent)
 {
     setWindowTitle("Download YouTube Video");
-    setModal(true); // bloqueia a janela principal
+    setModal(true); // block main window
     setMinimumWidth(420);
 
     m_titleLabel = new QLabel("Preparing download…");
     m_statusLabel = new QLabel("Getting file name…");
     m_progress = new QProgressBar;
-    m_progress->setRange(0, 0); // indeterminado até começar o download
+    m_progress->setRange(0, 0); // indetermined before downloading
 
     m_cancelBtn = new QPushButton("Cancel");
     connect(m_cancelBtn, &QPushButton::clicked, this, &DownloadDialog::onCancel);
@@ -43,7 +43,7 @@ void DownloadDialog::startFilenameProbe() {
     }
     m_filenameProc = new QProcess(this);
 
-    // Template com título; saída é um caminho já resolvido pelo yt-dlp
+    // titled temmplate: resolved by yt-dlp
     const QString outputTemplate = m_directory + "/%(title)s.%(ext)s";
     QStringList args;
     args << "--print" << "filename"
@@ -67,7 +67,7 @@ void DownloadDialog::onFilenameStdOut() {
     QString baseName = fi.completeBaseName();
     const QString ext = fi.suffix();
 
-    // sanitize only the baseName (como você já fazia)
+    // sanitize only the baseName
     QRegularExpression regex("[^a-zA-Z0-9_\\-\\.\\ ]");
     baseName.replace(regex, "_");
 
@@ -88,7 +88,7 @@ void DownloadDialog::onFilenameFinished(int exitCode, QProcess::ExitStatus statu
         return;
     }
 
-    // reset barra para modo determinado agora
+    // progress bar now determined
     m_progress->setRange(0, 100);
     m_progress->setValue(0);
     m_titleLabel->setText("Downloading…");
@@ -126,7 +126,7 @@ void DownloadDialog::onDownloadStdErr() {
     // Vamos capturar o "X.Y%" mais à direita
     static QRegularExpression re(R"((\d{1,3}(?:\.\d+)?)%)");
     QRegularExpressionMatchIterator it = re.globalMatch(chunk);
-    double lastPercent = -1.0;
+    double lastPercent = 0;
     while (it.hasNext()) {
         auto m = it.next();
         lastPercent = m.captured(1).toDouble();

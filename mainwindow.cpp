@@ -21,7 +21,7 @@ MainWindow::MainWindow(QWidget *parent)
     chooseInputAction = new QAction("Choose Input Devices", this);
     singAction = new QAction("SING", this);
     QAction *exitAction = new QAction("Exit", this);
-    menuBar->setFont(QFont("Arial", 8));
+    menuBar->setFont(QFont("", 8));
     
     helpMenu->addAction(aboutQtAction);
     helpMenu->addAction(aboutWakkaQtAction);
@@ -56,7 +56,7 @@ MainWindow::MainWindow(QWidget *parent)
 
         aboutBox.setTextFormat(Qt::RichText);  
         aboutBox.setText(aboutText.arg(Wakka_welcome));  // Insert Wakka_welcome message
-        aboutBox.setFont(QFont("Arial", 11));
+        aboutBox.setFont(QFont("", 11));
 
         // Enable clickable links
         QLabel *label = aboutBox.findChild<QLabel *>("qt_msgbox_label");
@@ -113,7 +113,7 @@ MainWindow::MainWindow(QWidget *parent)
     // Create playback chronometer text item
     durationTextItem = new QGraphicsTextItem;
     durationTextItem->setDefaultTextColor(palette.color(QPalette::Text));
-    durationTextItem->setFont(QFont("Courier", 10, QFont::Bold));
+    durationTextItem->setFont(QFont("", 10, QFont::Bold));
     durationTextItem->setPlainText("00:00:00 / 00:00:00");
 
     progressScene->addItem(durationTextItem);
@@ -121,7 +121,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     banner = new QLabel(Wakka_welcome, this);
     banner->setTextFormat(Qt::TextFormat::RichText);
-    banner->setFont(QFont("Arial", 10, QFont::Bold));
+    banner->setFont(QFont("", 10, QFont::Bold));
     banner->setAlignment(Qt::AlignCenter);
     banner->setToolTip("Here be the song title!");
     setBanner(Wakka_welcome);
@@ -130,11 +130,13 @@ MainWindow::MainWindow(QWidget *parent)
     QPushButton *exitButton = new QPushButton("Exit", this);
     chooseVideoButton = new QPushButton("Load playback from disk", this);
     chooseVideoButton->setToolTip("Load media files from disk");
+    chooseLastButton = new QPushButton("Load Again", this);
+    chooseLastButton->setToolTip("Load last playback");
     singButton = new QPushButton("♪ SING ♪", this);
-    singButton->setFont(QFont("Arial", 15));
+    singButton->setFont(QFont("", 15));
     singButton->setToolTip("Start/Stop recording");
     abortButton = new QPushButton("* A B O R T *", this);
-    abortButton->setFont(QFont("Arial", 15));
+    abortButton->setFont(QFont("", 15));
     abortButton->setToolTip("TRASH recording");
     chooseInputButton = new QPushButton("Choose Input Devices", this);
     renderAgainButton = new QPushButton("RENDER AGAIN", this);
@@ -146,10 +148,10 @@ MainWindow::MainWindow(QWidget *parent)
  
     // custom options
     previewCheckbox = new QCheckBox("Cam Preview");
-    previewCheckbox->setFont(QFont("Arial", 8));
+    previewCheckbox->setFont(QFont("", 8));
     previewCheckbox->setToolTip("Toggle camera preview");
     vizCheckbox = new QCheckBox("Audio Visualizer");
-    vizCheckbox->setFont(QFont("Arial", 8));
+    vizCheckbox->setFont(QFont("", 8));
     vizCheckbox->setToolTip("Toggle Audio Visualizer");
     vizCheckbox->setChecked(true);
     
@@ -162,26 +164,26 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Instantiate SndWidget
     soundLevelWidget = new SndWidget(this);
-    soundLevelWidget->setMinimumSize(640, 64);
-    soundLevelWidget->setMaximumHeight(84);
-    soundLevelWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::MinimumExpanding);
+    soundLevelWidget->setMinimumSize(640, 36);
+    soundLevelWidget->setMaximumHeight(44);
+    soundLevelWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
     soundLevelWidget->setToolTip("Sound input visualization widget");
 
     // Device label
     deviceLabel = new QLabel("Selected Device: None", this);
-    deviceLabel->setFont(QFont("Arial", 8));
+    deviceLabel->setFont(QFont("", 8));
     deviceLabel->setToolTip("Changing the default source input in the system cfg will not reflect the information here");
     
     // YT downloader
     urlInput = new QLineEdit(this);
     urlInput->setPlaceholderText("https://www.youtube.com/?v=aBcDFgETc");
-    urlInput->setFont(QFont("Arial", 10));
+    urlInput->setFont(QFont("", 10));
     urlInput->setToolTip("Paste a URL here and fetch your karaoke media");
     fetchButton = new QPushButton("FETCH", this);
-    fetchButton->setFont(QFont("Arial", 10));
+    fetchButton->setFont(QFont("", 10));
     fetchButton->setToolTip("Click here and download URL to disk");
     downloadStatusLabel = new QLabel("Download media", this);
-    downloadStatusLabel->setFont(QFont("Arial", 7));
+    downloadStatusLabel->setFont(QFont("", 7));
     downloadStatusLabel->setToolTip("Several URL besides YouTube will work");
     QHBoxLayout *fetchLayout = new QHBoxLayout;
     fetchLayout->addWidget(urlInput);
@@ -194,7 +196,7 @@ MainWindow::MainWindow(QWidget *parent)
     logUI(Wakka_welcome);
     logTextEdit->setMinimumHeight(25);
     logTextEdit->setMaximumHeight(90);
-    logTextEdit->setFont(QFont("Arial", 8));
+    logTextEdit->setFont(QFont("", 8));
     logTextEdit->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     // Move cursor to the end of the text when text is appended
     connect(logTextEdit, &QTextEdit::textChanged, this, [=]() {
@@ -229,6 +231,7 @@ MainWindow::MainWindow(QWidget *parent)
     layout->addWidget(singButton);
     layout->addWidget(abortButton);
     layout->addWidget(chooseVideoButton);
+    layout->addWidget(chooseLastButton);
     layout->addWidget(chooseInputButton);
     layout->addWidget(renderAgainButton);
     layout->addWidget(exitButton);
@@ -240,6 +243,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Widget visibility
     chooseVideoButton->setVisible(true);
+    chooseLastButton->setVisible(false);
     chooseInputButton->setVisible(false);
     abortButton->setVisible(false);
     soundLevelWidget->setVisible(true);
@@ -255,6 +259,7 @@ MainWindow::MainWindow(QWidget *parent)
     // Connections
     connect(exitButton, &QPushButton::clicked, this, &QMainWindow::close);
     connect(chooseVideoButton, &QPushButton::clicked, this, &MainWindow::chooseVideo);
+    connect(chooseLastButton, &QPushButton::clicked, this, &MainWindow::chooseLast);
     connect(chooseInputButton, &QPushButton::clicked, this, &MainWindow::chooseInputDevice);
     connect(exitAction, &QAction::triggered, this, &QMainWindow::close);
     connect(loadPlaybackAction, &QAction::triggered, this, &MainWindow::chooseVideo);
@@ -437,8 +442,8 @@ void MainWindow::addVideoDisplayWidgetInDialog() {
     }
 
     // workaround for bug in Qt6.4 that freezes videoWidget
-    videoWidget->hide();
-    placeholderLabel->show();
+    ///videoWidget->hide();
+    ///placeholderLabel->show();
 
     // Create and configure the dialog
     webcamDialog = new QDialog(this);
@@ -558,6 +563,7 @@ void MainWindow::logUI(const QString &msg) {
 void MainWindow::enable_playback(bool flag) {
 
     chooseVideoButton->setEnabled(flag);
+    chooseLastButton->setEnabled(flag);
     loadPlaybackAction->setEnabled(flag);
     fetchButton->setEnabled(flag);
 

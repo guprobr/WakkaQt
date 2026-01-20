@@ -33,10 +33,10 @@ AudioVisualizerWidget::AudioVisualizerWidget(QWidget *parent)
         
     });
 
-    colorTimer->start(3500);
+    colorTimer->start(2222);
     QTimer *timer = new QTimer(this);
     connect(timer, &QTimer::timeout, this, &AudioVisualizerWidget::updatePainter);
-    timer->start(500);
+    timer->start(100);
 
 
 }

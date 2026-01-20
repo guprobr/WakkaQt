@@ -30,14 +30,14 @@ PreviewDialog::PreviewDialog(qint64 offset, qint64 sysLatency, QWidget *parent)
     // Initialize UI elements
     QLabel *volumeBanner = new QLabel("This is a low-quality preview.\nSometimes it takes a while to encode the 3-pass vocal enhancement.\nPlease be patient. ", this);
     volumeBanner->setToolTip("You can adjust the final volume for the render output.");
-    volumeBanner->setFont(QFont("Arial", 11));
+    volumeBanner->setFont(QFont("", 11));
     volumeBanner->setWordWrap(true);
     bannerLabel = new QLabel("Enhancing Vocals", this);
     bannerLabel->setToolTip("VocalEnhancement");
-    bannerLabel->setFont(QFont("Arial", 16));
+    bannerLabel->setFont(QFont("", 16));
     volumeLabel = new QLabel("Current Volume: 100%", this);
     volumeLabel->setToolTip("Values above 100% amplifies, while values below reduce volume");
-    volumeLabel->setFont(QFont("Courier", 14, QFont::Bold));
+    volumeLabel->setFont(QFont("", 14, QFont::Bold));
     startButton = new QPushButton("REWIND", this);
     startButton->setToolTip("Restart playback");
     stopButton = new QPushButton("Render Mix", this);
@@ -66,7 +66,7 @@ PreviewDialog::PreviewDialog(qint64 offset, qint64 sysLatency, QWidget *parent)
     playbackMute_option = new QCheckBox("Preview vocals only", this);
     playbackMute_option->setToolTip("Check to mute backing track while previewing");
     playbackMute_option->setChecked(false);
-    playbackMute_option->setFont(QFont("Arial", 8));
+    playbackMute_option->setFont(QFont("", 8));
 
     controls->addWidget(seekBackwardButton);
     controls->addWidget(volumeDial);
@@ -157,7 +157,7 @@ void PreviewDialog::setAudioFile(const QString &filePath) {
 
     // Prepare FFmpeg command
     QStringList arguments;
-    arguments   << "-y" << "-i" << audioFilePath 
+    arguments   << "-y" << "-threads" << "0" << "-i" << audioFilePath 
                 << "-vn" << "-filter_complex" 
                 << QString("%1 atrim=%2ms,asetpts=PTS-STARTPTS,aresample=44100;")
                                                 .arg(_audioMasterization)

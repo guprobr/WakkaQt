@@ -64,7 +64,7 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    QString Wakka_versione = "v1.13";
+    QString Wakka_versione = "v1.15";
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
@@ -140,6 +140,7 @@ private:
     QPushButton *chooseVideoButton;
     QPushButton *chooseInputButton;
     QPushButton *renderAgainButton;
+    QPushButton *chooseLastButton;
     QLabel* placeholderLabel;
     QLabel *recordingIndicator; 
     QLabel *deviceLabel;
@@ -166,6 +167,7 @@ private:
 
     void playVideo(const QString& playbackVideoPath);
     void chooseVideo();
+    void chooseLast();
     void updatePlaybackDuration();
 
     void startRecording();

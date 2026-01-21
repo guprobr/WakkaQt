@@ -222,12 +222,13 @@ MainWindow::MainWindow(QWidget *parent)
     QWidget *containerWidget = new QWidget(this);
     QVBoxLayout *layout = new QVBoxLayout(containerWidget);
     layout->addLayout(indicatorLayout);
+    
+    layout->addWidget(placeholderLabel);  
+    layout->addWidget(videoWidget);
     layout->addWidget(banner);
     layout->addLayout(vizLayout);
     layout->addWidget(progressView);
     layout->addWidget(soundLevelWidget, 1);
-    layout->addWidget(placeholderLabel);  
-    layout->addWidget(videoWidget);       
     layout->addWidget(singButton);
     layout->addWidget(abortButton);
     layout->addWidget(chooseVideoButton);

@@ -107,7 +107,7 @@ void MainWindow::stopRecording() {
         disconnect(player.data(), &QMediaPlayer::positionChanged, this, &MainWindow::onPlayerPositionChanged);
 
         recordingIndicator->hide();
-        webcamView->hide();
+        //webcamView->hide();
         previewCheckbox->setChecked(false);
 
         if ( player ) {
@@ -261,7 +261,7 @@ void MainWindow::handleRecordingError() {
         audioRecorder->stopRecording();
 
     recordingIndicator->hide();
-    webcamView->hide();
+    //webcamView->hide();
     previewCheckbox->setChecked(false);
     videoWidget->hide();
     placeholderLabel->show();

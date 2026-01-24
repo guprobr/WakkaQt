@@ -88,13 +88,13 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Create the webcam preview
     webcamScene = new QGraphicsScene(this);
-    webcamScene->setSceneRect(0, 0, 196, 88);
+    webcamScene->setSceneRect(0, 0, 320, 200);
     webcamView = new QGraphicsView(webcamScene, this);
-    webcamView->setFixedSize(196, 88);
+    webcamView->setFixedSize(320, 200);
     webcamView->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     webcamView->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     webcamPreviewItem = new QGraphicsVideoItem();
-    webcamPreviewItem->setSize(QSizeF(196, 88));
+    webcamPreviewItem->setSize(QSizeF(320, 200));
     webcamPreviewItem->setToolTip("Click to open large preview");
     webcamScene->addItem(webcamPreviewItem);
     webcamPreviewLayout = new QHBoxLayout();
@@ -150,6 +150,7 @@ MainWindow::MainWindow(QWidget *parent)
     previewCheckbox = new QCheckBox("Cam Preview");
     previewCheckbox->setFont(QFont("", 8));
     previewCheckbox->setToolTip("Toggle camera preview");
+    previewCheckbox->setChecked(true);
     vizCheckbox = new QCheckBox("Audio Visualizer");
     vizCheckbox->setFont(QFont("", 8));
     vizCheckbox->setToolTip("Toggle Audio Visualizer");
@@ -164,8 +165,8 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Instantiate SndWidget
     soundLevelWidget = new SndWidget(this);
-    soundLevelWidget->setMinimumSize(640, 36);
-    soundLevelWidget->setMaximumHeight(44);
+    soundLevelWidget->setMinimumSize(640, 21);
+    soundLevelWidget->setMaximumHeight(25);
     soundLevelWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
     soundLevelWidget->setToolTip("Sound input visualization widget");
 
@@ -194,8 +195,8 @@ MainWindow::MainWindow(QWidget *parent)
     logTextEdit = new QTextEdit(this);
     logTextEdit->setReadOnly(true);
     logUI(Wakka_welcome);
-    logTextEdit->setMinimumHeight(25);
-    logTextEdit->setMaximumHeight(90);
+    logTextEdit->setMinimumHeight(100);
+    logTextEdit->setMaximumHeight(200);
     logTextEdit->setFont(QFont("", 8));
     logTextEdit->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     // Move cursor to the end of the text when text is appended
@@ -250,7 +251,7 @@ MainWindow::MainWindow(QWidget *parent)
     soundLevelWidget->setVisible(true);
     webcamPreviewItem->setVisible(true);
     recordingIndicator->hide();
-    webcamView->hide();
+    webcamView->show();
     singButton->setEnabled(false);
     singAction->setEnabled(false);
     renderAgainButton->setVisible(false);
@@ -449,7 +450,7 @@ void MainWindow::addVideoDisplayWidgetInDialog() {
     // Create and configure the dialog
     webcamDialog = new QDialog(this);
     webcamDialog->setWindowTitle("WakkaQt - Webcam Preview");
-    webcamDialog->setFixedSize(512, 400); 
+    webcamDialog->setFixedSize(640, 480); 
     webcamPreviewLayout->removeWidget(webcamView);
 
     // Add webcamView to the dialog's layout
@@ -458,8 +459,8 @@ void MainWindow::addVideoDisplayWidgetInDialog() {
     webcamDialog->setLayout(layout);
 
     // Set the size of the view and the preview item
-    webcamView->setFixedSize(480, 320);
-    webcamPreviewItem->setSize(QSizeF(480, 320));
+    webcamView->setFixedSize(640, 480);
+    webcamPreviewItem->setSize(QSizeF(640, 480));
 
     // Set the scene size based on the view size
     webcamView->scene()->setSceneRect(0, 0, webcamView->width(), webcamView->height());
@@ -476,8 +477,8 @@ void MainWindow::addVideoDisplayWidgetInDialog() {
             // Put back the view in its original place
             layout->removeWidget(webcamView);
             webcamPreviewLayout->addWidget(webcamView);
-            webcamView->setFixedSize(196, 88);  // Set the original size
-            webcamPreviewItem->setSize(QSizeF(196, 88));
+            webcamView->setFixedSize(320, 200);  // Set the original size
+            webcamPreviewItem->setSize(QSizeF(320, 200));
             webcamPreviewItem->setPos(0, 0);  // Reset position to (0, 0)
             webcamView->scene()->setSceneRect(webcamView->rect());
         }

@@ -193,7 +193,7 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset) {
             << QString("[0:a]%1,volume=%2,%3[vocals];[2:a][vocals]amix=inputs=2:normalize=0,aresample=async=1[wakkamix];%4")
                     .arg(offsetFilter)
                     .arg(vocalVolume)
-                    .arg(_filterTreble)
+                    .arg(_audioMasterization)
                     .arg(videorama)
             << "-map" << "[wakkamix]";
 

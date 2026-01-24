@@ -10,7 +10,7 @@
 
 extern QString _audioMasterization;
 extern QString _filterEcho;
-extern QString _filterTreble;
+extern QString _audioEnhance;
 
 extern QString webcamRecorded;
 extern QString audioRecorded;

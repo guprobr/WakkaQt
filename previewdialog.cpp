@@ -160,7 +160,7 @@ void PreviewDialog::setAudioFile(const QString &filePath) {
     arguments   << "-y" << "-threads" << "0" << "-i" << audioFilePath 
                 << "-vn" << "-filter_complex" 
                 << QString("%1 atrim=%2ms,asetpts=PTS-STARTPTS,aresample=44100;")
-                                                .arg(_audioMasterization)
+                                                .arg(_audioEnhance)
                                                 .arg(audioOffset)
                 << "-ac" << "2" 
                 << "-acodec" << "pcm_s16le" << "-ar" << "44100" << "-async" << "1" << tempAudioFile;

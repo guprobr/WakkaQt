@@ -110,35 +110,39 @@ void DownloadDialog::startDownload() {
          << "--newline"        // progresso linha a linha no stderr
          << m_url;
 
-    connect(m_downloadProc, &QProcess::readyReadStandardError,
-            this, &DownloadDialog::onDownloadStdErr);
+    connect(m_downloadProc, &QProcess::readyRead,
+        this, &DownloadDialog::onDownloadStdErr);
+
     connect(m_downloadProc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
             this, &DownloadDialog::onDownloadFinished);
 
+    m_downloadProc->setProcessChannelMode(QProcess::MergedChannels); // unify stdout/stderr
     m_downloadProc->start("yt-dlp", args);
 }
 
 void DownloadDialog::onDownloadStdErr() {
-    const QString chunk = QString::fromUtf8(m_downloadProc->readAllStandardError());
+    const QString chunk =
+        QString::fromUtf8(m_downloadProc->readAll());
 
-    // Exemplos de linhas do yt-dlp:
-    // [download]   4.3% of 10.15MiB at 1.10MiB/s ETA 00:09
-    // Vamos capturar o "X.Y%" mais à direita
+    // yt-dlp usa \r para reescrever a linha
     static QRegularExpression re(R"((\d{1,3}(?:\.\d+)?)%)");
+
     QRegularExpressionMatchIterator it = re.globalMatch(chunk);
-    double lastPercent = 0;
+
+    double lastPercent = -1.0;
     while (it.hasNext()) {
         auto m = it.next();
         lastPercent = m.captured(1).toDouble();
     }
+
     if (lastPercent >= 0.0) {
         m_progress->setValue(static_cast<int>(lastPercent + 0.5));
-        m_statusLabel->setText(QString("Downloading… %1%").arg(lastPercent, 0, 'f', 1));
+        m_statusLabel->setText(
+            QString("Downloading… %1%").arg(lastPercent, 0, 'f', 1)
+        );
     }
-
-    // Mostra último stderr como status (opcional; útil para logs curtos)
-    // m_statusLabel->setText(chunk.split('\n').last().trimmed());
 }
+
 
 void DownloadDialog::onDownloadFinished(int exitCode, QProcess::ExitStatus status) {
     Q_UNUSED(status);

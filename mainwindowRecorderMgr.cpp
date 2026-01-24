@@ -142,7 +142,7 @@ void MainWindow::stopRecording() {
         if ( isAborting ) {
             isAborting = false;
             handleRecordingError();
-            resetMediaComponents(false);
+            //resetMediaComponents(false);
             return;
         }
 
@@ -220,7 +220,7 @@ void MainWindow::stopRecording() {
             singButton->setEnabled(false);
             singAction->setEnabled(false);
             
-            resetMediaComponents(false);
+            //(false);
             QMessageBox::critical(this, "SORRY: mediaRecorder ERROR", "File size is zero.");
         }
 
@@ -275,6 +275,10 @@ void MainWindow::handleRecordingError() {
     chooseInputAction->setEnabled(true);
     vizCheckbox->setEnabled(true);
     abortButton->hide();
+
+    isPlayback = false;
+
+    resetMediaComponents(false);
 
 }
 

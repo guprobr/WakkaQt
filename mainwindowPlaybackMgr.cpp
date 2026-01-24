@@ -96,11 +96,15 @@ void MainWindow::onPlayerPositionChanged(qint64 position) {
 
 void MainWindow::chooseLast()
 {
-    qint64 lastPos = player->position();
+    qint64 lastPos = 0;
+    if ( isPlayback )
+        lastPos = player->position();
+    
     vizPlayer->stop(); // stop to prevent "Unexpected FFmpeg behaviour"
-       
+
     if (!currentPlayback.isEmpty()) {
 
+    
             resetMediaComponents(false);
 
             singButton->setEnabled(true);
@@ -114,12 +118,36 @@ void MainWindow::chooseLast()
             playVideo(currentVideoFile);
             logUI("Press SING to start recording.");
 
-        }
+        } else
+        if ( isPlayback )
+            QTimer::singleShot(500, this, [this, lastPos]() {
+
+                
+                vizPlayer->seek(lastPos, true);
+                #if QT_VERSION < QT_VERSION_CHECK(6, 6, 2)
+                #ifdef __linux__
+                    player->setAudioOutput(nullptr); // first, detach the audio output 
+                    player->setAudioOutput(audioOutput.data()); // now gimme back my sound mon
+                #endif
+                #endif
+                if ( !( (currentPlayback.endsWith("mp3", Qt::CaseInsensitive))             \
+                ||  (currentPlayback.endsWith("wav", Qt::CaseInsensitive))                  \
+                ||  (currentPlayback.endsWith("opus", Qt::CaseInsensitive))                  \
+                ||  (currentPlayback.endsWith("flac", Qt::CaseInsensitive)) )) {
+                    placeholderLabel->hide();
+                    videoWidget->show();
+                }
+                vizPlayer->play();
+            }); // resume play
 }
 
 void MainWindow::chooseVideo()
 {
-    qint64 lastPos = player->position();
+    qint64 lastPos = 0;
+
+    if ( isPlayback )
+        lastPos = player->position();
+
     vizPlayer->stop(); // stop to prevent "Unexpected FFmpeg behaviour"
     videoWidget->hide();
     placeholderLabel->show();
@@ -241,6 +269,7 @@ void MainWindow::fetchVideo() {
                 downloadStatusLabel->setText("Download YouTube URL");
                 singButton->setEnabled(true);
                 singAction->setEnabled(true);
+                chooseLastButton->setVisible(true);
                 logUI("Previewing playback. Press SING to start recording.");
             }
         }

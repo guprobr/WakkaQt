@@ -36,20 +36,12 @@ VocalEnhancer::VocalEnhancer(const QAudioFormat& format, QObject *parent)
 QByteArray VocalEnhancer::enhance(const QByteArray& input) {
     qWarning() << "VocalEnhancer Input Data Size:" << input.size();
     if (input.isEmpty()) return QByteArray();
-
     int sampleCount = input.size() / m_sampleSize;
     QByteArray output(sampleCount * m_sampleSize, 0);
-    
-
     QVector<double> inputData = convertToDoubleArray(input, sampleCount);
-    //int targetSize = inputData.size();
-    //normalizeAndApplyGain(inputData, 0.8); // sanitize for pitch correction and effects
     qWarning() << "VocalEnhancer processing pitch correction";
     processPitchCorrection(inputData);
-    //normalizeAndApplyGain(inputData, 0.8); // normalize again at the very end
-    //resizeOutputToMatchInput(inputData, targetSize); // fix sync issues 
     convertToQByteArray(inputData, output);
-
     return output;
 }
 
@@ -115,7 +107,39 @@ double VocalEnhancer::detectPitch(const QVector<double>& inputData) const {
     if (N < fftN) return 0.0;
 
     // Pega um trecho “central” para evitar começo/fim com silêncio
-    const int start = (N - fftN) / 2;
+    int start = (N - fftN) / 2;
+
+        // Checa energia do bloco escolhido (se estiver muito baixo, tenta procurar um bloco com mais energia)
+    auto blockRMS = [&](int s) {
+        long double sum = 0.0;
+        for (int i = 0; i < fftN; ++i) {
+            double v = inputData[s + i];
+            sum += (long double)v * (long double)v;
+        }
+        return std::sqrt((double)(sum / fftN));
+    };
+
+    int bestStart = start;
+    double bestRms = blockRMS(start);
+
+    // tenta alguns offsets ao redor
+    const int step = fftN / 2;
+    for (int off = -3; off <= 3; ++off) {
+        int s = start + off * step;
+        if (s < 0 || s + fftN > N) continue;
+        double r = blockRMS(s);
+        if (r > bestRms) {
+            bestRms = r;
+            bestStart = s;
+        }
+    }
+
+    if (bestRms < 1e-4) {
+        // sem voz/sinal forte o suficiente
+        return 0.0;
+    }
+
+    start = bestStart;
 
     QVector<double> window = createHannWindow(fftN);
 
@@ -190,48 +214,128 @@ double VocalEnhancer::detectPitch(const QVector<double>& inputData) const {
     fftw_free(fftIn);
 
     qWarning() << "HPS(log) detected pitch:" << detectedFreq << "Hz";
+    banner = QString("pitch detected: %1 Hz").arg(detectedFreq);
     return detectedFreq;
 }
 
 void VocalEnhancer::processPitchCorrection(QVector<double>& data) {
 
+    // ---------- helpers ----------
     auto computeRMS = [](const QVector<double>& x) {
+        if (x.isEmpty()) return 0.0;
         long double sum = 0.0;
         for (double s : x) sum += (long double)s * (long double)s;
-        return x.isEmpty() ? 0.0 : std::sqrt((double)(sum / x.size()));
+        return std::sqrt((double)(sum / x.size()));
     };
 
-    double rmsIn = computeRMS(data);
+    auto computePeak = [](const QVector<double>& x) {
+        double p = 0.0;
+        for (double s : x) p = std::max(p, std::abs(s));
+        return p;
+    };
 
+    // ---------- RMS de entrada ----------
+    const double rmsIn = computeRMS(data);
+
+    // Se input está praticamente silêncio, não inventa nada
+    if (rmsIn < 1e-6) {
+        banner = "Enhancer: silence (bypass)";
+        return;
+    }
+
+    // ---------- pitch detection ----------
     double detectedPitch = detectPitch(data);
-    if (detectedPitch <= 0.0) detectedPitch = A440;
+    if (detectedPitch <= 0.0) {
+        banner = "Pitch: unknown (bypass PV)";
+        detectedPitch = A440;
+    }
 
-    double targetFrequency = findClosestNoteFrequency(detectedPitch);
-    double ratio = targetFrequency / detectedPitch;
+    const double targetFrequency = findClosestNoteFrequency(detectedPitch);
+    double ratioRaw = targetFrequency / detectedPitch;
 
-    // Clamps conservadores para soar “natural”
-    ratio = qBound(0.90, ratio, 1.12);
+    // --- dead-zone + força de correção (anti-robô) ---
+    // Em cents
+    double cents = 1200.0 * std::log2(ratioRaw);
 
-    banner = QString("Pitch shift PV ratio=%1").arg(ratio, 0, 'f', 4);
+    // Se já está bem perto, não corrige pitch (evita PV degradar timbre)
+    const double deadZoneCents = 12.0;   // 8–15 é uma faixa boa
+    if (std::abs(cents) < deadZoneCents) {
+        ratioRaw = 1.0;
+        cents = 0.0;
+    }
 
-    // Pitch shift de qualidade
-    data = pitchShiftPhaseVocoder(data, ratio);
+    // força (0..1) — 0.5–0.75 soa natural
+    const double strength = 0.65;
+    double ratio = std::pow(ratioRaw, strength);
 
-    compressDynamics(data, 0.6, 4.0);
-    harmonicExciter(data, 2.2, 0.25);
-    applyEcho(data, 0.8, 0.5, 128, 269, 0.28, 0.16);
+    // clamp leve (não exagera)
+    ratio = qBound(0.97, ratio, 1.03);
 
-    double rmsOut = computeRMS(data);
-    double compensation = 2.0;    // 1.6–2.2 tipical with PV + afftdn
+    // ---------- suavização temporal ----------
+    // IMPORTANTE: não use static global sem reset entre takes
+    // Solução simples: suaviza apenas dentro desta chamada usando um 1º-order smoother
+    // (Como você está offline por blocos, isso já ajuda sem “grudar” entre takes.)
+    double smoothRatio = ratio;
+    {
+        // Se quiser suavizar de verdade no tempo, você precisa calcular ratio por frames.
+        // Aqui é só amortecer a decisão única.
+        const double alpha = 0.25;
+        smoothRatio = 1.0 + alpha * (ratio - 1.0);
+    }
+    ratio = smoothRatio;
 
-    if (rmsOut > 1e-9 && rmsIn > 1e-9) {
-        double gain = (rmsIn / rmsOut) * compensation;
+    banner = QString("Pitch PV: det=%1Hz tgt=%2Hz cents=%3 r=%4")
+                 .arg(detectedPitch, 0, 'f', 2)
+                 .arg(targetFrequency, 0, 'f', 2)
+                 .arg(cents, 0, 'f', 1)
+                 .arg(ratio, 0, 'f', 4);
+
+    // ---------- pitch shift (BYPASS REAL se ratio ~ 1) ----------
+    const double bypassEps = 1e-3; // ~0.1%: 1.001/0.999
+    if (std::abs(ratio - 1.0) > bypassEps) {
+        data = pitchShiftPhaseVocoder(data, ratio);
+    } else {
+        // não roda PV quando não precisa — evita phasiness/robô
+        // (continua rodando o resto do enhancer)
+    }
+
+    // ---------- loudness RELATIVO (antes dos efeitos) ----------
+    const double rmsAfterPitch = computeRMS(data);
+    if (rmsAfterPitch > 1e-9) {
+
+        // compensação do pipeline (PV + janela + OLA)
+        // deixe isso baixo e estável; efeitos depois também mexem em RMS
+        const double compensation = 1.35;  // era 1.71: isso estava te forçando a segurar no limiter
+
+        double gain = (rmsIn / rmsAfterPitch) * compensation;
+
+        // Limites pra não explodir nem sumir
+        gain = qBound(0.75, gain, 3.0);
+
         applyMakeupGain(data, gain);
     }
 
-    applyLimiter(data, 0.98); // limiter always at the end
-    
+    // ---------- efeitos (mais leves) ----------
+    // compressor: limiar 0.7 é alto; ratio 3 é ok. Vamos manter.
+    compressDynamics(data, 0.7, 3.0);
+
+    // exciter: drive 1.4 mix 0.15 ok. Se robótico, primeiro desliga exciter.
+    harmonicExciter(data, 1.3, 0.12);
+
+    // echo: deixe bem sutil (do jeito anterior ainda pode dar “robô espacial”)
+    applyEcho(data,
+              0.55, 0.22,
+              85, 125,
+              0.12, 0.08);
+
+    // ---------- segurança final ----------
+    // Se você está percebendo volume baixo, NÃO suba no limiter; suba na compensação/ganho.
+    applyLimiter(data, 0.98);
+
+    // ---------- debug opcional (deixe comentado) ----------
+    // qWarning() << "RMS in/out:" << rmsIn << computeRMS(data) << "Peak:" << computePeak(data);
 }
+
 
 void VocalEnhancer::applyLimiter(QVector<double>& x, double ceiling) {
     ceiling = qBound(0.1, ceiling, 0.999);

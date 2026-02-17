@@ -64,7 +64,7 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    QString Wakka_versione = "v1.2alpha";
+    QString Wakka_versione = "v1.6";
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
@@ -197,6 +197,7 @@ private:
     void closeEvent(QCloseEvent *event) override;
 
     void logUI(const QString &msg);
+    void toggleLogVisibility();
     void setBanner(const QString &msg);
     bool eventFilter(QObject *object, QEvent *event) override;
     

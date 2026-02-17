@@ -16,94 +16,62 @@ public:
     ~VocalEnhancer();
 
     QByteArray enhance(const QByteArray& input);
-    int getProgress();
-    QString getBanner();
+    int getProgress() const;
+    QString getBanner() const;
 
 private:
-    // =======================
-    // Constants
-    // =======================
-    static const double A440;
-    static const int MIDI_NOTES;
-    static const double NOTE_FREQUENCIES[128];
+    // ========= Audio format (Qt6) =========
+    int m_sampleRate = 0;
+    int m_channels = 1;
+    int m_bytesPerSample = 2;
+    bool m_isFloat = false;
+    bool m_isSignedInt = true;
+    int m_frameBytes = 0;
 
-    // =======================
-    // Audio format
-    // =======================
-    int m_sampleSize;
-    int m_sampleRate;
-    int m_numSamples;
+    // Analysis window
+    int m_blockSizeMs = 40;
+    int m_numSamples = 0;
 
-    // =======================
-    // UI / State
-    // =======================
+    // UI / state
     double progressValue = 0.0;
     mutable QString banner;
 
-    // =======================
-    // Core pipeline
-    // =======================
-    void processPitchCorrection(QVector<double>& data);
-    QVector<double> timeStretch(const QVector<double>& segment, double shiftRatio) ;
-    QVector<double> harmonicScale(const QVector<double>& data, double scaleFactor);
-    QVector<double> extractSegment(const QVector<double>& data, const QVector<double>& window, int start, int size) const;
-    void addScaledSegment(QVector<double>& outputData, const QVector<double>& scaledSegment, int start, const QVector<double>& window) const;
-    
+    // PCM conversion
+    QVector<double> convertToDoubleArray(const QByteArray& input);
+    void convertToQByteArray(const QVector<double>& inputData, QByteArray& output);
 
-    // =======================
-    // Pitch detection (offline, robust)
-    // =======================
+    static inline int32_t readInt24LE(uint8_t b0, uint8_t b1, uint8_t b2);
+    static inline void writeInt24LE(uint8_t* dst, int32_t value);
+
+    // Pitch
     double detectPitch(const QVector<double>& data) const;
-    double findClosestNoteFrequency(double pitch) const;
+    double findClosestNoteFrequency(double frequency) const;
 
-    // =======================
-    // Phase Vocoder (quality pitch shift)
-    // =======================
-    QVector<double> timeStretchPhaseVocoder(const QVector<double>& in, double stretch);
-    QVector<double> pitchShiftPhaseVocoder(const QVector<double>& in, double ratio);
+    // Pitch correction
+    void processPitchCorrection(QVector<double>& data);
 
-    // =======================
-    // Window / math helpers
-    // =======================
+    // Windowing
     QVector<double> createHannWindow(int size) const;
     double cubicInterpolate(double v0, double v1, double v2, double v3, double t) const;
 
-    // =======================
+    // Phase vocoder
+    QVector<double> timeStretchPhaseVocoder(const QVector<double>& in, double stretch);
+    QVector<double> pitchShiftPhaseVocoder(const QVector<double>& in, double ratio);
+
     // Dynamics / timbre
-    // =======================
-    void normalizeAndApplyGain(QVector<double>& data, double gain);
-    void normalizeRMS(QVector<double>& x, double targetRMS);
+    void applyMakeupGain(QVector<double>& data, double gain);
+    void applyLimiter(QVector<double>& data, double ceiling);
     void compressDynamics(QVector<double>& data, double threshold, double ratio);
     void harmonicExciter(QVector<double>& data, double drive, double mix);
-    void applyLimiter(QVector<double>& data, double ceiling);
-    void applyMakeupGain(QVector<double>& x, double gain); 
 
-    // =======================
-    // Time effects
-    // =======================
-    void applyEcho(
-        QVector<double>& data,
-        double gainIn,
-        double gainOut,
-        double delayMs1,
-        double delayMs2,
-        double feedback1,
-        double feedback2
-    );
-
-    // =======================
-    // PCM conversion
-    // =======================
-    QVector<double> convertToDoubleArray(const QByteArray& input, int sampleCount);
-    void convertToQByteArray(const QVector<double>& inputData, QByteArray& output);
-
-    double normalizeSample(const QByteArray& input, int index) const;
-    int denormalizeSample(double value) const;
-
-    // =======================
-    // Utils
-    // =======================
-    double calculateDuration(int sampleRate) const;
+    // Echo
+    void applyEcho(QVector<double>& data,
+                   double gainIn,
+                   double gainOut,
+                   double delayMs1,
+                   double delayMs2,
+                   double feedback1,
+                   double feedback2);
 };
 
 #endif // VOCALENHANCER_H

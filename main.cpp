@@ -77,8 +77,8 @@ int main(int argc, char *argv[]) {
     qputenv("QT_MEDIA_BACKEND", "ffmpeg");
 #endif
 
-    qputenv("QT_FFMPEG_BLACKLIST_CODECS",
-           "hevc,hevc_vaapi,hevc_vulkan,vp8_vaapi");
+    //qputenv("QT_FFMPEG_BLACKLIST_CODECS",
+    //       "hevc,hevc_vaapi,hevc_vulkan,vp8_vaapi");
 
     // (opt) -- more stable, less performance
     // setenv("QT_FFMPEG_FORCE_SOFTWARE_ENCODERS", "1", 1);

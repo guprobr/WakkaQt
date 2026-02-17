@@ -17,6 +17,7 @@ MainWindow::MainWindow(QWidget *parent)
     QMenu *fileMenu = new QMenu("File", this);
     QAction *aboutQtAction = new QAction("About Qt", this);
     QAction *aboutWakkaQtAction = new QAction("About WakkaQt", this);
+    QAction *logAction = new QAction("Show Log", this);
     loadPlaybackAction = new QAction("Load playback", this);
     chooseInputAction = new QAction("Choose Input Devices", this);
     singAction = new QAction("SING", this);
@@ -25,6 +26,7 @@ MainWindow::MainWindow(QWidget *parent)
     
     helpMenu->addAction(aboutQtAction);
     helpMenu->addAction(aboutWakkaQtAction);
+    helpMenu->addAction(logAction);
     fileMenu->addAction(loadPlaybackAction);
     fileMenu->addAction(chooseInputAction);
     fileMenu->addAction(singAction);
@@ -257,6 +259,7 @@ MainWindow::MainWindow(QWidget *parent)
     renderAgainButton->setVisible(false);
     exitButton->setVisible(false);
     deviceLabel->setVisible(true);
+    logTextEdit->setVisible(false);
 
     // Connections
     connect(exitButton, &QPushButton::clicked, this, &QMainWindow::close);
@@ -266,6 +269,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(exitAction, &QAction::triggered, this, &QMainWindow::close);
     connect(loadPlaybackAction, &QAction::triggered, this, &MainWindow::chooseVideo);
     connect(chooseInputAction, &QAction::triggered, this, &MainWindow::chooseInputDevice);
+    connect(logAction, &QAction::triggered, this, &MainWindow::toggleLogVisibility);
     connect(singButton, &QPushButton::clicked, this, &MainWindow::startRecording);
     connect(abortButton, &QPushButton::clicked, this, &MainWindow::abortRecording);
     connect(singAction, &QAction::triggered, this, &MainWindow::startRecording);
@@ -561,6 +565,11 @@ void MainWindow::setBanner(const QString &msg) {
 void MainWindow::logUI(const QString &msg) {
     this->logTextEdit->append(msg);
 }
+
+void MainWindow::toggleLogVisibility() {
+    this->logTextEdit->setVisible(!this->logTextEdit->isVisible());
+}
+
 
 void MainWindow::enable_playback(bool flag) {
 

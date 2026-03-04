@@ -200,15 +200,16 @@ QByteArray VocalEnhancer::enhance(const QByteArray& input) {
     QVector<double> data = convertToDoubleArray(input);
 
 
+    
     reduceNoiseSpectralGate(
         data,
-        1024,        // fftSize
-        256,         // hop (N/4)
-        1.1,         // overSub
-        -20.0,       // floor (dB)
-        0.25,        // learn time (s)
-        0.08,        // slow adaptivity in low-energy frames
-        -35.0        // low-energy threshold (dBFS approx)
+        1024,      // keep
+        256,       // keep
+        0.8,       // overSub: was 1.1 (too much subtraction)
+        -12.0,     // floor (dB): was -20 → keep some noise bed
+        0.40,      // learn time (s): was 0.25
+        0.03,      // adaptivity: was 0.08 (slower tracking reduces twinkle)
+        -45.0      // low-energy threshold (dBFS approx): was -35
     );
 
 
@@ -234,7 +235,7 @@ QString VocalEnhancer::getBanner() const {
 // ======================
 double VocalEnhancer::detectPitch(const QVector<double>& inputData) const {
     const int N = inputData.size();
-    if (N < 2048) return 0.0;
+    if (N < 1024) return 0.0;
 
     const double minFreq = 80.0;
     const double maxFreq = 1000.0;
@@ -393,10 +394,16 @@ void VocalEnhancer::processPitchCorrection(QVector<double>& data) {
     double ratioRaw = targetFrequency / detectedPitch;
 
     // Tuning parameters (expose as needed)
-    const double deadZoneCents      = 12.0;   // no correction within ±12 cents
+    /* const double deadZoneCents      = 12.0;   // no correction within ±12 cents
     const double maxCorrectionCents = 150.0;  // limit correction to ±150 cents (~±1.5 semitones)
     const double strength           = 0.65;   // 0..1 (lower = more natural)
-    const double bypassEps          = 1e-3;   // if final ratio ~1, skip vocoder
+    const double bypassEps          = 1e-3;   // if final ratio ~1, skip vocoder */
+
+    const double deadZoneCents      = 25.0;  // was 12.0
+    const double maxCorrectionCents = 120.0; // was 150.0
+    const double strength           = 0.35;  // was 0.65 ⇒ more natural
+    const double bypassEps          = 4e-3;  // was 1e-3 ⇒ avoid micro-shifts
+
 
     // Convert ratio to cents and apply dead-zone & cap
     double cents = 1200.0 * std::log2(ratioRaw);
@@ -441,8 +448,8 @@ void VocalEnhancer::processPitchCorrection(QVector<double>& data) {
 
     // Dynamics and timbre
     compressDynamics(data, 0.7, 3.0);                 // improved compressor below
-    harmonicExciter(data, 1.1, 0.11);                 // gentle exciter
-    applyEcho(data, 0.5, 0.18, 85, 125, 0.10, 0.08);  // subtle dual echo in mono
+    harmonicExciter(data, 1.71, 0.69);                 // gentle exciter
+    //applyEcho(data, 1.0, 0.21, 21, 12, 0.5, 0.5);  // this is a  chorus/flanger-like effect, actually
 
     // Safety
     applyLimiter(data, 0.99);
@@ -789,8 +796,10 @@ void VocalEnhancer::reduceNoiseSpectralGate(QVector<double>& x,
 QVector<double> VocalEnhancer::timeStretchPhaseVocoder(const QVector<double>& in, double stretch) {
     if (in.isEmpty() || stretch <= 0.0) return in;
 
-    const int N  = 2048;           // FFT size
-    const int Ha = N / 4;          // analysis hop
+   
+    const int N  = 1024;
+    const int Ha = N / 4; // 256
+
     const int Hs = std::max(1, int(std::round(Ha * stretch))); // synthesis hop
 
     QVector<double> window = createHannWindow(N);

@@ -441,7 +441,7 @@ void VocalEnhancer::processPitchCorrection(QVector<double>& data) {
 
     // Dynamics and timbre
     compressDynamics(data, 0.7, 3.0);                 // improved compressor below
-    harmonicExciter(data, 1.6, 0.20);                 // gentle exciter
+    harmonicExciter(data, 1.1, 0.11);                 // gentle exciter
     applyEcho(data, 0.5, 0.18, 85, 125, 0.10, 0.08);  // subtle dual echo in mono
 
     // Safety

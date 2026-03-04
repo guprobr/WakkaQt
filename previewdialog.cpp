@@ -157,7 +157,7 @@ void PreviewDialog::setAudioFile(const QString &filePath) {
 
     // Prepare FFmpeg command
     QStringList arguments;
-    arguments   << "-y" << "-threads" << "0" << "-i" << audioFilePath 
+    arguments   << "-y" << "-i" << audioFilePath 
                 << "-vn" << "-filter_complex" 
                 << QString("%1 atrim=%2ms,asetpts=PTS-STARTPTS,aresample=44100;")
                                                 .arg(_audioEnhance)

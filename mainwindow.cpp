@@ -22,7 +22,7 @@ MainWindow::MainWindow(QWidget *parent)
     chooseInputAction = new QAction("Choose Input Devices", this);
     singAction = new QAction("SING", this);
     QAction *exitAction = new QAction("Exit", this);
-    menuBar->setFont(QFont("", 8));
+    menuBar->setFont(QApplication::font());
     
     helpMenu->addAction(aboutQtAction);
     helpMenu->addAction(aboutWakkaQtAction);
@@ -58,7 +58,7 @@ MainWindow::MainWindow(QWidget *parent)
 
         aboutBox.setTextFormat(Qt::RichText);  
         aboutBox.setText(aboutText.arg(Wakka_welcome));  // Insert Wakka_welcome message
-        aboutBox.setFont(QFont("", 11));
+        aboutBox.setFont(QApplication::font());
 
         // Enable clickable links
         QLabel *label = aboutBox.findChild<QLabel *>("qt_msgbox_label");
@@ -115,7 +115,7 @@ MainWindow::MainWindow(QWidget *parent)
     // Create playback chronometer text item
     durationTextItem = new QGraphicsTextItem;
     durationTextItem->setDefaultTextColor(palette.color(QPalette::Text));
-    durationTextItem->setFont(QFont("", 10, QFont::Bold));
+    durationTextItem->setFont(QApplication::font());
     durationTextItem->setPlainText("00:00:00 / 00:00:00");
 
     progressScene->addItem(durationTextItem);
@@ -123,7 +123,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     banner = new QLabel(Wakka_welcome, this);
     banner->setTextFormat(Qt::TextFormat::RichText);
-    banner->setFont(QFont("", 10, QFont::Bold));
+    banner->setFont(QApplication::font());
     banner->setAlignment(Qt::AlignCenter);
     banner->setToolTip("Here be the song title!");
     setBanner(Wakka_welcome);
@@ -135,10 +135,10 @@ MainWindow::MainWindow(QWidget *parent)
     chooseLastButton = new QPushButton("Load Again", this);
     chooseLastButton->setToolTip("Load last playback");
     singButton = new QPushButton("♪ SING ♪", this);
-    singButton->setFont(QFont("", 15));
+    singButton->setFont(QApplication::font());
     singButton->setToolTip("Start/Stop recording");
     abortButton = new QPushButton("* A B O R T *", this);
-    abortButton->setFont(QFont("", 15));
+    abortButton->setFont(QApplication::font());
     abortButton->setToolTip("TRASH recording");
     chooseInputButton = new QPushButton("Choose Input Devices", this);
     renderAgainButton = new QPushButton("RENDER AGAIN", this);
@@ -150,11 +150,11 @@ MainWindow::MainWindow(QWidget *parent)
  
     // custom options
     previewCheckbox = new QCheckBox("Cam Preview");
-    previewCheckbox->setFont(QFont("", 8));
+    previewCheckbox->setFont(QApplication::font());
     previewCheckbox->setToolTip("Toggle camera preview");
     previewCheckbox->setChecked(true);
     vizCheckbox = new QCheckBox("Audio Visualizer");
-    vizCheckbox->setFont(QFont("", 8));
+    vizCheckbox->setFont(QApplication::font());
     vizCheckbox->setToolTip("Toggle Audio Visualizer");
     vizCheckbox->setChecked(true);
     
@@ -174,19 +174,19 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Device label
     deviceLabel = new QLabel("Selected Device: None", this);
-    deviceLabel->setFont(QFont("", 8));
+    deviceLabel->setFont(QApplication::font());
     deviceLabel->setToolTip("Changing the default source input in the system cfg will not reflect the information here");
     
     // YT downloader
     urlInput = new QLineEdit(this);
     urlInput->setPlaceholderText("https://www.youtube.com/?v=aBcDFgETc");
-    urlInput->setFont(QFont("", 10));
+    urlInput->setFont(QApplication::font());
     urlInput->setToolTip("Paste a URL here and fetch your karaoke media");
     fetchButton = new QPushButton("FETCH", this);
-    fetchButton->setFont(QFont("", 10));
+    fetchButton->setFont(QApplication::font());
     fetchButton->setToolTip("Click here and download URL to disk");
     downloadStatusLabel = new QLabel("Download media", this);
-    downloadStatusLabel->setFont(QFont("", 7));
+    downloadStatusLabel->setFont(QApplication::font());
     downloadStatusLabel->setToolTip("Several URL besides YouTube will work");
     QHBoxLayout *fetchLayout = new QHBoxLayout;
     fetchLayout->addWidget(urlInput);
@@ -199,7 +199,7 @@ MainWindow::MainWindow(QWidget *parent)
     logUI(Wakka_welcome);
     logTextEdit->setMinimumHeight(100);
     logTextEdit->setMaximumHeight(200);
-    logTextEdit->setFont(QFont("", 8));
+    logTextEdit->setFont(QApplication::font());
     logTextEdit->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     // Move cursor to the end of the text when text is appended
     connect(logTextEdit, &QTextEdit::textChanged, this, [=]() {
@@ -277,6 +277,16 @@ MainWindow::MainWindow(QWidget *parent)
     connect(renderAgainButton, &QPushButton::clicked, this, &MainWindow::renderAgain);
     connect(previewCheckbox, &QCheckBox::toggled, this, &MainWindow::onPreviewCheckboxToggled);
     connect(vizCheckbox, &QCheckBox::toggled, this, &MainWindow::onVizCheckboxToggled);
+
+      // Cover most clickable widgets at once:
+    setDefaultFontForClass("QAbstractButton", 10); // QPushButton/QToolButton/etc inherit this
+    // Labels / general widgets:
+    setDefaultFontForClass("QLabel", 10);
+    setDefaultFontForClass("QLineEdit", 10);
+    QFont mono = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+    mono.setPointSizeF(11);
+    QApplication::setFont(mono, "QPlainTextEdit");
+    QApplication::setFont(mono, "QTextEdit");
 
     playbackTimer = new QTimer(this);
     connect(playbackTimer, &QTimer::timeout, this, &MainWindow::updatePlaybackDuration);
@@ -599,6 +609,13 @@ void MainWindow::resizeEvent(QResizeEvent* event) {
     durationTextItem->setTextWidth(durationTextItem->boundingRect().width());
     durationTextItem->setX((this->progressView->width() - durationTextItem->boundingRect().width()) / 2);
     
+}
+
+void MainWindow::setDefaultFontForClass(const char* className, qreal pt)
+{
+    QFont f = QApplication::font(); // :contentReference[oaicite:4]{index=4}
+    f.setPointSizeF(pt);
+    QApplication::setFont(f, className);     // applies to class + subclasses :contentReference[oaicite:5]{index=5}
 }
 
 void MainWindow::closeEvent(QCloseEvent *event)

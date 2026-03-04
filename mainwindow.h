@@ -55,6 +55,8 @@
 #include <QAudioOutput>
 #include <QAudioInput>
 #include <QAudioFormat>
+#include <QApplication>
+#include <QFontDatabase>
 
 #include <QDebug>
 
@@ -64,7 +66,7 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    QString Wakka_versione = "v1.6";
+    QString Wakka_versione = "v1.69";
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
@@ -200,6 +202,8 @@ private:
     void toggleLogVisibility();
     void setBanner(const QString &msg);
     bool eventFilter(QObject *object, QEvent *event) override;
+
+    void setDefaultFontForClass(const char* className, qreal pt);
     
 };
 

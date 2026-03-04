@@ -72,6 +72,19 @@ private:
                    double delayMs2,
                    double feedback1,
                    double feedback2);
+    // Noise reduction
+    void reduceNoiseSpectralGate(QVector<double>& x,
+                    int fftSize = 1024,
+                    int hopSize = -1,          // defaults to N/4 if < 1
+                    double overSub = 1.1,      // 1.0–1.5 typical
+                    double floorDb = -20.0,    // -12 .. -25 dB typical
+                    double noiseLearnSec = 0.25, // 0.15–0.4 s
+                    double adaptivity = 0.08,  // slow adaptation during low-energy frames
+                    double lowEnergyDb = -35.0 // gate for adaptation (dBFS approx)
+                    );
+    inline double dbToLinear(double db) const {
+        return std::pow(10.0, db / 20.0);
+    }
 };
 
 #endif // VOCALENHANCER_H

@@ -134,8 +134,8 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset) {
 
     // Calculate Picture-in-Picture size (25% of the main video)
     QStringList mainResParts = setRez.split("x");
-    int pipWidth = mainResParts[0].toInt() / 4;  // 25% width
-    int pipHeight = mainResParts[1].toInt() / 4; // 25% height
+    int pipWidth = mainResParts[0].toInt() * 0.35;  // 25% width
+    int pipHeight = mainResParts[1].toInt() * 0.35; // 25% height
     QString pipSize = QString("%1x%2").arg(pipWidth).arg(pipHeight);
     videoScale = QString("scale=s=%1").arg(pipSize);
 

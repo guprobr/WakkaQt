@@ -199,6 +199,19 @@ QByteArray VocalEnhancer::enhance(const QByteArray& input) {
     // Convert to mono double [-1..+1]
     QVector<double> data = convertToDoubleArray(input);
 
+
+    reduceNoiseSpectralGate(
+        data,
+        1024,        // fftSize
+        256,         // hop (N/4)
+        1.1,         // overSub
+        -20.0,       // floor (dB)
+        0.25,        // learn time (s)
+        0.08,        // slow adaptivity in low-energy frames
+        -35.0        // low-energy threshold (dBFS approx)
+    );
+
+
     // Pitch correction + processing chain
     processPitchCorrection(data);
 
@@ -420,7 +433,7 @@ void VocalEnhancer::processPitchCorrection(QVector<double>& data) {
     // Loudness compensation
     const double rmsAfter = computeRMS(data);
     if (rmsAfter > 1e-9) {
-        const double compensation = 1.35; // tune this to taste
+        const double compensation = 2.00; // tune this to taste
         double gain = (rmsIn / rmsAfter) * compensation;
         gain = std::clamp(gain, 0.75, 3.0);
         applyMakeupGain(data, gain);
@@ -428,11 +441,11 @@ void VocalEnhancer::processPitchCorrection(QVector<double>& data) {
 
     // Dynamics and timbre
     compressDynamics(data, 0.7, 3.0);                 // improved compressor below
-    harmonicExciter(data, 1.2, 0.10);                 // gentle exciter
+    harmonicExciter(data, 1.6, 0.20);                 // gentle exciter
     applyEcho(data, 0.5, 0.18, 85, 125, 0.10, 0.08);  // subtle dual echo in mono
 
     // Safety
-    applyLimiter(data, 0.98);
+    applyLimiter(data, 0.99);
 }
 
 // ======================
@@ -553,6 +566,221 @@ double VocalEnhancer::cubicInterpolate(double v0, double v1, double v2, double v
     double a1 = v0 - v1 - a0;
     double a2 = v2 - v0;
     return (a0 * t * t * t + a1 * t * t + a2 * t + v1);
+}
+
+/////////// NOISE REDUCTION (SPECTRAL GATE)
+
+void VocalEnhancer::reduceNoiseSpectralGate(QVector<double>& x,
+                                            int fftSize,
+                                            int hopSize,
+                                            double overSub,
+                                            double floorDb,
+                                            double noiseLearnSec,
+                                            double adaptivity,
+                                            double lowEnergyDb)
+{
+    if (x.isEmpty()) return;
+
+    const int N = (fftSize > 0 ? fftSize : 1024);
+    const int H = (hopSize > 0 ? hopSize : N / 4);
+    if (N < 256 || H < 1) return;
+
+    // Windows and overlap-add buffers
+    QVector<double> window = createHannWindow(N);
+
+    // Output will be same length as input (with a little padding)
+    const int outCap = x.size() + N + H + 4;
+    QVector<double> out(outCap, 0.0);
+    QVector<double> winSum(outCap, 0.0);
+
+    // FFTW buffers/plans
+    double* fftIn = (double*)fftw_malloc(sizeof(double) * N);
+    fftw_complex* fftOut = (fftw_complex*)fftw_malloc(sizeof(fftw_complex) * (N / 2 + 1));
+    fftw_complex* spec = (fftw_complex*)fftw_malloc(sizeof(fftw_complex) * (N / 2 + 1));
+    double* ifftOut = (double*)fftw_malloc(sizeof(double) * N);
+
+    if (!fftIn || !fftOut || !spec || !ifftOut) {
+        if (fftIn) fftw_free(fftIn);
+        if (fftOut) fftw_free(fftOut);
+        if (spec)   fftw_free(spec);
+        if (ifftOut) fftw_free(ifftOut);
+        return;
+    }
+
+    fftw_plan fwd = fftw_plan_dft_r2c_1d(N, fftIn, fftOut, FFTW_ESTIMATE);
+    fftw_plan inv = fftw_plan_dft_c2r_1d(N, spec, ifftOut, FFTW_ESTIMATE);
+
+    const int bins = N / 2 + 1;
+
+    // Noise profile (magnitude per bin)
+    QVector<double> noiseMag(bins, 0.0);
+    QVector<int>    noiseCnt(bins, 0);
+
+    // Gain smoothing to reduce musical noise (per-bin)
+    QVector<double> prevGain(bins, 1.0);
+
+    // Floor in linear gain
+    const double Gfloor = std::clamp(dbToLinear(floorDb), 0.0, 1.0);
+
+    // How many frames to learn the initial noise profile
+    const int learnFramesTarget = std::max(1, int((noiseLearnSec * m_sampleRate) / H));
+
+    // =============== First pass: learn noise from the first frames ===============
+    int inPos = 0;
+    int frames = 0;
+
+    while (inPos + N <= x.size() && frames < learnFramesTarget) {
+        // Copy & window
+        double frameRmsAcc = 0.0;
+        for (int i = 0; i < N; ++i) {
+            double s = x[inPos + i];
+            frameRmsAcc += s * s;
+            fftIn[i] = s * window[i];
+        }
+
+        const double frameRms = std::sqrt(frameRmsAcc / N);
+
+        // Shortcuts: even if it's not purely noise, an average of a few frames
+        // is fine as an initial guess; we’ll adapt slowly later on.
+        fftw_execute(fwd);
+
+        for (int k = 0; k < bins; ++k) {
+            const double re = fftOut[k][0];
+            const double im = fftOut[k][1];
+            const double mag = std::sqrt(re * re + im * im) + 1e-12;
+
+            noiseMag[k] += mag;
+            noiseCnt[k] += 1;
+        }
+
+        inPos += H;
+        frames += 1;
+    }
+
+    // Average the accumulated noise magnitude
+    for (int k = 0; k < bins; ++k) {
+        if (noiseCnt[k] > 0) noiseMag[k] /= double(noiseCnt[k]);
+        if (noiseMag[k] <= 0.0) noiseMag[k] = 1e-12;
+    }
+
+    // Reset for full processing pass
+    inPos = 0;
+    int outPos = 0;
+    frames = 0;
+
+    // Temporal smoothing constants for gain (0..1). Larger = more smoothing.
+    const double atk = 0.60;  // when gain needs to go down (more suppression)
+    const double rel = 0.85;  // when gain can go up (less suppression)
+
+    // A tiny 3-bin frequency smoothing kernel can tame isolated spikes
+    auto smooth3 = [&](const QVector<double>& v, QVector<double>& y) {
+        y.resize(v.size());
+        if (v.size() == 1) { y[0] = v[0]; return; }
+        y[0] = 0.75 * v[0] + 0.25 * v[1];
+        for (int k = 1; k < v.size() - 1; ++k)
+            y[k] = 0.25 * v[k - 1] + 0.5 * v[k] + 0.25 * v[k + 1];
+        y[v.size() - 1] = 0.25 * v[v.size() - 2] + 0.75 * v[v.size() - 1];
+    };
+
+    QVector<double> magBuf(bins), magSm(bins);
+
+    // =============== Second pass: apply spectral gating ===============
+    while (inPos + N <= x.size() && outPos + N < out.size()) {
+        double frameRmsAcc = 0.0;
+        for (int i = 0; i < N; ++i) {
+            double s = x[inPos + i];
+            frameRmsAcc += s * s;
+            fftIn[i] = s * window[i];
+        }
+        const double frameRms = std::sqrt(frameRmsAcc / N);
+        const double frameDbFS = 20.0 * std::log10(std::max(frameRms, 1e-12)); // approximate dBFS
+
+        fftw_execute(fwd);
+
+        // Magnitudes
+        for (int k = 0; k < bins; ++k) {
+            const double re = fftOut[k][0];
+            const double im = fftOut[k][1];
+            magBuf[k] = std::sqrt(re * re + im * im) + 1e-12;
+        }
+
+        // Optional small frequency smoothing
+        smooth3(magBuf, magSm);
+
+        // Compute gains
+        for (int k = 0; k < bins; ++k) {
+            const double mag   = std::max(magSm[k], 1e-12);
+            const double noise = std::max(noiseMag[k], 1e-12);
+
+            // Simple spectral subtraction style gain
+            double G = 1.0 - overSub * (noise / mag);
+            G = std::clamp(G, Gfloor, 1.0);
+
+            // Temporal smoothing (per bin)
+            double gPrev = prevGain[k];
+            double gSm   = (G < gPrev)
+                           ? (atk * gPrev + (1.0 - atk) * G)   // faster down
+                           : (rel * gPrev + (1.0 - rel) * G);  // slower up
+            prevGain[k] = gSm;
+
+            // Re-apply with phase
+            const double re = fftOut[k][0];
+            const double im = fftOut[k][1];
+
+            // Avoid blowing away bins near DC completely
+            double gUse = gSm;
+            if (k <= 2) gUse = std::max(gUse, 0.5 * Gfloor);
+
+            spec[k][0] = re * gUse;
+            spec[k][1] = im * gUse;
+        }
+
+        // Slow noise model adaptation during low-energy frames
+        // Helps when noise changes between sentences/phrases
+        if (frameDbFS < lowEnergyDb && adaptivity > 1e-6) {
+            const double a = std::clamp(adaptivity, 0.0, 0.5); // keep small
+            for (int k = 0; k < bins; ++k) {
+                // Smoothly track downwards and (very) slowly upwards
+                noiseMag[k] = (1.0 - a) * noiseMag[k] + a * magSm[k];
+                if (noiseMag[k] <= 1e-12) noiseMag[k] = 1e-12;
+            }
+        }
+
+        // IFFT
+        fftw_execute(inv);
+
+        // Overlap-add with squared window compensation
+        for (int i = 0; i < N; ++i) {
+            double s = (ifftOut[i] / N) * window[i];
+            int idx = outPos + i;
+            out[idx]    += s;
+            winSum[idx] += window[i] * window[i];
+        }
+
+        inPos += H;
+        outPos += H;
+        frames += 1;
+    }
+
+    // Normalize by window energy
+    for (int i = 0; i < out.size(); ++i) {
+        if (winSum[i] > 1e-12) out[i] /= winSum[i];
+    }
+
+    // Copy back to x (trim to original length)
+    x.resize(std::min<int>(x.size(), out.size()));
+    for (int i = 0; i < x.size(); ++i) x[i] = std::clamp(out[i], -1.0, 1.0);
+
+    // Cleanup
+    fftw_destroy_plan(fwd);
+    fftw_destroy_plan(inv);
+    fftw_free(fftIn);
+    fftw_free(fftOut);
+    fftw_free(spec);
+    fftw_free(ifftOut);
+
+    // Optional banner update
+    banner = "Noise reduction (spectral gate) applied";
 }
 
 // ======================

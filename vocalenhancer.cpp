@@ -2,12 +2,15 @@
 
 #include <QDebug>
 #include <cmath>
-#include <complex>
 #include <algorithm>
 #include <cstring>
 #include <fftw3.h>
 
 static constexpr double kPi = 3.1415926535897932384626433832795;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
 
 // Wrap phase to (-pi..pi)
 static inline double principalArg(double phase) {
@@ -16,9 +19,22 @@ static inline double principalArg(double phase) {
     return phase - kPi;
 }
 
-// ----------------------
-// Constructor (QT6)
-// ----------------------
+// Zero-Crossing Rate — crude voicing cue (higher on unvoiced consonants/noise)
+static double zeroCrossingRate(const QVector<double>& x) {
+    if (x.size() < 2) return 0.0;
+    int crosses = 0;
+    double prev = x[0];
+    for (int i = 1; i < x.size(); ++i) {
+        const double cur = x[i];
+        if ((prev >= 0.0 && cur < 0.0) || (prev < 0.0 && cur >= 0.0)) crosses++;
+        prev = cur;
+    }
+    return double(crosses) / double(x.size() - 1);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Constructor / Destructor (Qt 6)
+// ─────────────────────────────────────────────────────────────────────────────
 VocalEnhancer::VocalEnhancer(const QAudioFormat& format, QObject *parent)
     : QObject(parent),
       banner("Begin Vocal Enhancement")
@@ -106,9 +122,9 @@ VocalEnhancer::~VocalEnhancer() {
     fftw_cleanup();
 }
 
-// ----------------------
+// ─────────────────────────────────────────────────────────────────────────────
 // 24-bit LE helpers
-// ----------------------
+// ─────────────────────────────────────────────────────────────────────────────
 int32_t VocalEnhancer::readInt24LE(uint8_t b0, uint8_t b1, uint8_t b2) {
     int32_t v = (int32_t(b2) << 16) | (int32_t(b1) << 8) | int32_t(b0);
     return (v << 8) >> 8; // sign-extend
@@ -123,9 +139,9 @@ void VocalEnhancer::writeInt24LE(uint8_t* dst, int32_t v) {
     dst[2] = uint8_t((v >> 16) & 0xFF);
 }
 
-// ----------------------
+// ─────────────────────────────────────────────────────────────────────────────
 // PCM → double (MONO)
-// ----------------------
+// ─────────────────────────────────────────────────────────────────────────────
 QVector<double> VocalEnhancer::convertToDoubleArray(const QByteArray& input) {
     if (input.isEmpty() || m_frameBytes <= 0) return {};
 
@@ -173,9 +189,9 @@ QVector<double> VocalEnhancer::convertToDoubleArray(const QByteArray& input) {
     return mono;
 }
 
-// ----------------------
+// ─────────────────────────────────────────────────────────────────────────────
 // double → PCM (replica mono → canais)
-// ----------------------
+// ─────────────────────────────────────────────────────────────────────────────
 void VocalEnhancer::convertToQByteArray(const QVector<double>& inputData,
                                         QByteArray& output)
 {
@@ -222,9 +238,9 @@ void VocalEnhancer::convertToQByteArray(const QVector<double>& inputData,
     }
 }
 
-// ======================
-// Public API (rest)
-// ======================
+// ─────────────────────────────────────────────────────────────────────────────
+// Public API
+// ─────────────────────────────────────────────────────────────────────────────
 QByteArray VocalEnhancer::enhance(const QByteArray& input) {
     qWarning() << "VocalEnhancer Input Data Size:" << input.size();
     if (input.isEmpty() || m_frameBytes <= 0) return QByteArray();
@@ -232,19 +248,17 @@ QByteArray VocalEnhancer::enhance(const QByteArray& input) {
     // Convert to mono double [-1..+1]
     QVector<double> data = convertToDoubleArray(input);
 
-
-    
+    // Softer noise reduction to keep naturalness
     reduceNoiseSpectralGate(
         data,
-        1024,      // keep
-        256,       // keep
-        0.8,       // overSub: was 1.1 (too much subtraction)
-        -12.0,     // floor (dB): was -20 → keep some noise bed
-        0.40,      // learn time (s): was 0.25
-        0.03,      // adaptivity: was 0.08 (slower tracking reduces twinkle)
-        -45.0      // low-energy threshold (dBFS approx): was -35
+        1024,      // FFT size
+        256,       // hop
+        0.6,       // overSub (less subtraction)
+        -8.0,      // floor (dB) — keep some bed
+        0.30,      // learn time (s)
+        0.02,      // adaptivity (slower)
+        -45.0      // low-energy threshold (dBFS approx)
     );
-
 
     // Pitch correction + processing chain
     processPitchCorrection(data);
@@ -263,9 +277,9 @@ QString VocalEnhancer::getBanner() const {
     return banner;
 }
 
-// ======================
+// ─────────────────────────────────────────────────────────────────────────────
 // Pitch Detection (HPS on log spectrum)
-// ======================
+// ─────────────────────────────────────────────────────────────────────────────
 double VocalEnhancer::detectPitch(const QVector<double>& inputData) const {
     const int N = inputData.size();
     if (N < 1024) return 0.0;
@@ -385,7 +399,7 @@ double VocalEnhancer::detectPitch(const QVector<double>& inputData) const {
     return detectedFreq;
 }
 
-// Equal-tempered note (12-TET) using formula (no static table)
+// Equal-tempered note (12-TET)
 static inline double midiToFreq(int midi) {
     return 440.0 * std::pow(2.0, (midi - 69) / 12.0);
 }
@@ -397,20 +411,17 @@ double VocalEnhancer::findClosestNoteFrequency(double frequency) const {
     return midiToFreq(midi);
 }
 
-// ======================
+// ─────────────────────────────────────────────────────────────────────────────
 // Processing pipeline
-// ======================
-// ======================
-// Per-chunk pitch correction helpers
-// ======================
+// ─────────────────────────────────────────────────────────────────────────────
 
-// Pitch tuning parameters — single definition used by every chunk.
-static constexpr double kDeadZoneCents      = 25.0;   // ignore drift within ±25 cents
-static constexpr double kMaxCorrectionCents = 120.0;  // cap correction at ±120 cents
-static constexpr double kStrength           = 0.35;   // 0..1 — lower = more natural
-static constexpr double kBypassEps          = 4e-3;   // skip PV if ratio ~1
+// Pitch tuning parameters — updated for more natural results
+static constexpr double kDeadZoneCents      = 40.0;   // was 25
+static constexpr double kMaxCorrectionCents = 80.0;   // was 120
+static constexpr double kStrength           = 0.25;   // was 0.35
+static constexpr double kBypassEps          = 6e-3;   // was 4e-3
 
-// Compute chunk RMS (used both here and in processPitchCorrection)
+// Compute chunk RMS
 static double chunkRMS(const QVector<double>& x, int start, int len) {
     long double sum = 0.0;
     const int end = std::min<int>(start + len, x.size());
@@ -428,12 +439,22 @@ double VocalEnhancer::correctPitchChunk(QVector<double>& chunk, double prevRatio
     if (rmsIn < 1e-6) return 1.0;  // silence — leave untouched
 
     double detectedPitch = detectPitch(chunk);
-    if (detectedPitch <= 0.0) return prevRatio;  // unvoiced — carry last ratio
+
+    // Simple voicing proxy: high ZCR or very low level ⇒ likely unvoiced
+    const double zcr = zeroCrossingRate(chunk);
+    const bool likelyUnvoiced = (detectedPitch <= 0.0) || (zcr > 0.20) || (rmsIn < 1e-3);
+
+    // If unvoiced, gently drift ratio back toward 1.0 (bypass) and return
+    if (likelyUnvoiced) {
+        const double alpha = 0.85; // strong memory — don't jump on consonants/noise
+        const double ratio = alpha * prevRatio + (1.0 - alpha) * 1.0;
+        return ratio;
+    }
 
     const double targetFreq = findClosestNoteFrequency(detectedPitch);
     double ratioRaw = targetFreq / detectedPitch;
 
-    // Dead-zone: ignore tiny tuning errors
+    // Dead-zone and clamped max correction in cents
     double cents = 1200.0 * std::log2(ratioRaw);
     if (std::abs(cents) < kDeadZoneCents) {
         ratioRaw = 1.0;
@@ -443,54 +464,58 @@ double VocalEnhancer::correctPitchChunk(QVector<double>& chunk, double prevRatio
         ratioRaw = std::pow(2.0, cents / 1200.0);
     }
 
-    // Apply correction strength
+    // Strength curve
     const double maxRatio = std::pow(2.0, kMaxCorrectionCents / 1200.0);
     double ratio = std::clamp(std::pow(ratioRaw, kStrength), 1.0 / maxRatio, maxRatio);
 
-    // Smooth ratio across chunk boundaries to avoid step-change artefacts.
-    // Weight: 30% previous chunk, 70% current detection.
-    const double smoothAlpha = 0.30;
+    // Slew-rate limit in cents/sec to avoid steppy artifacts
+    const double chunkDur = double(chunk.size()) / double(m_sampleRate);
+    const double prevCents = 1200.0 * std::log2(std::max(prevRatio, 1e-12));
+    double targetCents = 1200.0 * std::log2(std::max(ratio, 1e-12));
+    const double maxDelta = 80.0 * chunkDur; // ≤ ~80 cents per second
+    const double delta = std::clamp(targetCents - prevCents, -maxDelta, +maxDelta);
+    double slewedCents = prevCents + delta;
+    ratio = std::pow(2.0, slewedCents / 1200.0);
+
+    // Inter-chunk smoothing (lean more on past)
+    const double smoothAlpha = 0.60; // was 0.30
     ratio = prevRatio * smoothAlpha + ratio * (1.0 - smoothAlpha);
 
-    banner = QString("Chunk PV: det=%1Hz tgt=%2Hz cents=%3 r=%4")
+    banner = QString("Chunk PV: det=%1Hz tgt=%2Hz cents=%3 r=%4 zcr=%5")
                  .arg(detectedPitch, 0, 'f', 2)
                  .arg(targetFreq,    0, 'f', 2)
-                 .arg(cents,         0, 'f', 1)
-                 .arg(ratio,         0, 'f', 4);
+                 .arg(slewedCents,   0, 'f', 1)
+                 .arg(ratio,         0, 'f', 4)
+                 .arg(zcr,           0, 'f', 3);
 
     if (std::abs(ratio - 1.0) > kBypassEps) {
         chunk = pitchShiftPhaseVocoder(chunk, ratio);
     }
 
-    // RMS compensation — keep loudness stable after pitch shift
+    // RMS compensation — tighter to avoid "pump"
     const double rmsAfter = chunkRMS(chunk, 0, chunk.size());
     if (rmsAfter > 1e-9) {
-        const double compensation = 2.0;
-        double gain = std::clamp((rmsIn / rmsAfter) * compensation, 0.75, 3.0);
+        const double compensation = 1.7; // was 2.0
+        double gain = std::clamp((rmsIn / rmsAfter) * compensation, 0.85, 2.2);
         applyMakeupGain(chunk, gain);
     }
 
     return ratio;
 }
 
-// ======================
 // Main pitch correction pipeline (frame-by-frame)
-// ======================
 void VocalEnhancer::processPitchCorrection(QVector<double>& data) {
 
-    // ── Global silence check ──────────────────────────────────────────────
+    // Global silence check
     const double globalRMS = chunkRMS(data, 0, data.size());
     if (globalRMS < 1e-6) {
         banner = "Enhancer: silence (bypass)";
         return;
     }
 
-    // ── Chunk parameters ─────────────────────────────────────────────────
-    // 500 ms chunks — long enough for reliable HPS pitch detection (needs
-    // ≥4096 samples, i.e. ~93 ms @ 44100), short enough to track phrase drift.
-    const int chunkSamples = std::max(8192, (m_sampleRate * 500) / 1000);
-    // 50% overlap: each output sample is the crossfaded sum of two chunks.
-    const int hopSamples   = chunkSamples / 2;
+    // Shorter chunks (~200 ms) track phrasing more naturally
+    const int chunkSamples = std::max(4096, (m_sampleRate * 200) / 1000);
+    const int hopSamples   = chunkSamples / 2; // 50% overlap
 
     const int totalSamples = data.size();
     if (totalSamples < chunkSamples) {
@@ -498,7 +523,7 @@ void VocalEnhancer::processPitchCorrection(QVector<double>& data) {
         double ratio = correctPitchChunk(data, 1.0);
         (void)ratio;
     } else {
-        // ── Output accumulator + crossfade ────────────────────────────────
+        // Output accumulator + crossfade
         QVector<double> out(totalSamples, 0.0);
         QVector<double> wSum(totalSamples, 0.0);  // sum of crossfade weights
 
@@ -512,13 +537,10 @@ void VocalEnhancer::processPitchCorrection(QVector<double>& data) {
             // Detect & correct pitch for this chunk
             prevRatio = correctPitchChunk(chunk, prevRatio);
 
-            // Build a linear crossfade (raised-cosine) envelope for this chunk.
-            // This gives smooth blending at overlap boundaries — no clicks.
+            // Equal-power-like chunk envelope: sin(pi * fi), fi ∈ [0..1], peak at center
             for (int i = 0; i < chunkSamples; ++i) {
-                // w rises from 0→1 over the first half, falls 1→0 over the second.
-                const double t = double(i) / double(chunkSamples - 1);  // 0..1
-                const double w = 0.5 * (1.0 - std::cos(kPi * 2.0 *
-                                    std::min(t, 1.0 - t)));  // triangle smoothed by cosine
+                const double fi = double(i) / double(chunkSamples - 1); // 0..1
+                const double w  = std::sin(kPi * fi);                   // 0→1→0
 
                 const int idx = pos + i;
                 if (idx < totalSamples) {
@@ -532,28 +554,27 @@ void VocalEnhancer::processPitchCorrection(QVector<double>& data) {
         const int lastChunkEnd = ((totalSamples - chunkSamples) / hopSamples)
                                    * hopSamples + chunkSamples;
         if (lastChunkEnd < totalSamples) {
-            // Tail: just copy uncorrected, it will be normalised below
             for (int i = lastChunkEnd; i < totalSamples; ++i) {
                 out[i]  += data[i];
                 wSum[i] += 1.0;
             }
         }
 
-        // Normalise by crossfade weight sum
+        // Normalize by crossfade weight sum
         for (int i = 0; i < totalSamples; ++i) {
             data[i] = (wSum[i] > 1e-12) ? out[i] / wSum[i] : 0.0;
         }
     }
 
-    // ── Dynamics, timbre and safety — applied once to the full buffer ──────
+    // Dynamics, timbre and safety — applied once to the full buffer
     compressDynamics(data, 0.7, 3.0);
-    harmonicExciter(data, 1.71, 0.69);
+    harmonicExciter(data, 1.20, 0.30); // tamed exciter
     applyLimiter(data, 0.99);
 }
 
-// ======================
+// ─────────────────────────────────────────────────────────────────────────────
 // Dynamics / FX
-// ======================
+// ─────────────────────────────────────────────────────────────────────────────
 void VocalEnhancer::applyLimiter(QVector<double>& x, double ceiling) {
     // Soft limiter using tanh-based knee to avoid harsh clipping
     ceiling = std::clamp(ceiling, 0.1, 0.999);
@@ -606,8 +627,7 @@ void VocalEnhancer::compressDynamics(QVector<double>& x, double threshold, doubl
         }
     }
 
-    // Automatic make-up gain: restore loudness lost to gain reduction.
-    // Clamped conservatively to avoid over-driving the limiter downstream.
+    // Automatic make-up gain
     long double rmsAccPost = 0.0;
     for (double s : x) rmsAccPost += (long double)s * s;
     const double rmsPost = std::sqrt((double)(rmsAccPost / std::max<int>(1, x.size())));
@@ -623,13 +643,6 @@ void VocalEnhancer::harmonicExciter(QVector<double>& x, double drive, double mix
     mix   = std::clamp(mix, 0.0, 1.0);
 
     // Band-limited exciter: only saturate the high-mid shelf (>= ~3 kHz).
-    // Running tanh over the full spectrum adds harmonics to sibilants (S/T),
-    // making them harsh and fatiguing. A first-order high-pass isolates the
-    // upper partials that benefit from excitation, leaving the fundamental
-    // and low harmonics clean.
-    //
-    // First-order IIR high-pass: y[n] = a*(y[n-1] + x[n] - x[n-1])
-    //   a = 1 / (1 + 2π·fc/fs)  — bilinear approximation
     const double fc = 3000.0;  // Hz — crossover
     const double a  = 1.0 / (1.0 + 2.0 * kPi * fc / std::max(1, m_sampleRate));
 
@@ -689,9 +702,9 @@ void VocalEnhancer::applyEcho(QVector<double>& inputData,
     }
 }
 
-// ======================
+// ─────────────────────────────────────────────────────────────────────────────
 // Window / math helpers
-// ======================
+// ─────────────────────────────────────────────────────────────────────────────
 QVector<double> VocalEnhancer::createHannWindow(int size) const {
     QVector<double> w(size);
     for (int i = 0; i < size; ++i) {
@@ -708,8 +721,9 @@ double VocalEnhancer::cubicInterpolate(double v0, double v1, double v2, double v
     return (a0 * t * t * t + a1 * t * t + a2 * t + v1);
 }
 
-/////////// NOISE REDUCTION (SPECTRAL GATE)
-
+// ─────────────────────────────────────────────────────────────────────────────
+// NOISE REDUCTION (SPECTRAL GATE) — gentler & smoother
+// ─────────────────────────────────────────────────────────────────────────────
 void VocalEnhancer::reduceNoiseSpectralGate(QVector<double>& x,
                                             int fftSize,
                                             int hopSize,
@@ -733,8 +747,7 @@ void VocalEnhancer::reduceNoiseSpectralGate(QVector<double>& x,
     QVector<double> out(outCap, 0.0);
     QVector<double> winSum(outCap, 0.0);
 
-    // Use cached plans when the caller requests the standard N=1024 size.
-    // For any other fftSize fall back to a temporary allocation.
+    // Use cached plans when N=1024, else allocate temporary plans
     const bool useCached = (N == kNgN) && m_ngFwd && m_ngInv;
 
     double*       fftIn  = useCached ? m_ngIn   : (double*)      fftw_malloc(sizeof(double)       * N);
@@ -759,7 +772,7 @@ void VocalEnhancer::reduceNoiseSpectralGate(QVector<double>& x,
     QVector<double> noiseMag(bins, 0.0);
     QVector<int>    noiseCnt(bins, 0);
 
-    // Gain smoothing to reduce musical noise (per-bin)
+    // Gain smoothing
     QVector<double> prevGain(bins, 1.0);
 
     // Floor in linear gain
@@ -781,10 +794,6 @@ void VocalEnhancer::reduceNoiseSpectralGate(QVector<double>& x,
             fftIn[i] = s * window[i];
         }
 
-        const double frameRms = std::sqrt(frameRmsAcc / N);
-
-        // Shortcuts: even if it's not purely noise, an average of a few frames
-        // is fine as an initial guess; we’ll adapt slowly later on.
         fftw_execute(fwd);
 
         for (int k = 0; k < bins; ++k) {
@@ -811,18 +820,23 @@ void VocalEnhancer::reduceNoiseSpectralGate(QVector<double>& x,
     int outPos = 0;
     frames = 0;
 
-    // Temporal smoothing constants for gain (0..1). Larger = more smoothing.
-    const double atk = 0.60;  // when gain needs to go down (more suppression)
-    const double rel = 0.85;  // when gain can go up (less suppression)
+    // Temporal smoothing constants for gain (0..1)
+    const double atk = 0.60;  // when gain needs to go down
+    const double rel = 0.85;  // when gain can go up
 
-    // A tiny 3-bin frequency smoothing kernel can tame isolated spikes
-    auto smooth3 = [&](const QVector<double>& v, QVector<double>& y) {
+    // Stronger frequency smoothing (7-bin moving average)
+    auto smooth7 = [&](const QVector<double>& v, QVector<double>& y) {
         y.resize(v.size());
-        if (v.size() == 1) { y[0] = v[0]; return; }
-        y[0] = 0.75 * v[0] + 0.25 * v[1];
-        for (int k = 1; k < v.size() - 1; ++k)
-            y[k] = 0.25 * v[k - 1] + 0.5 * v[k] + 0.25 * v[k + 1];
-        y[v.size() - 1] = 0.25 * v[v.size() - 2] + 0.75 * v[v.size() - 1];
+        const int n = v.size();
+        for (int k = 0; k < n; ++k) {
+            double acc = 0.0;
+            int cnt = 0;
+            for (int d = -3; d <= 3; ++d) {
+                int j = k + d;
+                if (j >= 0 && j < n) { acc += v[j]; cnt++; }
+            }
+            y[k] = acc / std::max(1, cnt);
+        }
     };
 
     QVector<double> magBuf(bins), magSm(bins);
@@ -847,8 +861,8 @@ void VocalEnhancer::reduceNoiseSpectralGate(QVector<double>& x,
             magBuf[k] = std::sqrt(re * re + im * im) + 1e-12;
         }
 
-        // Optional small frequency smoothing
-        smooth3(magBuf, magSm);
+        // Frequency smoothing
+        smooth7(magBuf, magSm);
 
         // Compute gains
         for (int k = 0; k < bins; ++k) {
@@ -879,11 +893,9 @@ void VocalEnhancer::reduceNoiseSpectralGate(QVector<double>& x,
         }
 
         // Slow noise model adaptation during low-energy frames
-        // Helps when noise changes between sentences/phrases
         if (frameDbFS < lowEnergyDb && adaptivity > 1e-6) {
-            const double a = std::clamp(adaptivity, 0.0, 0.5); // keep small
+            const double a = std::clamp(adaptivity, 0.0, 0.5);
             for (int k = 0; k < bins; ++k) {
-                // Smoothly track downwards and (very) slowly upwards
                 noiseMag[k] = (1.0 - a) * noiseMag[k] + a * magSm[k];
                 if (noiseMag[k] <= 1e-12) noiseMag[k] = 1e-12;
             }
@@ -924,46 +936,38 @@ void VocalEnhancer::reduceNoiseSpectralGate(QVector<double>& x,
         fftw_free(ifftOut);
     }
 
-    // Optional banner update
     banner = "Noise reduction (spectral gate) applied";
 }
 
-// ======================
-// Phase Vocoder
-// ======================
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase Vocoder — Identity Phase Locking + Formant Preservation
+// ─────────────────────────────────────────────────────────────────────────────
 QVector<double> VocalEnhancer::timeStretchPhaseVocoder(const QVector<double>& in, double stretch) {
     if (in.isEmpty() || stretch <= 0.0) return in;
 
-    // N=2048 gives ~21ms frames @ 44100 Hz — enough frequency resolution
-    // for vocal harmonics (~21 Hz/bin) without smearing transients too badly.
-    // Ha = N/4 → 75% overlap, which satisfies the COLA condition for Hann
-    // windows and keeps phase evolution smooth between frames.
+    // N=2048: ~21 ms frames @ 44.1k — good harmonic resolution with acceptable smearing
     const int N  = 2048;
     const int Ha = N / 4;  // analysis hop = 512
-
     const int Hs = std::max(1, int(std::round(Ha * stretch)));  // synthesis hop
 
     QVector<double> window = createHannWindow(N);
 
-    // Pre-compute the COLA normalization scalar for this window/hop combo.
-    // For a Hann window with 75% overlap the OLA sum converges to a constant,
-    // so one scalar division per sample replaces the per-sample winSum array.
+    // COLA normalization scalar for Hann with 75% overlap
     double colaSum = 0.0;
     for (int i = 0; i < N; ++i)
         colaSum += window[i] * window[i];
-    // Average contribution per output sample = colaSum / Ha (steady-state).
-    const double colaNorm = Ha / colaSum;  // multiply output by this
+    const double colaNorm = Ha / colaSum;
 
     const int outCap = int(in.size() * stretch) + N * 2 + 4;
     QVector<double> out(outCap, 0.0);
 
-    double* fftIn    = m_pvIn;
-    fftw_complex* fftOut = m_pvOut;
-    fftw_complex* spec   = m_pvSpec;
-    double* ifftOut  = m_pvIfft;
+    double* fftIn         = m_pvIn;
+    fftw_complex* fftOut  = m_pvOut;
+    fftw_complex* spec    = m_pvSpec;
+    double* ifftOut       = m_pvIfft;
 
     if (!fftIn || !fftOut || !spec || !ifftOut || !m_pvFwd || !m_pvInv) {
-        return in;  // plans failed to initialise — safe fallback
+        return in;  // plans failed — safe fallback
     }
 
     fftw_plan fwd = m_pvFwd;
@@ -976,14 +980,18 @@ QVector<double> VocalEnhancer::timeStretchPhaseVocoder(const QVector<double>& in
     QVector<double> sumPhase (bins, 0.0);   // accumulated synthesis phase
     QVector<double> trueFreq (bins, 0.0);   // instantaneous frequency (radians/sample)
     QVector<double> mag      (bins, 0.0);   // current frame magnitudes
+    QVector<double> phaseArr (bins, 0.0);   // current analysis phase
 
-    // Expected phase advance per analysis hop (centre frequency of each bin)
+    // Expected phase advance per analysis hop (center frequency per bin)
     QVector<double> omega(bins);
     for (int k = 0; k < bins; ++k)
         omega[k] = 2.0 * kPi * k / N;
 
     int inPos  = 0;
     int outPos = 0;
+
+    // Formant preservation strength (0..1)
+    const double formantPreserve = 0.60;
 
     while (inPos + N <= in.size() && outPos + N < out.size()) {
 
@@ -1000,50 +1008,80 @@ QVector<double> VocalEnhancer::timeStretchPhaseVocoder(const QVector<double>& in
 
             mag[k] = std::sqrt(re * re + im * im);
             const double phase = std::atan2(im, re);
+            phaseArr[k] = phase;
 
             // Phase deviation from expected advance
             double delta = phase - prevPhase[k] - omega[k] * Ha;
             delta = principalArg(delta);
 
             trueFreq[k] = omega[k] + delta / Ha;
+
             prevPhase[k] = phase;
         }
 
-        // ── Phase locking (identity phase vocoder) ────────────────────────
-        // Bins that are local magnitude peaks are "leaders" — their true
-        // frequency drives the phase of neighbouring bins in the same partial.
-        // This eliminates the smeared-reverb phasiness of the basic PV by
-        // keeping all bins of each harmonic partial coherent.
+        // ── Identity Phase Locking (group coherence) ─────────────────────
+        // Identify peaks
+        QVector<int> isPeak(bins, 0);
         for (int k = 1; k < bins - 1; ++k) {
-            if (mag[k] > mag[k - 1] && mag[k] >= mag[k + 1]) {
-                // k is a peak: advance its own synthesis phase normally
+            if (mag[k] > mag[k - 1] && mag[k] >= mag[k + 1]) isPeak[k] = 1;
+        }
+        isPeak[0] = 1; isPeak[bins - 1] = 1;
+
+        // Assign each bin to nearest peak (group leader)
+        QVector<int> leader(bins, 0);
+        int lastPeak = 0;
+        for (int k = 0; k < bins; ++k) {
+            if (isPeak[k]) lastPeak = k;
+            leader[k] = lastPeak;
+        }
+        int nextPeak = bins - 1;
+        for (int k = bins - 1; k >= 0; --k) {
+            if (isPeak[k]) nextPeak = k;
+            if (std::abs(k - lastPeak) <= std::abs(k - nextPeak)) leader[k] = lastPeak;
+            else leader[k] = nextPeak;
+        }
+
+        // Advance phases: leaders advance by their true frequency;
+        // followers inherit leader rotation plus current-frame relative phase.
+        for (int k = 0; k < bins; ++k) {
+            const int pk = leader[k];
+            if (k == pk) {
                 sumPhase[k] += trueFreq[k] * Hs;
+            } else {
+                // Relative analysis phase (current frame)
+                const double rel = principalArg(phaseArr[k] - phaseArr[pk]);
+                sumPhase[k] = sumPhase[pk] + rel;
             }
         }
-        // DC and Nyquist bins advance normally (no neighbours to lock to)
-        sumPhase[0]        += trueFreq[0]        * Hs;
-        sumPhase[bins - 1] += trueFreq[bins - 1] * Hs;
 
-        // Propagate phase outward from each peak to its non-peak neighbours
-        // (left sweep then right sweep, using the peak's instantaneous freq)
-        for (int k = 1; k < bins - 1; ++k) {
-            if (mag[k] <= mag[k - 1] || mag[k] < mag[k + 1]) {
-                // Not a peak: find nearest peak and copy its phase rotation
-                // Simple approach: inherit from the lower neighbour if it was
-                // already updated, maintaining the peak's rotation rate.
-                sumPhase[k] += trueFreq[k] * Hs;
-            }
+        // ── Formant preservation via smooth spectral envelope ────────────
+        QVector<double> logMag(bins), env(bins);
+        for (int k = 0; k < bins; ++k) logMag[k] = std::log(std::max(mag[k], 1e-12));
+
+        // 11-bin moving average (±5) for envelope
+        const int R = 5;
+        for (int k = 0; k < bins; ++k) {
+            int k0 = std::max(0, k - R);
+            int k1 = std::min(bins - 1, k + R);
+            double s = 0.0;
+            for (int j = k0; j <= k1; ++j) s += logMag[j];
+            env[k] = std::exp(s / double(k1 - k0 + 1));
         }
 
         // ── Synthesis IFFT ────────────────────────────────────────────────
         for (int k = 0; k < bins; ++k) {
-            spec[k][0] = mag[k] * std::cos(sumPhase[k]);
-            spec[k][1] = mag[k] * std::sin(sumPhase[k]);
+            // Blend raw mag toward the original envelope to keep vowel color
+            const double magWithEnv =
+                std::pow(std::max(mag[k], 1.0e-12), 1.0 - formantPreserve) *
+                std::pow(std::max(env[k], 1.0e-12),      formantPreserve);
+
+            spec[k][0] = magWithEnv * std::cos(sumPhase[k]);
+            spec[k][1] = magWithEnv * std::sin(sumPhase[k]);
         }
 
         fftw_execute(inv);
 
-        // Overlap-add with COLA normalization
+        // Overlap-add
         for (int i = 0; i < N; ++i) {
             const int idx = outPos + i;
             out[idx] += (ifftOut[i] / N) * window[i];
@@ -1058,11 +1096,9 @@ QVector<double> VocalEnhancer::timeStretchPhaseVocoder(const QVector<double>& in
     for (int i = 0; i < validOut; ++i)
         out[i] *= colaNorm;
 
-    out.resize(validOut);
-
-    // Plans and buffers are owned by the class — do not free here.
-
-    return out;
+    QVector<double> trimmed = out;
+    trimmed.resize(validOut);
+    return trimmed;
 }
 
 QVector<double> VocalEnhancer::pitchShiftPhaseVocoder(const QVector<double>& in, double ratio) {

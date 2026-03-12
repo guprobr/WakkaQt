@@ -97,16 +97,18 @@ private:
                    double delayMs2,
                    double feedback1,
                    double feedback2);
-    // Noise reduction
+
+    // Noise reduction (defaults updated for more natural results)
     void reduceNoiseSpectralGate(QVector<double>& x,
                     int fftSize = 1024,
-                    int hopSize = -1,          // defaults to N/4 if < 1
-                    double overSub = 1.1,      // 1.0–1.5 typical
-                    double floorDb = -20.0,    // -12 .. -25 dB typical
-                    double noiseLearnSec = 0.25, // 0.15–0.4 s
-                    double adaptivity = 0.08,  // slow adaptation during low-energy frames
-                    double lowEnergyDb = -35.0 // gate for adaptation (dBFS approx)
+                    int hopSize = -1,            // defaults to N/4 if < 1
+                    double overSub = 0.6,        // softer subtraction
+                    double floorDb = -8.0,       // keep more noise bed
+                    double noiseLearnSec = 0.30, // 0.15–0.4 s
+                    double adaptivity = 0.02,    // slower adaptation during low-energy frames
+                    double lowEnergyDb = -45.0   // gate for adaptation (dBFS approx)
                     );
+
     inline double dbToLinear(double db) const {
         return std::pow(10.0, db / 20.0);
     }

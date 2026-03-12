@@ -35,8 +35,8 @@ private:
 
     // ── Cached FFTW plans ──────────────────────────────────────────────────
     // Phase vocoder uses N=2048 (fixed); noise gate uses N=1024 (fixed).
-    // Plans are created once in the constructor and reused across all chunks,
-    // avoiding repeated plan-creation overhead on long recordings.
+    // Plans are created once in the constructor with FFTW_MEASURE and reused
+    // across all chunks, avoiding repeated allocation on long recordings.
 
     // PV plans (N=2048)
     static constexpr int kPvN = 2048;
@@ -55,6 +55,12 @@ private:
     double*       m_ngIfft  = nullptr;
     fftw_plan     m_ngFwd   = nullptr;
     fftw_plan     m_ngInv   = nullptr;
+
+    // ── Persistent PV phase state ─────────────────────────────────────────
+    // Kept as class members so phase accumulation survives across chunk calls.
+    // Reset explicitly via resetPVState() before each new recording.
+    QVector<double> m_pvPrevPhase;   // analysis phase from previous frame
+    QVector<double> m_pvSumPhase;    // accumulated synthesis phase
 
     // UI / state
     double progressValue = 0.0;
@@ -75,11 +81,13 @@ private:
     double correctPitchChunk(QVector<double>& chunk, double prevRatio);
     void processPitchCorrection(QVector<double>& data);
 
-    // Windowing
+    // Windowing / interpolation
     QVector<double> createHannWindow(int size) const;
     double cubicInterpolate(double v0, double v1, double v2, double v3, double t) const;
 
     // Phase vocoder
+    void            resetPVState();   // call before each new recording
+    QVector<double> pitchShiftContinuous(const QVector<double>& in, const QVector<double>& frameRatio);
     QVector<double> timeStretchPhaseVocoder(const QVector<double>& in, double stretch);
     QVector<double> pitchShiftPhaseVocoder(const QVector<double>& in, double ratio);
 
@@ -98,15 +106,15 @@ private:
                    double feedback1,
                    double feedback2);
 
-    // Noise reduction (defaults updated for more natural results)
+    // Noise reduction — defaults match the enhance() call site in vocalenhancer.cpp
     void reduceNoiseSpectralGate(QVector<double>& x,
-                    int fftSize = 1024,
-                    int hopSize = -1,            // defaults to N/4 if < 1
-                    double overSub = 0.6,        // softer subtraction
-                    double floorDb = -8.0,       // keep more noise bed
-                    double noiseLearnSec = 0.30, // 0.15–0.4 s
-                    double adaptivity = 0.02,    // slower adaptation during low-energy frames
-                    double lowEnergyDb = -45.0   // gate for adaptation (dBFS approx)
+                    int    fftSize       = 1024,
+                    int    hopSize       = 256,   // N/4
+                    double overSub       = 0.65,  // gentle subtraction, keeps breath
+                    double floorDb       = -10.0, // higher bed = more natural
+                    double noiseLearnSec = 0.40,  // ~400 ms initial noise learn
+                    double adaptivity    = 0.03,  // slow adaptation, less "twinkling"
+                    double lowEnergyDb   = -45.0  // dBFS gate for noise model update
                     );
 
     inline double dbToLinear(double db) const {
@@ -115,3 +123,4 @@ private:
 };
 
 #endif // VOCALENHANCER_H
+// appended — will be merged manually

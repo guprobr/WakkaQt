@@ -6,6 +6,7 @@
 #include <QByteArray>
 #include <QString>
 #include <QVector>
+#include <fftw3.h>
 
 class VocalEnhancer : public QObject
 {
@@ -32,6 +33,29 @@ private:
     int m_blockSizeMs = 40;
     int m_numSamples = 0;
 
+    // ── Cached FFTW plans ──────────────────────────────────────────────────
+    // Phase vocoder uses N=2048 (fixed); noise gate uses N=1024 (fixed).
+    // Plans are created once in the constructor and reused across all chunks,
+    // avoiding repeated plan-creation overhead on long recordings.
+
+    // PV plans (N=2048)
+    static constexpr int kPvN = 2048;
+    double*       m_pvIn    = nullptr;
+    fftw_complex* m_pvOut   = nullptr;
+    fftw_complex* m_pvSpec  = nullptr;
+    double*       m_pvIfft  = nullptr;
+    fftw_plan     m_pvFwd   = nullptr;
+    fftw_plan     m_pvInv   = nullptr;
+
+    // Noise-gate plans (N=1024)
+    static constexpr int kNgN = 1024;
+    double*       m_ngIn    = nullptr;
+    fftw_complex* m_ngOut   = nullptr;
+    fftw_complex* m_ngSpec  = nullptr;
+    double*       m_ngIfft  = nullptr;
+    fftw_plan     m_ngFwd   = nullptr;
+    fftw_plan     m_ngInv   = nullptr;
+
     // UI / state
     double progressValue = 0.0;
     mutable QString banner;
@@ -48,6 +72,7 @@ private:
     double findClosestNoteFrequency(double frequency) const;
 
     // Pitch correction
+    double correctPitchChunk(QVector<double>& chunk, double prevRatio);
     void processPitchCorrection(QVector<double>& data);
 
     // Windowing

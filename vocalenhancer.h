@@ -20,6 +20,12 @@ public:
     int getProgress() const;
     QString getBanner() const;
 
+    void setPitchCorrectionAmount(double amount);
+    double getPitchCorrectionAmount() const;
+
+    void setNoiseReductionAmount(double amount);
+    double getNoiseReductionAmount() const;
+
 private:
     // ========= Audio format (Qt6) =========
     int m_sampleRate = 0;
@@ -65,6 +71,10 @@ private:
     // UI / state
     double progressValue = 0.0;
     mutable QString banner;
+
+    // User-tweakable behaviour (0.0 .. 1.0)
+    double m_pitchCorrectionAmount = 0.45;
+    double m_noiseReductionAmount  = 0.35;
 
     // PCM conversion
     QVector<double> convertToDoubleArray(const QByteArray& input);

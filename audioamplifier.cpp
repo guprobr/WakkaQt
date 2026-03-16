@@ -1,13 +1,10 @@
 #include "audioamplifier.h"
 #include "complexes.h"
 
-#include <QDebug>
-#include <QDir>
-#include <QTime>
-#include <QTimer>
-#include <QAudioSink>
 #include <QMediaDevices>
-#include <cmath>  // Amplification logic
+#include <QTime>
+#include <QDebug>
+#include <algorithm>
 
 AudioAmplifier::AudioAmplifier(const QAudioFormat &format, QObject *parent)
     : QObject(parent),
@@ -15,13 +12,12 @@ AudioAmplifier::AudioAmplifier(const QAudioFormat &format, QObject *parent)
       volumeFactor(1.0),
       playbackPosition(0)
 {
-    // Initialize audio sinks
     playbackSink.reset(new QAudioSink(QMediaDevices::defaultAudioOutput(), format, this));
     audioSink.reset(new QAudioSink(QMediaDevices::defaultAudioOutput(), format, this));
-    connect(audioSink.data(), &QAudioSink::stateChanged, this, &AudioAmplifier::handleStateChanged);
+    connect(audioSink.data(), &QAudioSink::stateChanged,
+            this, &AudioAmplifier::handleStateChanged);
 
-    // Initialize QBuffer
-    audioBuffer.reset(new QBuffer(new QByteArray()));  // QBuffer owns QByteArray
+    audioBuffer.reset(new QBuffer(new QByteArray()));
     playbackBuffer.reset(new QBuffer(new QByteArray()));
 
     playbackFile.setFileName(extractedTmpPlayback);
@@ -31,63 +27,58 @@ AudioAmplifier::AudioAmplifier(const QAudioFormat &format, QObject *parent)
         qWarning() << "Failed to open playback file!";
         return;
     }
-    playbackData = playbackFile.readAll(); // Read all data
+    playbackData = playbackFile.readAll();
 
-    // Initialize timer for probing end of stream
     dataPushTimer.reset(new QTimer(this));
-    connect(dataPushTimer.data(), &QTimer::timeout, this, &AudioAmplifier::checkBufferState);
+    connect(dataPushTimer.data(), &QTimer::timeout,
+            this, &AudioAmplifier::checkBufferState);
 }
 
-AudioAmplifier::~AudioAmplifier() {
+AudioAmplifier::~AudioAmplifier()
+{
     stop();
 
-    if (audioBuffer && audioBuffer->isOpen()) {
+    if (audioBuffer && audioBuffer->isOpen())
         audioBuffer->close();
-    }
-    if (playbackBuffer && playbackBuffer->isOpen()) {
+    if (playbackBuffer && playbackBuffer->isOpen())
         playbackBuffer->close();
-    }
 
-    // Release QByteArrays
-    if (audioBuffer) {
+    if (audioBuffer)
         audioBuffer->setData(QByteArray());
-    }
-    if (playbackBuffer) {
+    if (playbackBuffer)
         playbackBuffer->setData(QByteArray());
-    }
 
-    dataPushTimer->stop();
+    if (dataPushTimer)
+        dataPushTimer->stop();
 
     playbackSink.reset();
     audioSink.reset();
     audioBuffer.reset();
     playbackBuffer.reset();
-
-    QObject::disconnect(audioSink.data(), &QAudioSink::stateChanged, this, &AudioAmplifier::handleStateChanged);
-    QObject::disconnect(dataPushTimer.data(), &QTimer::timeout, this, &AudioAmplifier::checkBufferState);
-
 }
 
-QString AudioAmplifier::checkBufferState() {
-    if (!audioBuffer->isOpen() || !audioSink || audioSink->isNull()) return ".. .Encoding. ..";
+QString AudioAmplifier::checkBufferState()
+{
+    if (!audioBuffer || !audioBuffer->isOpen() || !audioSink || audioSink->isNull())
+        return "...Encoding...";
 
     playbackPosition = audioBuffer->pos();
+    emitVocalPreviewChunk();
 
-    // Total duration based on the original audio size
-    qint64 totalDuration = originalAudioData.size() * 1000000 / (audioSink->format().sampleRate() * 
-                           audioSink->format().channelCount() * audioSink->format().bytesPerSample());
+    const qint64 totalDuration = originalAudioData.size() * 1000000LL /
+        (audioSink->format().sampleRate() *
+         audioSink->format().channelCount() *
+         audioSink->format().bytesPerSample());
 
-    // Convert playbackPosition from bytes to microseconds
-    qint64 playbackPositionUSecs = playbackPosition * 1000000 / (audioSink->format().sampleRate() * 
-                              audioSink->format().channelCount() * audioSink->format().bytesPerSample());
-    
-    // Correct the processed duration to include the playback position (both in microseconds now)
-    qint64 processedDuration = playbackPositionUSecs; // + audioSink->processedUSecs();
-    
-    qint64 threshold = 500000;  // stop 500 ms before the end
+    const qint64 playbackPositionUSecs = playbackPosition * 1000000LL /
+        (audioSink->format().sampleRate() *
+         audioSink->format().channelCount() *
+         audioSink->format().bytesPerSample());
 
-    // Verify buffer size!
-    if (audioBuffer->bytesAvailable() < 1024) {  
+    const qint64 processedDuration = playbackPositionUSecs;
+    const qint64 threshold = 500000;
+
+    if (audioBuffer->bytesAvailable() < 1024) {
         qWarning() << "Audio buffer too small during playback. Restarting playback.";
         stop();
         resetAudioComponents();
@@ -97,7 +88,6 @@ QString AudioAmplifier::checkBufferState() {
         return "NaN";
     }
 
-    // When close to the end, restart playback
     if (processedDuration >= totalDuration - threshold) {
         qWarning() << "Buffer near the end. Restarting playback.";
         stop();
@@ -108,232 +98,219 @@ QString AudioAmplifier::checkBufferState() {
         return "NaN";
     }
 
-    long long totalSeconds = processedDuration / 1000000; // Convert microseconds to seconds
-    int hours = totalSeconds / 3600;
-    int minutes = (totalSeconds % 3600) / 60;
-    int seconds = totalSeconds % 60;
-
-    QTime time(hours, minutes, seconds);
-    return time.toString("hh:mm:ss");
-
+    const long long totalSeconds = processedDuration / 1000000LL;
+    const int hours = int(totalSeconds / 3600);
+    const int minutes = int((totalSeconds % 3600) / 60);
+    const int seconds = int(totalSeconds % 60);
+    return QTime(hours, minutes, seconds).toString("hh:mm:ss");
 }
 
-void AudioAmplifier::start() {
-    // Verify if there is original data to amplify
-    if (!originalAudioData.isEmpty()) {
-        setAudioOffset(audioFormat.durationForBytes(byteOffset)/1000);
-        //applyAmplification();
-
-        // Validate initial buffer size
-        if (amplifiedAudioData.size() < 512) { 
-            qWarning() << "Amplified buffer audio size is too small:" << amplifiedAudioData.size();
-            return; 
-        }
-
-        stop();
-
-        // Verify if buffer is open, then close before starting
-        if (audioBuffer->isOpen()) {
-            audioBuffer->close();
-        }
-        audioBuffer->setData(amplifiedAudioData); // Configure QBuffer data 
-        audioBuffer->open(QIODevice::ReadOnly); // and open for reading
-        audioBuffer->seek(playbackPosition);     // Resume prior position
-        
-        if (playbackBuffer->isOpen()) {
-            playbackBuffer->close();
-        }
-        playbackBuffer->setData(playbackData);
-        playbackBuffer->open(QIODevice::ReadOnly); // Open the buffer for reading
-        playbackBuffer->seek(playbackPosition);
-
-        playbackSink->start(playbackBuffer.data());
-        playbackSink->setVolume(playbackVol);
-        audioSink->start(audioBuffer.data()); // play amplified vocals
-
-        dataPushTimer->start(25); // Probe buffer state paranoia style
-        checkBufferState();
-
-        qDebug() << "Start amplified vocals and backing track.";
-    } else {
+void AudioAmplifier::start()
+{
+    if (originalAudioData.isEmpty()) {
         qWarning() << "No audio data.";
+        return;
     }
+
+    setAudioOffset(audioFormat.durationForBytes(byteOffset) / 1000);
+
+    if (amplifiedAudioData.size() < 512) {
+        qWarning() << "Amplified buffer audio size is too small:" << amplifiedAudioData.size();
+        return;
+    }
+
+    stop();
+
+    if (audioBuffer->isOpen())
+        audioBuffer->close();
+    audioBuffer->setData(amplifiedAudioData);
+    audioBuffer->open(QIODevice::ReadOnly);
+    audioBuffer->seek(playbackPosition);
+
+    if (playbackBuffer->isOpen())
+        playbackBuffer->close();
+    playbackBuffer->setData(playbackData);
+    playbackBuffer->open(QIODevice::ReadOnly);
+    playbackBuffer->seek(playbackPosition);
+
+    playbackSink->start(playbackBuffer.data());
+    playbackSink->setVolume(playbackVol ? 1.0 : 0.0);
+    audioSink->start(audioBuffer.data());
+    dataPushTimer->start(25);
+    emitVocalPreviewChunk();
+    checkBufferState();
+    qDebug() << "Start amplified vocals and backing track.";
 }
 
-void AudioAmplifier::stop() {
-    if (audioSink->state() != QAudio::State::StoppedState) {
-        playbackPosition = audioBuffer->pos(); // Store current position before stopping
-        audioSink->stop();  // Stop the audio sink
+void AudioAmplifier::stop()
+{
+    if (audioSink && audioSink->state() != QAudio::StoppedState) {
+        playbackPosition = audioBuffer ? audioBuffer->pos() : playbackPosition;
+        audioSink->stop();
         qDebug() << "Stopped vocals.";
     }
 
-    if (playbackSink->state() != QAudio::State::StoppedState) {
-        playbackSink->stop();  // Stop the playback sink
+    if (playbackSink && playbackSink->state() != QAudio::StoppedState) {
+        playbackSink->stop();
         qDebug() << "Stopped backingtrack.";
     }
 
-    // Close the buffer if playback is fully stopped
-    if (audioBuffer->isOpen() && !isPlaying()) {
+    if (audioBuffer && audioBuffer->isOpen() && !isPlaying()) {
         audioBuffer->close();
         qDebug() << "Closed vocals buffer.";
     }
-    if (playbackBuffer->isOpen() && !isPlayingPlayback()) {
+    if (playbackBuffer && playbackBuffer->isOpen() && !isPlayingPlayback()) {
         playbackBuffer->close();
         qDebug() << "Closed backing track buffer.";
     }
 
-    dataPushTimer->stop();  // Stop the timer when playback stops
+    if (dataPushTimer)
+        dataPushTimer->stop();
 }
 
-void AudioAmplifier::seekForward() {
+void AudioAmplifier::seekForward()
+{
+    if (!audioBuffer || !playbackBuffer)
+        return;
     if (audioBuffer->bytesAvailable() > 514000) {
-        //stop();
-        //resetAudioComponents();
         playbackPosition = audioBuffer->pos() + 514000;
         audioBuffer->seek(playbackPosition);
         playbackBuffer->seek(playbackPosition);
+        emitVocalPreviewChunk();
         checkBufferState();
-        //start();
-    }  
+    }
 }
 
-void AudioAmplifier::seekBackward() {
-    if ( audioBuffer->pos() - 514000 > 0 ) {
-        //stop();
-        //resetAudioComponents();
+void AudioAmplifier::seekBackward()
+{
+    if (!audioBuffer || !playbackBuffer)
+        return;
+    if (audioBuffer->pos() - 514000 > 0) {
         playbackPosition = audioBuffer->pos() - 514000;
         audioBuffer->seek(playbackPosition);
         playbackBuffer->seek(playbackPosition);
+        emitVocalPreviewChunk();
         checkBufferState();
-        //start();
     }
 }
 
-void AudioAmplifier::setVolumeFactor(double factor) {
-    if (factor != volumeFactor) {
-        volumeFactor = factor;
+void AudioAmplifier::setVolumeFactor(double factor)
+{
+    if (qFuzzyCompare(factor, volumeFactor))
+        return;
 
-        // Only restart playback if there is audio data
-        if (!originalAudioData.isEmpty() && isPlaying()) {
-            stop();
-            //resetAudioComponents();
-            start();
-        }
+    volumeFactor = factor;
+    if (!originalAudioData.isEmpty() && isPlaying()) {
+        stop();
+        start();
+    } else {
+        applyAmplification();
+        emitVocalPreviewChunk();
     }
 }
 
-void AudioAmplifier::setAudioData(const QByteArray &data) {
-    // Release old data
+void AudioAmplifier::setAudioData(const QByteArray &data)
+{
     QByteArray().swap(originalAudioData);
-    originalAudioData = data;  // Store the new audio data
+    originalAudioData = data;
+    applyAmplification();
+    emitVocalPreviewChunk();
 }
 
- void AudioAmplifier::setPlaybackVol(bool flag) {
-    playbackSink->setVolume(flag);
+void AudioAmplifier::setPlaybackVol(bool flag)
+{
     playbackVol = flag;
- }
+    if (playbackSink)
+        playbackSink->setVolume(flag ? 1.0 : 0.0);
+}
 
-void AudioAmplifier::applyAmplification() {
-    
+void AudioAmplifier::applyAmplification()
+{
     amplifiedAudioData.clear();
     amplifiedAudioData.reserve(originalAudioData.size());
 
     const char *data = originalAudioData.constData();
-    for (int i = 0; i < originalAudioData.size(); i += 2) {
-        // Convert two bytes to qint16 (16-bit audio)
-        qint16 sample = static_cast<qint16>(static_cast<unsigned char>(data[i]) | 
-                                            (static_cast<unsigned char>(data[i + 1]) << 8));
-
-        // Amplify and clip to avoid overflow
+    for (int i = 0; i + 1 < originalAudioData.size(); i += 2) {
+        const qint16 sample = static_cast<qint16>(
+            static_cast<unsigned char>(data[i]) |
+            (static_cast<qint16>(static_cast<unsigned char>(data[i + 1])) << 8));
         int amplifiedSample = static_cast<int>(sample * volumeFactor);
         amplifiedSample = std::min(std::max(amplifiedSample, -32768), 32767);
-
-        // Rewrite amplified sample as little-endian
         amplifiedAudioData.append(static_cast<char>(amplifiedSample & 0xFF));
         amplifiedAudioData.append(static_cast<char>((amplifiedSample >> 8) & 0xFF));
     }
 
-    if (amplifiedAudioData.isEmpty()) {
+    if (amplifiedAudioData.isEmpty())
         qWarning() << "Amplified audio data is empty!";
-    }
 }
 
-bool AudioAmplifier::isPlaying() const {
-    return audioSink->state() == QAudio::ActiveState; // Check if audio is currently playing
+bool AudioAmplifier::isPlaying() const
+{
+    return audioSink && audioSink->state() == QAudio::ActiveState;
 }
 
-bool AudioAmplifier::isPlayingPlayback() const {
-    return playbackSink->state() == QAudio::ActiveState; // Check if audio is currently playing
+bool AudioAmplifier::isPlayingPlayback() const
+{
+    return playbackSink && playbackSink->state() == QAudio::ActiveState;
 }
 
-void AudioAmplifier::rewind() {
-    if (audioBuffer->isOpen()) {
-        audioBuffer->seek(0);  // Seek the buffer to the start
-    } else {
+void AudioAmplifier::rewind()
+{
+    if (audioBuffer && audioBuffer->isOpen())
+        audioBuffer->seek(0);
+    else
         qDebug() << "Vocals buffer is not open. Cannot rewind.";
-    }
-    if (playbackBuffer->isOpen())
+
+    if (playbackBuffer && playbackBuffer->isOpen())
         playbackBuffer->seek(0);
     else
         qDebug() << "Playback buffer is not open. Cannot rewind.";
 
-    playbackPosition = 0;  // Reset playback position
+    playbackPosition = 0;
+    emitVocalPreviewChunk();
 }
 
-void AudioAmplifier::setAudioOffset(qint64 offsetMs) {
-    // Calculate the byte offset corresponding to the time offset
-    byteOffset = audioFormat.bytesForDuration(offsetMs * 1000); // Convert ms to µs
+void AudioAmplifier::setAudioOffset(qint64 offsetMs)
+{
+    byteOffset = audioFormat.bytesForDuration(offsetMs * 1000);
     qDebug() << "Setting audio offset:" << offsetMs << "ms (" << byteOffset << "bytes)";
 
-    // Restore the original audio data
     applyAmplification();
-        
+
     if (byteOffset < 0) {
-        // Negative offset: Prepend silence
-        qint64 silenceBytes = -byteOffset;
-
+        const qint64 silenceBytes = -byteOffset;
         qDebug() << "Negative offset detected. Prepending" << silenceBytes << "bytes of silence.";
-
-        // Create a buffer with silence
-        QByteArray silence(silenceBytes, 0);
-
-        // Prepend silence to the audio data
-        amplifiedAudioData.prepend(silence);
-    
-        //playbackPosition = 0;
+        amplifiedAudioData.prepend(QByteArray(silenceBytes, 0));
     } else {
-        // Positive offset: Trim the audio data
-        qint64 trimBytes = byteOffset;
-
+        const qint64 trimBytes = byteOffset;
         qDebug() << "Positive offset detected. Trimming" << trimBytes << "bytes from the start.";
-
-        if (trimBytes < amplifiedAudioData.size()) {
+        if (trimBytes < amplifiedAudioData.size())
             amplifiedAudioData = amplifiedAudioData.mid(trimBytes);
-        } else {
+        else {
             qWarning() << "Trim exceeds audio size. Clearing buffer.";
             amplifiedAudioData.clear();
         }
-        
-        //playbackPosition = 0;
     }
 
-    if (audioSink->state() != QAudio::State::StoppedState) {
-        audioSink->stop();  // Stop the audio sink
+    if (audioSink && audioSink->state() != QAudio::StoppedState) {
+        audioSink->stop();
         qDebug() << "Stopped vocals.";
     }
-    // Verify if buffer is open, then close before starting
-    if (audioBuffer->isOpen()) {
-        audioBuffer->close();
-    }
-    audioBuffer->setData(amplifiedAudioData); // Configure with new QBuffer data 
-    audioBuffer->open(QIODevice::ReadOnly); // and open for reading
-    audioBuffer->seek(playbackPosition);     // Resume prior position
-    audioSink->start(audioBuffer.data()); // play amplified vocals
 
+    if (audioBuffer->isOpen())
+        audioBuffer->close();
+    audioBuffer->setData(amplifiedAudioData);
+    audioBuffer->open(QIODevice::ReadOnly);
+    audioBuffer->seek(playbackPosition);
+
+    if (audioSink)
+        audioSink->start(audioBuffer.data());
+
+    emitVocalPreviewChunk();
 }
 
-
-void AudioAmplifier::handleStateChanged(QAudio::State newState) {
+void AudioAmplifier::handleStateChanged(QAudio::State newState)
+{
     if (newState == QAudio::StoppedState) {
         if (audioSink && audioSink->error() != QAudio::NoError) {
             qWarning() << "Audio playback error:" << audioSink->error();
@@ -342,23 +319,33 @@ void AudioAmplifier::handleStateChanged(QAudio::State newState) {
     }
 }
 
-void AudioAmplifier::resetAudioComponents() {
-    // Stop any active sinks
-    if (audioSink && audioSink->state() == QAudio::ActiveState) {
+void AudioAmplifier::resetAudioComponents()
+{
+    if (audioSink && audioSink->state() == QAudio::ActiveState)
         audioSink->stop();
-    }
-    if (playbackSink && playbackSink->state() == QAudio::ActiveState) {
+    if (playbackSink && playbackSink->state() == QAudio::ActiveState)
         playbackSink->stop();
-    }
 
-    // Properly release old sinks before creating new ones
     playbackSink.reset();
     audioSink.reset();
 
-    // Recreate sinks
     playbackSink.reset(new QAudioSink(QMediaDevices::defaultAudioOutput(), audioFormat, this));
     audioSink.reset(new QAudioSink(QMediaDevices::defaultAudioOutput(), audioFormat, this));
 
-    // Reconnect signals
-    connect(audioSink.data(), &QAudioSink::stateChanged, this, &AudioAmplifier::handleStateChanged);
+    connect(audioSink.data(), &QAudioSink::stateChanged,
+            this, &AudioAmplifier::handleStateChanged);
+}
+
+void AudioAmplifier::emitVocalPreviewChunk()
+{
+    if (amplifiedAudioData.isEmpty())
+        return;
+
+    const int bytesPerFrame = std::max(1, audioFormat.channelCount() * audioFormat.bytesPerSample());
+    const int chunkBytes = bytesPerFrame * 2048;
+    const qint64 maxStart = std::max<qint64>(0, amplifiedAudioData.size() - chunkBytes);
+    const qint64 start = std::clamp<qint64>(playbackPosition, 0, maxStart);
+    const QByteArray chunk = amplifiedAudioData.mid(start, chunkBytes);
+    if (!chunk.isEmpty())
+        emit vocalPreviewChunk(chunk, audioFormat);
 }

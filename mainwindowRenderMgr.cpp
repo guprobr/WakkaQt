@@ -34,6 +34,9 @@ void MainWindow::renderAgain()
         }
 
         // High resolution or fast render?
+        // ── Save session to library BEFORE asking for resolution ──────────
+        saveCurrentSession();
+
         int response = QMessageBox::question(
             this, 
             "Resolution", 

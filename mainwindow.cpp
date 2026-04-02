@@ -21,6 +21,7 @@ MainWindow::MainWindow(QWidget *parent)
     loadPlaybackAction = new QAction("Load playback", this);
     chooseInputAction = new QAction("Choose Input Devices", this);
     singAction = new QAction("SING", this);
+    libraryAction = new QAction("Session Library", this);
     QAction *exitAction = new QAction("Exit", this);
     menuBar->setFont(QApplication::font());
     
@@ -30,6 +31,8 @@ MainWindow::MainWindow(QWidget *parent)
     fileMenu->addAction(loadPlaybackAction);
     fileMenu->addAction(chooseInputAction);
     fileMenu->addAction(singAction);
+    fileMenu->addSeparator();
+    fileMenu->addAction(libraryAction);
     fileMenu->addAction(exitAction);
     
     menuBar->addMenu(fileMenu);
@@ -143,6 +146,8 @@ MainWindow::MainWindow(QWidget *parent)
     chooseInputButton = new QPushButton("Choose Input Devices", this);
     renderAgainButton = new QPushButton("RENDER AGAIN", this);
     renderAgainButton->setToolTip("Repeat render and adjustments without singing again");
+    libraryButton = new QPushButton("📚 Library", this);
+    libraryButton->setToolTip("Open Session Library — restore or manage previous recordings");
 
     // Recording indicator
     recordingIndicator = new QLabel("⦿ rec", this);
@@ -236,6 +241,7 @@ MainWindow::MainWindow(QWidget *parent)
     layout->addWidget(abortButton);
     layout->addWidget(chooseVideoButton);
     layout->addWidget(chooseLastButton);
+    layout->addWidget(libraryButton);
     layout->addWidget(chooseInputButton);
     layout->addWidget(renderAgainButton);
     layout->addWidget(exitButton);
@@ -248,6 +254,7 @@ MainWindow::MainWindow(QWidget *parent)
     // Widget visibility
     chooseVideoButton->setVisible(true);
     chooseLastButton->setVisible(false);
+    libraryButton->setVisible(true);
     chooseInputButton->setVisible(false);
     abortButton->setVisible(false);
     soundLevelWidget->setVisible(true);
@@ -275,6 +282,8 @@ MainWindow::MainWindow(QWidget *parent)
     connect(singAction, &QAction::triggered, this, &MainWindow::startRecording);
     connect(fetchButton, &QPushButton::clicked, this, &MainWindow::fetchVideo);
     connect(renderAgainButton, &QPushButton::clicked, this, &MainWindow::renderAgain);
+    connect(libraryButton, &QPushButton::clicked, this, &MainWindow::openLibrary);
+    connect(libraryAction, &QAction::triggered, this, &MainWindow::openLibrary);
     connect(previewCheckbox, &QCheckBox::toggled, this, &MainWindow::onPreviewCheckboxToggled);
     connect(vizCheckbox, &QCheckBox::toggled, this, &MainWindow::onVizCheckboxToggled);
 
@@ -585,7 +594,9 @@ void MainWindow::enable_playback(bool flag) {
 
     chooseVideoButton->setEnabled(flag);
     chooseLastButton->setEnabled(flag);
+    libraryButton->setEnabled(flag);
     loadPlaybackAction->setEnabled(flag);
+    libraryAction->setEnabled(flag);
     fetchButton->setEnabled(flag);
 
 }

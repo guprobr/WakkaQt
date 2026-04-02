@@ -6,6 +6,8 @@
 #include "audiovizmediaplayer.h"
 #include "audiovisualizerwidget.h"
 #include "previewdialog.h"
+#include "librarydialog.h"
+#include "sessionmanager.h"
 
 #include <QWidget>
 #include <QVideoWidget>
@@ -66,7 +68,7 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    QString Wakka_versione = "v1.75";
+    QString Wakka_versione = "v1.84";
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
@@ -136,6 +138,7 @@ private:
     QAction *loadPlaybackAction;
     QAction *chooseInputAction;
     QAction *singAction;
+    QAction *libraryAction;
 
     QPushButton *singButton;
     QPushButton *abortButton;
@@ -143,6 +146,7 @@ private:
     QPushButton *chooseInputButton;
     QPushButton *renderAgainButton;
     QPushButton *chooseLastButton;
+    QPushButton *libraryButton;
     QLabel* placeholderLabel;
     QLabel *recordingIndicator; 
     QLabel *deviceLabel;
@@ -187,6 +191,10 @@ private:
     
     void mixAndRender(double vocalVolume, qint64 manualOffset);
     void renderAgain();
+
+    void openLibrary();
+    void saveCurrentSession();
+    void restoreAndRender(const QString &sessionId);
 
     void resetMediaComponents(bool isStarting);
     void configureMediaComponents();

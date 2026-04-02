@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 # Project name
-project(WakkaQt VERSION 1.75 LANGUAGES CXX)
+project(WakkaQt VERSION 1.84 LANGUAGES CXX)
 
 # Set the C++ standard
 set(CMAKE_CXX_STANDARD 17)
@@ -82,6 +82,7 @@ add_executable(${PROJECT_NAME}
     mainwindowPlaybackMgr.cpp
     mainwindowRecorderMgr.cpp
     mainwindowRenderMgr.cpp
+    mainwindowLibraryMgr.cpp
     complexes.cpp
     sndwidget.cpp
     previewdialog.cpp
@@ -91,6 +92,8 @@ add_executable(${PROJECT_NAME}
     audiovisualizerwidget.cpp
     vocalenhancer.cpp
     DownloadDialog.cpp
+    sessionmanager.cpp
+    librarydialog.cpp
     mainwindow.h
     complexes.h
     sndwidget.h
@@ -101,6 +104,8 @@ add_executable(${PROJECT_NAME}
     audiovisualizerwidget.h
     vocalenhancer.h
     DownloadDialog.h
+    sessionmanager.h
+    librarydialog.h
     ${resources}
 )
 

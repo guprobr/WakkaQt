@@ -32,6 +32,8 @@ void SndWidget::setInputDevice(const QAudioDevice &device) {
 
     if (audioSource) {
         audioSource->stop();
+        delete audioSource;
+        audioSource = nullptr;
     }
 
     // Initialize the audio source with the new device

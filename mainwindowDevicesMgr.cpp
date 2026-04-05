@@ -50,7 +50,6 @@ void MainWindow::configureMediaComponents()
     connect(mediaRecorder.data(), &QMediaRecorder::errorOccurred, this, &MainWindow::handleRecorderError);
     connect(player.data(), &QMediaPlayer::mediaStatusChanged, this, &MainWindow::onPlayerMediaStatusChanged);
     connect(player.data(), &QMediaPlayer::playbackStateChanged, this, &MainWindow::onPlaybackStateChanged);
-
     qDebug() << "Reconfigured media components";
 
 }
@@ -137,7 +136,7 @@ void MainWindow::chooseInputDevice() {
         }
 
         QMessageBox::critical(this, "Device Error", missingDevices);
-        QCoreApplication::exit(-1);
+        exit(-1);
         return;
     }
 
@@ -248,7 +247,7 @@ void MainWindow::chooseInputDevice() {
 
     // Connect the exit button to close the program cleanly
     connect(exitButton, &QPushButton::clicked, this, []() {
-        QCoreApplication::quit();
+        exit(0);
     });
 
     // Execute the dialog

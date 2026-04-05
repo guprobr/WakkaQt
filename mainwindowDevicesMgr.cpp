@@ -1,42 +1,243 @@
 #include "mainwindow.h"
 
-void MainWindow::configureMediaComponents()
+void MainWindow::resetMediaComponents(bool isStarting)
 {
-    qDebug() << "Reconfiguring media components";
+    qDebug() << "Resetting media components";
 
-    // Reconfigure ALL components //
+    isRecording = false;
+    playbackTimer->stop();
+
+    if (!isStarting)
+        disconnectAllSignals();
+
+    // Stop activity first.
+    if (vizPlayer)
+        vizPlayer->stop();
+
+    if (player) {
+        player->stop();
+        player->setSource(QUrl());
+        player->setVideoOutput(nullptr);
+        player->setAudioOutput(nullptr);
+    }
+
+    if (mediaRecorder) {
+        if (mediaRecorder->recorderState() != QMediaRecorder::StoppedState)
+            mediaRecorder->stop();
+    }
+
+    if (camera) {
+        if (camera->isActive())
+            camera->stop();
+    }
+
+    if (audioRecorder)
+        audioRecorder->stopRecording();
+
+    // Detach the capture graph before destroying any of its nodes.
+    if (mediaCaptureSession) {
+        mediaCaptureSession->setRecorder(nullptr);
+        mediaCaptureSession->setCamera(nullptr);
+        mediaCaptureSession->setAudioInput(nullptr);
+        mediaCaptureSession->setVideoOutput(nullptr);
+    }
+
+    // Destroy helper objects first.
+    if (vizPlayer)
+        vizPlayer.reset();
+
+    // Destroy the multimedia graph after it has been detached.
+    if (mediaCaptureSession)
+        mediaCaptureSession.reset();
+
+    if (mediaRecorder)
+        mediaRecorder.reset();
+
+    if (camera)
+        camera.reset();
+
+    if (format)
+        format.reset();
+
+    if (player)
+        player.reset();
+
+    if (audioOutput)
+        audioOutput.reset();
+
+    if (audioRecorder)
+        audioRecorder.reset();
+
+    // Recreate all objects here, since configureMediaComponents()
+    // now only configures existing instances.
     audioRecorder.reset(new AudioRecorder(selectedDevice, this));
-    connect(audioRecorder.data(), &AudioRecorder::deviceLabelChanged, this, &MainWindow::updateDeviceLabel);
-    audioRecorder->initialize();
-
     player.reset(new QMediaPlayer(this));
     audioOutput.reset(new QAudioOutput(this));
     format.reset(new QMediaFormat);
     camera.reset(new QCamera(selectedCameraDevice, this));
     mediaRecorder.reset(new QMediaRecorder(this));
     mediaCaptureSession.reset(new QMediaCaptureSession(this));
+    vizPlayer.reset(new AudioVizMediaPlayer(player.data(), vizUpperLeft, vizUpperRight, this));
 
-    // Setup Media player
+    configureMediaComponents();
+}
+
+void MainWindow::configureMediaComponents()
+{
+    qDebug() << "Reconfiguring media components";
+
+    if (!audioRecorder || !player || !audioOutput || !format || !camera || !mediaRecorder || !mediaCaptureSession || !vizPlayer) {
+        qWarning() << "configureMediaComponents called with missing media objects";
+        return;
+    }
+
+    connect(audioRecorder.data(),
+            &AudioRecorder::deviceLabelChanged,
+            this,
+            &MainWindow::updateDeviceLabel,
+            Qt::UniqueConnection);
+
+    audioRecorder->initialize();
+
+    // Setup media player.
     player->setVideoOutput(videoWidget);
     player->setAudioOutput(audioOutput.data());
-    vizPlayer.reset(new AudioVizMediaPlayer(player.data(), vizUpperLeft, vizUpperRight, this));
+
     onVizCheckboxToggled(vizCheckbox->isChecked());
-    
-    // Setup SndWidget
+
+    // Setup sound level widget.
     soundLevelWidget->setInputDevice(selectedDevice);
-    
-    // Setup CAMERA
-    format->setFileFormat(QMediaFormat::FileFormat::Matroska); // .mkv less dessync
-    format->setVideoCodec(QMediaFormat::VideoCodec::MotionJPEG);
-    format->setAudioCodec(QMediaFormat::AudioCodec::Wave);
+
+    // Rebind the current camera device explicitly.
+    camera->setCameraDevice(selectedCameraDevice);
+
+    // Prefer a JPEG camera input format when available.
+    QCameraFormat preferredCameraFormat;
+    bool foundPreferredCameraFormat = false;
+    bool foundPreferredCameraFormatAt30fps = false;
+    qint64 bestPixels = -1;
+    float bestMaxFps = -1.0f;
+
+    const auto cameraFormats = selectedCameraDevice.videoFormats();
+    for (const QCameraFormat &cameraFormat : cameraFormats) {
+        if (cameraFormat.pixelFormat() != QVideoFrameFormat::Format_Jpeg)
+            continue;
+
+        const QSize resolution = cameraFormat.resolution();
+        const qint64 pixels = qint64(resolution.width()) * qint64(resolution.height());
+        const bool supports30fps = cameraFormat.maxFrameRate() >= 30.0f;
+
+        if (!foundPreferredCameraFormat
+            || (supports30fps && !foundPreferredCameraFormatAt30fps)
+            || (supports30fps == foundPreferredCameraFormatAt30fps && pixels > bestPixels)
+            || (supports30fps == foundPreferredCameraFormatAt30fps
+                && pixels == bestPixels
+                && cameraFormat.maxFrameRate() > bestMaxFps)) {
+            preferredCameraFormat = cameraFormat;
+            foundPreferredCameraFormat = true;
+            foundPreferredCameraFormatAt30fps = supports30fps;
+            bestPixels = pixels;
+            bestMaxFps = cameraFormat.maxFrameRate();
+        }
+    }
+
+    qreal targetFrameRate = 30.0;
+
+    if (foundPreferredCameraFormat) {
+        camera->setCameraFormat(preferredCameraFormat);
+
+        if (preferredCameraFormat.maxFrameRate() > 0.0f && preferredCameraFormat.maxFrameRate() < targetFrameRate)
+            targetFrameRate = preferredCameraFormat.maxFrameRate();
+
+        mediaRecorder->setVideoResolution(preferredCameraFormat.resolution());
+
+        qDebug() << "Selected camera input format:"
+                 << "resolution=" << preferredCameraFormat.resolution()
+                 << "fps=" << preferredCameraFormat.minFrameRate() << ".." << preferredCameraFormat.maxFrameRate()
+                 << "pixelFormat=JPEG";
+    } else {
+        qWarning() << "No JPEG camera format found; keeping backend/default camera format";
+    }
+
+    // This recorder branch is video-only.
+    using FF = QMediaFormat::FileFormat;
+    using VC = QMediaFormat::VideoCodec;
+    using AC = QMediaFormat::AudioCodec;
+
+    const QList<FF> filePreference = {
+        FF::Matroska,
+        FF::AVI,
+        FF::QuickTime,
+        FF::MPEG4,
+        FF::WebM
+    };
+
+    const QList<VC> videoPreference = {
+        VC::MotionJPEG,
+        VC::H264,
+        VC::H265,
+        VC::VP9,
+        VC::VP8,
+        VC::AV1,
+        VC::MPEG4,
+        VC::MPEG2,
+        VC::MPEG1,
+        VC::WMV,
+        VC::Theora
+    };
+
+    bool selectedRecorderFormat = false;
+
+    for (FF fileFormatCandidate : filePreference) {
+        QMediaFormat probe;
+        probe.setFileFormat(fileFormatCandidate);
+        probe.setAudioCodec(AC::Unspecified);
+
+        const auto supportedVideos = probe.supportedVideoCodecs(QMediaFormat::Encode);
+        if (supportedVideos.isEmpty())
+            continue;
+
+        for (VC videoCodecCandidate : videoPreference) {
+            if (!supportedVideos.contains(videoCodecCandidate))
+                continue;
+
+            QMediaFormat candidate;
+            candidate.setFileFormat(fileFormatCandidate);
+            candidate.setAudioCodec(AC::Unspecified);
+            candidate.setVideoCodec(videoCodecCandidate);
+
+            if (!candidate.isSupported(QMediaFormat::Encode))
+                continue;
+
+            *format = candidate;
+            selectedRecorderFormat = true;
+            break;
+        }
+
+        if (selectedRecorderFormat)
+            break;
+    }
+
+    if (!selectedRecorderFormat) {
+        qWarning() << "Preferred recorder formats are not supported; resolving via backend";
+
+        format->setFileFormat(FF::Matroska);
+        format->setAudioCodec(AC::Unspecified);
+        format->setVideoCodec(VC::Unspecified);
+        format->resolveForEncoding(QMediaFormat::RequiresVideo);
+    }
+
+    qDebug() << "Selected recorder media format:"
+             << "container=" << QMediaFormat::fileFormatName(format->fileFormat())
+             << "videoCodec=" << QMediaFormat::videoCodecName(format->videoCodec())
+             << "audioCodec=" << QMediaFormat::audioCodecName(format->audioCodec());
 
     mediaRecorder->setMediaFormat(*format);
-    mediaRecorder->setOutputLocation(QUrl::fromLocalFile(webcamRecorded));    
-    mediaRecorder->setEncodingMode(QMediaRecorder::AverageBitRateEncoding); // respect bitrate
-    mediaRecorder->setQuality(QMediaRecorder::HighQuality); 
-    mediaRecorder->setVideoFrameRate(30);
-    mediaRecorder->setVideoBitRate(8'000'000);            // let ffmpeg decide?
-    //mediaRecorder->setVideoResolution(QSize(W, H));       // future: set resolution
+    mediaRecorder->setOutputLocation(QUrl::fromLocalFile(webcamRecorded));
+    mediaRecorder->setEncodingMode(QMediaRecorder::AverageBitRateEncoding);
+    mediaRecorder->setQuality(QMediaRecorder::HighQuality);
+    mediaRecorder->setVideoFrameRate(targetFrameRate);
+    mediaRecorder->setVideoBitRate(8'000'000);
 
     qDebug() << "Configuring mediaCaptureSession..";
     mediaCaptureSession->setVideoOutput(webcamPreviewItem);
@@ -44,77 +245,30 @@ void MainWindow::configureMediaComponents()
     mediaCaptureSession->setAudioInput(nullptr);
     mediaCaptureSession->setRecorder(mediaRecorder.data());
 
+    connect(mediaRecorder.data(),
+            &QMediaRecorder::recorderStateChanged,
+            this,
+            &MainWindow::onRecorderStateChanged,
+            Qt::UniqueConnection);
+    connect(mediaRecorder.data(),
+            &QMediaRecorder::errorOccurred,
+            this,
+            &MainWindow::handleRecorderError,
+            Qt::UniqueConnection);
+    connect(player.data(),
+            &QMediaPlayer::mediaStatusChanged,
+            this,
+            &MainWindow::onPlayerMediaStatusChanged,
+            Qt::UniqueConnection);
+    connect(player.data(),
+            &QMediaPlayer::playbackStateChanged,
+            this,
+            &MainWindow::onPlaybackStateChanged,
+            Qt::UniqueConnection);
+
     camera->start();
 
-    connect(mediaRecorder.data(), &QMediaRecorder::recorderStateChanged, this, &MainWindow::onRecorderStateChanged);
-    connect(mediaRecorder.data(), &QMediaRecorder::errorOccurred, this, &MainWindow::handleRecorderError);
-    connect(player.data(), &QMediaPlayer::mediaStatusChanged, this, &MainWindow::onPlayerMediaStatusChanged);
-    connect(player.data(), &QMediaPlayer::playbackStateChanged, this, &MainWindow::onPlaybackStateChanged);
     qDebug() << "Reconfigured media components";
-
-}
-
-
-void MainWindow::resetMediaComponents(bool isStarting) {
-
-    QCoreApplication::processEvents();
-
-    qDebug() << "Resetting media components";
-
-    isRecording = false;
-
-    if (!isStarting)
-        disconnectAllSignals(); // Ensure all signals are disconnected
-
-    playbackTimer->stop();
-
-    // Reset multimedia components with null checks to avoid double free
-    if ( vizPlayer ) {
-        vizPlayer->stop();
-        vizPlayer.reset();
-    }
-
-    if (player) {
-        player->stop();
-        player->setVideoOutput(nullptr);  // Clear video output before resetting
-        player->setAudioOutput(nullptr);  // Clear audio output before resetting
-        player->setSource(QUrl());        // Explicitly clear the media source
-        player.reset();                   // Reset the unique pointer
-    }
-    
-    if (audioOutput) {
-        audioOutput->setMuted(true);
-        audioOutput.reset();
-    }
-
-    if (mediaRecorder) {
-        if (mediaRecorder->recorderState() == QMediaRecorder::RecordingState) {
-            mediaRecorder->stop();
-        }
-        mediaRecorder.reset();
-    }
-
-    if (mediaCaptureSession) {
-        mediaCaptureSession.reset();
-    }
-
-    if (audioRecorder) {
-        audioRecorder->stopRecording();
-        audioRecorder.reset();
-    }
-
-    if (format) {
-        format.reset();
-    }
-
-    if (camera) {
-        if (camera->isActive()) {
-            camera->stop(); 
-        }
-        camera.reset();
-    }
-    // Reinitialize components
-    configureMediaComponents();
 }
 
 

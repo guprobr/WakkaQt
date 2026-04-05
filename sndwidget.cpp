@@ -28,19 +28,30 @@ SndWidget::~SndWidget() {
     }
 }
 
-void SndWidget::setInputDevice(const QAudioDevice &device) {
-
+void SndWidget::setInputDevice(const QAudioDevice &device)
+{
     if (audioSource) {
+        disconnect(audioSource, nullptr, this, nullptr);
         audioSource->stop();
-        delete audioSource;
+        audioSource->deleteLater();
         audioSource = nullptr;
     }
 
-    // Initialize the audio source with the new device
-    audioSource = new QAudioSource(device, format, this);
+    if (audioBuffer->isOpen())
+        audioBuffer->close();
+
+    audioBuffer->buffer().clear();
+    audioBuffer->seek(0);
     audioBuffer->open(QIODevice::ReadWrite);
 
-    connect(audioSource, &QAudioSource::stateChanged, this, &SndWidget::onAudioStateChanged);
+    audioSource = new QAudioSource(device, format, this);
+
+    connect(audioSource,
+            &QAudioSource::stateChanged,
+            this,
+            &SndWidget::onAudioStateChanged,
+            Qt::UniqueConnection);
+
     audioSource->start(audioBuffer);
 }
 

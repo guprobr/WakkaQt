@@ -126,6 +126,12 @@ void AudioVizMediaPlayer::seek(qint64 position, bool seekPlayback)
         return;
     }
 
+    // Guard against division by zero when media is not yet loaded
+    if (m_mediaPlayer->duration() == 0) {
+        qDebug() << "seek() called before media duration is known — ignoring.";
+        return;
+    }
+
     // Ensure position is within valid range
     if (position < 0 || position > m_mediaPlayer->duration()) {
         qWarning() << "Seek position out of bounds:" << position;

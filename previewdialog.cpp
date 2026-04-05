@@ -120,7 +120,8 @@ PreviewDialog::PreviewDialog(qint64 offset, qint64 sysLatency, QWidget *parent)
     layout->addWidget(noiseReductionSlider);
     layout->addWidget(stopButton);
     layout->setAlignment(Qt::AlignHCenter);
-    setFixedSize(800, 760);
+    setMinimumSize(680, 620);
+    resize(800, 760);
 
     updateEnhancementLabels();
 

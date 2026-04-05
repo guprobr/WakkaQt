@@ -137,12 +137,12 @@ void MainWindow::chooseInputDevice() {
         }
 
         QMessageBox::critical(this, "Device Error", missingDevices);
-        exit(-1);  // Abort the program if devices are missing
+        QCoreApplication::exit(-1);
         return;
     }
 
     // Create a dialog to show the lists of devices
-    QDialog *deviceDialog = new QDialog();
+    QDialog *deviceDialog = new QDialog(this);
     deviceDialog->setWindowTitle("WakkaQt - Select Input Devices");
     deviceDialog->setFixedSize(400, 250);
 
@@ -246,9 +246,9 @@ void MainWindow::chooseInputDevice() {
         }
     });
 
-    // Connect the exit button to close the program
+    // Connect the exit button to close the program cleanly
     connect(exitButton, &QPushButton::clicked, this, []() {
-        exit(0);
+        QCoreApplication::quit();
     });
 
     // Execute the dialog

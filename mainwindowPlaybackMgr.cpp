@@ -44,10 +44,7 @@ void MainWindow::playVideo(const QString& playbackVideoPath) {
         if ( !playbackTimer->isActive())
             playbackTimer->start(1000);
 
-        if ( !( (currentPlayback.endsWith("mp3", Qt::CaseInsensitive))             \
-                ||  (currentPlayback.endsWith("wav", Qt::CaseInsensitive))             \
-                ||  (currentPlayback.endsWith("opus", Qt::CaseInsensitive))             \
-                ||  (currentPlayback.endsWith("flac", Qt::CaseInsensitive)) )) {
+        if (!isAudioOnlyFile(currentPlayback)) {
             placeholderLabel->hide();
             videoWidget->show();
         } else {
@@ -130,10 +127,7 @@ void MainWindow::chooseLast()
                     player->setAudioOutput(audioOutput.data()); // now gimme back my sound mon
                 #endif
                 #endif
-                if ( !( (currentPlayback.endsWith("mp3", Qt::CaseInsensitive))             \
-                ||  (currentPlayback.endsWith("wav", Qt::CaseInsensitive))                  \
-                ||  (currentPlayback.endsWith("opus", Qt::CaseInsensitive))                  \
-                ||  (currentPlayback.endsWith("flac", Qt::CaseInsensitive)) )) {
+                if (!isAudioOnlyFile(currentPlayback)) {
                     placeholderLabel->hide();
                     videoWidget->show();
                 }
@@ -183,10 +177,7 @@ void MainWindow::chooseVideo()
                     player->setAudioOutput(audioOutput.data()); // now gimme back my sound mon
                 #endif
                 #endif
-                if ( !( (currentPlayback.endsWith("mp3", Qt::CaseInsensitive))             \
-                ||  (currentPlayback.endsWith("wav", Qt::CaseInsensitive))                  \
-                ||  (currentPlayback.endsWith("opus", Qt::CaseInsensitive))                  \
-                ||  (currentPlayback.endsWith("flac", Qt::CaseInsensitive)) )) {
+                if (!isAudioOnlyFile(currentPlayback)) {
                     placeholderLabel->hide();
                     videoWidget->show();
                 }
@@ -229,10 +220,7 @@ void MainWindow::fetchVideo() {
                     player->setAudioOutput(audioOutput.data());
                 #endif
                 #endif
-                if (!(currentPlayback.endsWith("mp3", Qt::CaseInsensitive) ||
-                      currentPlayback.endsWith("wav", Qt::CaseInsensitive) ||
-                      currentPlayback.endsWith("opus", Qt::CaseInsensitive) ||
-                      currentPlayback.endsWith("flac", Qt::CaseInsensitive))) {
+                if (!isAudioOnlyFile(currentPlayback)) {
                     placeholderLabel->hide();
                     videoWidget->show();
                 }
@@ -279,10 +267,7 @@ void MainWindow::fetchVideo() {
         if (isPlayback) {
             QTimer::singleShot(500, this, [this, lastPos]() {
                 vizPlayer->seek(lastPos, true);
-                if (!(currentPlayback.endsWith("mp3", Qt::CaseInsensitive) ||
-                      currentPlayback.endsWith("wav", Qt::CaseInsensitive) ||
-                      currentPlayback.endsWith("opus", Qt::CaseInsensitive) ||
-                      currentPlayback.endsWith("flac", Qt::CaseInsensitive))) {
+                if (!isAudioOnlyFile(currentPlayback)) {
                     placeholderLabel->hide();
                     videoWidget->show();
                 }

@@ -4,9 +4,9 @@
 #include <QAudioFormat>
 
 // FFMpeg filter_complexes
-    QString _audioEnhance = "aformat=channel_layouts=mono,";
-    QString _filterEcho = "aecho=0.8:0.7:32|64:0.21|0.13,";
-    QString _audioMasterization = "deesser,speechnorm,acompressor=threshold=0.5:ratio=4,highpass=f=200,treble=g=8";
+    const QString _audioEnhance = "aformat=channel_layouts=mono,";
+    const QString _filterEcho = "aecho=0.8:0.7:32|64:0.21|0.13,";
+    const QString _audioMasterization = "deesser,speechnorm,acompressor=threshold=0.5:ratio=4,highpass=f=200,treble=g=8";
 
 // fixed tmp file paths
     QString webcamRecorded = QDir::temp().filePath("WakkaQt_tmp_recording.mkv");
@@ -14,6 +14,13 @@
     QString tunedRecorded = QDir::temp().filePath("WakkaQt_tmp_tuned.wav");
     QString extractedPlayback = QDir::temp().filePath("WakkaQt_playback.wav");
     QString extractedTmpPlayback = QDir::temp().filePath("WakkaQt_tmp_playback.wav");
+
+bool isAudioOnlyFile(const QString &path) {
+    return path.endsWith("mp3",  Qt::CaseInsensitive)
+        || path.endsWith("wav",  Qt::CaseInsensitive)
+        || path.endsWith("opus", Qt::CaseInsensitive)
+        || path.endsWith("flac", Qt::CaseInsensitive);
+}
 
 bool isSingleYouTubeVideoUrl(const QUrl& url) {
     if (!isYouTubeHost(url.host())) return false;

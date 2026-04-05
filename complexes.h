@@ -8,9 +8,13 @@
 #include <QStringView>
 
 
-extern QString _audioMasterization;
-extern QString _filterEcho;
-extern QString _audioEnhance;
+extern const QString _audioMasterization;
+extern const QString _filterEcho;
+extern const QString _audioEnhance;
+
+// Returns true when the file is an audio-only format (mp3/wav/opus/flac).
+// Use this instead of repeating the four-extension chain everywhere.
+bool isAudioOnlyFile(const QString &path);
 
 extern QString webcamRecorded;
 extern QString audioRecorded;

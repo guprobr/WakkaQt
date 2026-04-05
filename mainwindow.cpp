@@ -318,8 +318,7 @@ void MainWindow::addProgressSong(QGraphicsScene *scene, qint64 duration) {
         progressSongFull = nullptr;
     }
 
-    // Centered position for progressSongFull
-    qreal progressBarWidth = 640;
+    qreal progressBarWidth  = progressBarDisplayWidth();
     qreal progressBarHeight = 10;
     qreal progressBarX = (this->progressView->width() - progressBarWidth) / 2;
     qreal progressBarY = (this->progressView->height() - progressBarHeight * 2);
@@ -343,10 +342,12 @@ void MainWindow::addProgressSong(QGraphicsScene *scene, qint64 duration) {
     scene->addItem(progressSong);
     progressSong->setPos(progressBarX, progressBarY);
 
-    // Update progress bar as media plays
+    // Update progress bar as media plays — read width dynamically from progressSongFull
     connect(player.data(), &QMediaPlayer::positionChanged, this, [=](qint64 currentPosition) {
+        if (!progressSong || !progressSongFull) return;
+        const qreal barWidth = progressSongFull->rect().width();
         qreal progress = qreal(currentPosition) / (duration * 1000);
-        progressSong->setRect(0, 0, progressBarWidth * progress, progressBarHeight);
+        progressSong->setRect(0, 0, barWidth * progress, progressBarHeight);
     });
 }
 
@@ -371,18 +372,18 @@ bool MainWindow::eventFilter(QObject *object, QEvent *event) {
 
     // Check if the event is a mouse press event in a QGraphicsScene
     if (event->type() == QEvent::GraphicsSceneMousePress) {
-        // Cast the event to QGraphicsSceneMouseEvent
-        QGraphicsSceneMouseEvent *mouseEvent = dynamic_cast<QGraphicsSceneMouseEvent *>(event);
+        // Type already confirmed — static_cast is correct and safe here
+        QGraphicsSceneMouseEvent *mouseEvent = static_cast<QGraphicsSceneMouseEvent *>(event);
         if (mouseEvent) {
             
             QPointF clickPos = mouseEvent->scenePos();  // Get the mouse click position in scene coordinates
             
-            if ( progressSong ) {
+            if ( progressSong && progressSongFull ) {
                 if ( !isRecording && isPlayback ) {
-                    // Get progress bar position and dimensions
-                    qreal progressBarX = progressSong->pos().x();
-                    qreal progressBarY = progressSong->pos().y();
-                    qreal progressBarWidth = 640;
+                    // Get progress bar position and dimensions from the actual items
+                    qreal progressBarX     = progressSong->pos().x();
+                    qreal progressBarY     = progressSong->pos().y();
+                    qreal progressBarWidth = progressSongFull->rect().width();
                     qreal progressBarHeight = progressSong->rect().height();
                     // SEEKABLE SONG PROGRESS BAR
                     // Check if the click was within the progress bar's area (both x and y boundaries)
@@ -410,10 +411,7 @@ bool MainWindow::eventFilter(QObject *object, QEvent *event) {
                         player->setAudioOutput(audioOutput.data()); // now gimme back my sound mon
 #endif
 #endif
-                        if ( !( (currentPlayback.endsWith("mp3", Qt::CaseInsensitive))             \
-                        ||  (currentPlayback.endsWith("wav", Qt::CaseInsensitive))             \
-                        ||  (currentPlayback.endsWith("opus", Qt::CaseInsensitive))         \
-                        ||  (currentPlayback.endsWith("flac", Qt::CaseInsensitive)) )) {
+                        if (!isAudioOnlyFile(currentPlayback)) {
                             placeholderLabel->hide();
                             videoWidget->show();
                         }
@@ -488,9 +486,6 @@ void MainWindow::addVideoDisplayWidgetInDialog() {
     // Set the scene size based on the view size
     webcamView->scene()->setSceneRect(0, 0, webcamView->width(), webcamView->height());
 
-    // Center the webcamPreviewItem within the scene
-    qreal xCenter = (webcamView->scene()->width() - webcamPreviewItem->boundingRect().width()) / 2;
-    qreal yCenter = (webcamView->scene()->height() - webcamPreviewItem->boundingRect().height()) / 2;
     webcamPreviewItem->setPos(0, 0);
 
     // Restore original layout and size when the dialog is closed
@@ -507,11 +502,7 @@ void MainWindow::addVideoDisplayWidgetInDialog() {
         }
         
         if ( isPlayback ) 
-            if ( !( (currentPlayback.endsWith("mp3", Qt::CaseInsensitive))             \
-                ||  (currentPlayback.endsWith("wav", Qt::CaseInsensitive))             \
-                ||  (currentPlayback.endsWith("opus", Qt::CaseInsensitive))             \
-                ||  (currentPlayback.endsWith("flac", Qt::CaseInsensitive)) )) 
-                {
+            if (!isAudioOnlyFile(currentPlayback)) {
                     placeholderLabel->hide();
                     videoWidget->show();
                 }
@@ -549,8 +540,14 @@ MainWindow::~MainWindow() {
         delete videoWidget;
     if ( soundLevelWidget )
         delete soundLevelWidget;
-    if ( progressSong )
+    if ( progressSong ) {
         delete progressSong;
+        progressSong = nullptr;
+    }
+    if ( progressSongFull ) {
+        delete progressSongFull;
+        progressSongFull = nullptr;
+    }
     if ( vizPlayer )
         vizPlayer.reset();
 
@@ -611,11 +608,17 @@ void MainWindow::resizeEvent(QResizeEvent* event) {
     qreal sceneWidth = progressView->scene()->width();
     
     if ( this->progressSongFull ) {
-        progressSongFull->setX((sceneWidth - progressSongFull->boundingRect().width()) / 2);
+        // Resize the full bar to match the new view width
+        const qreal newWidth = progressBarDisplayWidth();
+        const qreal barHeight = progressSongFull->rect().height();
+        progressSongFull->setRect(0, 0, newWidth, barHeight);
+        progressSongFull->setX((sceneWidth - newWidth) / 2.0);
     }
-    if ( this->progressSong ) {
-        progressSong->setX((sceneWidth - progressSongFull->boundingRect().width()) / 2);
-    }    
+    if ( this->progressSong && this->progressSongFull ) {
+        // Reposition the progress fill bar to match the full bar's X
+        progressSong->setX(progressSongFull->x());
+        // Width of progressSong is managed by the positionChanged signal lambda
+    }
     
     durationTextItem->setTextWidth(durationTextItem->boundingRect().width());
     durationTextItem->setX((this->progressView->width() - durationTextItem->boundingRect().width()) / 2);
@@ -624,9 +627,17 @@ void MainWindow::resizeEvent(QResizeEvent* event) {
 
 void MainWindow::setDefaultFontForClass(const char* className, qreal pt)
 {
-    QFont f = QApplication::font(); // :contentReference[oaicite:4]{index=4}
+    QFont f = QApplication::font();
     f.setPointSizeF(pt);
-    QApplication::setFont(f, className);     // applies to class + subclasses :contentReference[oaicite:5]{index=5}
+    QApplication::setFont(f, className);
+}
+
+// Returns the display width for the seek progress bar.
+// Adapts to the current progressView width so the bar scales with the window.
+qreal MainWindow::progressBarDisplayWidth() const
+{
+    const qreal available = progressView ? (qreal)progressView->width() - 40.0 : 640.0;
+    return qMax(320.0, available);
 }
 
 void MainWindow::closeEvent(QCloseEvent *event)

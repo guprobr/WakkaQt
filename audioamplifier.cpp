@@ -17,8 +17,8 @@ AudioAmplifier::AudioAmplifier(const QAudioFormat &format, QObject *parent)
     connect(audioSink.data(), &QAudioSink::stateChanged,
             this, &AudioAmplifier::handleStateChanged);
 
-    audioBuffer.reset(new QBuffer(new QByteArray()));
-    playbackBuffer.reset(new QBuffer(new QByteArray()));
+    audioBuffer.reset(new QBuffer());
+    playbackBuffer.reset(new QBuffer());
 
     playbackFile.setFileName(extractedTmpPlayback);
     if (playbackFile.isOpen())
@@ -138,7 +138,10 @@ void AudioAmplifier::start()
     audioSink->start(audioBuffer.data());
     dataPushTimer->start(25);
     emitVocalPreviewChunk();
-    checkBufferState();
+    // Note: checkBufferState() is intentionally NOT called here.
+    // The dataPushTimer fires every 25 ms and will call it shortly,
+    // avoiding a potential re-entry loop when checkBufferState() itself
+    // calls start() on an underrun condition.
     qDebug() << "Start amplified vocals and backing track.";
 }
 

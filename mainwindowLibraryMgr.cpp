@@ -8,12 +8,24 @@
 //
 // Opens the Library dialog. Every interactive main-window control is disabled
 // while the dialog is open so the user cannot accidentally start a recording
-// or load a new file during the modal session. Controls are re-enabled
-// unconditionally when this function returns (restoreAndRender handles its
-// own control state internally).
+// or load a new file during the modal session.
+//
+// If something is currently playing, it is paused before the dialog opens and
+// resumed automatically when the dialog is closed without a restore selection.
+// If the user picks a session to restore, playback is not resumed (it will be
+// replaced by the restored session's render flow).
 // ─────────────────────────────────────────────────────────────────────────────
 void MainWindow::openLibrary()
 {
+    // ── Pause active playback so music doesn't keep playing behind the dialog
+    const bool wasPlaying = isPlayback
+                         && player
+                         && player->playbackState() == QMediaPlayer::PlayingState;
+    if (wasPlaying) {
+        vizPlayer->pause();
+        logUI("Library: playback paused.");
+    }
+
     // ── Disable everything while dialog is open ───────────────────────────
     enable_playback(false);                   // covers chooseVideoButton, chooseLastButton,
                                               // libraryButton, fetchButton, menu actions
@@ -30,6 +42,7 @@ void MainWindow::openLibrary()
         if (!id.isEmpty()) {
             restoreAndRender(id);
             // restoreAndRender manages its own control state — return immediately.
+            // Playback is intentionally NOT resumed here; the restore flow takes over.
             return;
         }
     }
@@ -41,6 +54,12 @@ void MainWindow::openLibrary()
     // singButton stays disabled unless a video is already loaded
     // (renderAgainButton visibility is unchanged — leave it as-is)
     renderAgainButton->setEnabled(renderAgainButton->isVisible());
+
+    // ── Resume playback if it was running when the dialog was opened ───────
+    if (wasPlaying) {
+        vizPlayer->play();
+        logUI("Library: playback resumed.");
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -110,6 +129,10 @@ void MainWindow::restoreAndRender(const QString &sessionId)
     logUI("Library: restored session " + sessionId);
     logUI("Library: resuming at render step…");
     setBanner("Session restored \xe2\x80\x94 choose output and adjust!");
+
+    // Keep currentPlayback in sync so audio-format detection and
+    // chooseLast() work correctly with the restored session's file.
+    currentPlayback = currentVideoFile;
 
     // ── Reset UI to post-recording state ──────────────────────────────────
     // Mirrors the state MainWindow is in just before renderAgain() runs.

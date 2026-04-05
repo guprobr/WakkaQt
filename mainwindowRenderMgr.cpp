@@ -5,7 +5,6 @@
 // render //
 void MainWindow::renderAgain()
 {
-
     videoWidget->hide();
     placeholderLabel->show();
     
@@ -18,62 +17,69 @@ void MainWindow::renderAgain()
 
     renderAgainButton->setVisible(false);
     enable_playback(false);
-    progressSongFull->setToolTip("Nothing to seek");
+    if (progressSongFull)
+        progressSongFull->setToolTip("Nothing to seek");
     setBanner("Let's preview performance and render!");
-    // choose where to save rendered file
-    outputFilePath = QFileDialog::getSaveFileName(this, "Mix destination (default .MP4)", "", "Video or Audio Files (*.mp4 *.mkv *.webm *.avi *.mp3 *.flac *.wav *.opus)");
-    if (!outputFilePath.isEmpty()) {
-        // Check if the file path has a valid extension
-        QStringList allowedExtensions = QStringList() << "mp4" << "mkv" << "webm" << "avi" << "mp3" << "flac" << "wav" << "opus";
-        QString selectedExtension = QFileInfo(outputFilePath).suffix().toLower(); 
 
-        if (!allowedExtensions.contains(selectedExtension)) {
-            QMessageBox::warning(this, "Invalid File Extension", "Please choose a file with one of the following extensions:\n.mp4, .mkv, .webm, .avi, .mp3, .flac, .wav, .opus");
-            // Go back to the save destination dialog
-            return renderAgain();
-        }
+    // Loop until the user picks a valid output path or cancels.
+    // (Previously used recursion here which could stack-overflow on repeated
+    // bad-extension choices — replaced with a safe while loop.)
+    const QStringList allowedExtensions = {"mp4","mkv","webm","avi","mp3","flac","wav","opus"};
+    while (true) {
+        outputFilePath = QFileDialog::getSaveFileName(
+            this, "Mix destination (default .MP4)", "",
+            "Video or Audio Files (*.mp4 *.mkv *.webm *.avi *.mp3 *.flac *.wav *.opus)");
 
-        // High resolution or fast render?
-        // ── Save session to library BEFORE asking for resolution ──────────
-        saveCurrentSession();
-
-        int response = QMessageBox::question(
-            this, 
-            "Resolution", 
-            "Do you want 1920x1080 high-resolution video? Low resolution 640x480 renders much faster.", 
-            QMessageBox::Yes | QMessageBox::No, 
-            QMessageBox::No
-        );
-        setRez = (response == QMessageBox::Yes) ? "1920x1080" : "640x480";
-        qDebug() << "Will overlay each video with resolution:" << setRez;
-
-        // Show the preview dialog
-        previewDialog.reset(new PreviewDialog(audioOffset, offset, this));
-        previewDialog->setAudioFile(audioRecorded);
-        if (previewDialog->exec() == QDialog::Accepted)
-        {
-
-            double vocalVolume = previewDialog->getVolume();
-            qint64 manualOffset = previewDialog->getOffset();
-            previewDialog.reset();
-            mixAndRender(vocalVolume, manualOffset);
-
-        } else {
+        if (outputFilePath.isEmpty()) {
             enable_playback(true);
             chooseInputButton->setEnabled(true);
             chooseInputAction->setEnabled(true);
             singButton->setEnabled(false);
             singAction->setEnabled(false);
-            previewDialog.reset();
-            QMessageBox::warning(this, "Performance cancelled", "Performance cancelled during volume adjustment.");
+            QMessageBox::warning(this, "Performance cancelled", "Performance cancelled!");
+            return;
         }
+
+        if (!allowedExtensions.contains(QFileInfo(outputFilePath).suffix().toLower())) {
+            QMessageBox::warning(this, "Invalid File Extension",
+                "Please choose a file with one of the following extensions:\n"
+                ".mp4, .mkv, .webm, .avi, .mp3, .flac, .wav, .opus");
+            continue; // show the dialog again — no stack growth
+        }
+
+        break; // valid extension
+    }
+
+    // Save session to library BEFORE asking for resolution
+    saveCurrentSession();
+
+    int response = QMessageBox::question(
+        this, 
+        "Resolution", 
+        "Do you want 1920x1080 high-resolution video? Low resolution 640x480 renders much faster.", 
+        QMessageBox::Yes | QMessageBox::No, 
+        QMessageBox::No
+    );
+    setRez = (response == QMessageBox::Yes) ? "1920x1080" : "640x480";
+    qDebug() << "Will overlay each video with resolution:" << setRez;
+
+    // Show the preview dialog
+    previewDialog.reset(new PreviewDialog(audioOffset, offset, this));
+    previewDialog->setAudioFile(audioRecorded);
+    if (previewDialog->exec() == QDialog::Accepted)
+    {
+        double vocalVolume = previewDialog->getVolume();
+        qint64 manualOffset = previewDialog->getOffset();
+        previewDialog.reset();
+        mixAndRender(vocalVolume, manualOffset);
     } else {
         enable_playback(true);
         chooseInputButton->setEnabled(true);
         chooseInputAction->setEnabled(true);
         singButton->setEnabled(false);
         singAction->setEnabled(false);
-        QMessageBox::warning(this, "Performance cancelled", "Performance cancelled!");
+        previewDialog.reset();
+        QMessageBox::warning(this, "Performance cancelled", "Performance cancelled during volume adjustment.");
     }
 }
 
@@ -86,8 +92,10 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset) {
     chooseInputButton->setEnabled(true);
     chooseInputAction->setEnabled(true);
 
-    int totalDuration = static_cast<int>(getMediaDuration(currentVideoFile));  // Get the total duration
-    int recordingDuration = static_cast<int>(getMediaDuration(webcamRecorded));  // Get the recording duration
+    // Cache durations — each call spawns an ffprobe subprocess
+    double videoDuration  = getMediaDuration(currentVideoFile);
+    int totalDuration     = static_cast<int>(videoDuration);
+    int recordingDuration = static_cast<int>(getMediaDuration(webcamRecorded));
     int stopDuration = ( totalDuration - recordingDuration );
     if ( stopDuration < 0 )
         stopDuration = 0;
@@ -121,10 +129,9 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset) {
         offsetFilter = QString("trim=start=%1, setpts=PTS-STARTPTS,").arg((videoOffset + manualOffset) / 1000.0);
     } */
 
-    // Get input durations using ffprobe
-    double videoDuration = getMediaDuration(currentVideoFile);
+    // Get input durations using ffprobe — videoDuration already cached above
     double webcamDuration = getMediaDuration(webcamRecorded);
-    double audioDuration = getMediaDuration(tunedRecorded);
+    double audioDuration  = getMediaDuration(tunedRecorded);
 
     // Determine the longest duration to use for padding
     double maxDuration = std::max({videoDuration, webcamDuration, audioDuration});
@@ -282,9 +289,19 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset) {
 
     if (!process->waitForStarted()) {
         qWarning() << "Failed to start FFmpeg process.";
-        progressLabel->setText("Failed to start FFmpeg");
         logUI("Failed to start FFmpeg process.");
+        // Remove and free the progress widgets that would otherwise stay in
+        // the layout permanently (the finished-lambda won't fire if we never started)
+        layout->removeWidget(this->progressBar);
+        layout->removeWidget(progressLabel);
+        delete this->progressBar;
+        this->progressBar = nullptr;
+        progressLabel->deleteLater();
+        enable_playback(true);
+        renderAgainButton->setVisible(true);
         process->deleteLater();
+        QMessageBox::critical(this, "FFmpeg not found",
+            "Failed to start FFmpeg. Verify it is installed and available in PATH.");
         return;
     }
 
@@ -300,41 +317,29 @@ void MainWindow::updateProgress(const QString& output, QProgressBar* progressBar
     QRegularExpressionMatch match = timeRegex.match(output);
 
     if (match.hasMatch()) {
-        QString hoursStr = match.captured(1);
-        QString minutesStr = match.captured(2);
-        QString secondsStr = match.captured(3);
-        QString millisecondsStr = match.captured(4);
+        bool ok1, ok2, ok3, ok4;
+        int hours       = match.captured(1).toInt(&ok1);
+        int minutes     = match.captured(2).toInt(&ok2);
+        int seconds     = match.captured(3).toInt(&ok3);
+        int centiseconds = match.captured(4).toInt(&ok4);
 
-        bool ok;
-        int hours = hoursStr.toInt(&ok);
-        int minutes = minutesStr.toInt(&ok);
-        int seconds = secondsStr.toInt(&ok);
-        int milliseconds = millisecondsStr.toInt(&ok);
-
-        if (!ok) {
-            qWarning() << "Error parsing time components";
+        if (!ok1 || !ok2 || !ok3 || !ok4) {
+            qWarning() << "Error parsing FFmpeg time components";
             return;
         }
 
-        // Convert time to milliseconds
-        int elapsedMilliseconds = (hours * 3600 + minutes * 60 + seconds) * 1000 + milliseconds * 10;
-        qDebug() << "Elapsed milliseconds:" << elapsedMilliseconds;
+        // Convert time to milliseconds (FFmpeg outputs centiseconds in the .xx field)
+        int elapsedMilliseconds = (hours * 3600 + minutes * 60 + seconds) * 1000
+                                  + centiseconds * 10;
 
-        // Convert total duration from seconds to milliseconds
         int totalDurationMilliseconds = totalDuration * 1000;
         if (totalDurationMilliseconds <= 0) {
             qWarning() << "Total duration is not valid";
             return;
         }
 
-        // Calculate progress as a percentage
         int progressValue = static_cast<int>(100.0 * elapsedMilliseconds / totalDurationMilliseconds);
-        qDebug() << "Progress value:" << progressValue;
-
-        // Update the progress bar
-        progressBar->setValue(progressValue);
-    } else {
-        qDebug() << "No match for time regex:" << output;
+        progressBar->setValue(qBound(0, progressValue, 100));
     }
 }
 

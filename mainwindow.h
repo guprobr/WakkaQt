@@ -68,7 +68,7 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    QString Wakka_versione = "v1.84";
+    QString Wakka_versione = "v1.9";
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
@@ -212,6 +212,7 @@ private:
     bool eventFilter(QObject *object, QEvent *event) override;
 
     void setDefaultFontForClass(const char* className, qreal pt);
+    qreal progressBarDisplayWidth() const;
     
 };
 

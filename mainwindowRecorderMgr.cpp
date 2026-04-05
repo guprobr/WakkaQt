@@ -134,7 +134,8 @@ void MainWindow::stopRecording() {
         singAction->setText("SING");
         singAction->setEnabled(false);
         vizCheckbox->setEnabled(true);
-        progressSongFull->setToolTip("Nothing to seek");
+        if (progressSongFull)
+            progressSongFull->setToolTip("Nothing to seek");
         
         videoWidget->hide();
         placeholderLabel->show();
@@ -150,6 +151,7 @@ void MainWindow::stopRecording() {
         QFile fileCam(webcamRecorded);
         if (fileAudio.size() > 0 && fileCam.size() > 0 ) {
 
+            setBanner("Finalizing recording, please wait...");
             waitForFileFinalization(webcamRecorded, [this]() {
                 // Now video is ready, proceed safely
                 qWarning() << "VIDEO is ready. Proceeding...";

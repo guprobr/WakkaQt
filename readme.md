@@ -126,10 +126,54 @@ The application uses FFmpeg to mix the recorded webcam video and vocals with the
 ---
 
 
-## What's new in v1.9
+## What's new in v1.9.x
 
 ### New features
 - **Session Library** (`File → Session Library` / 📚 Library button): every recording session is automatically saved to `~/.WakkaQt/library/` before the render step. You can restore any previous session directly to the volume/offset adjustment and re-render stage — without having to sing again. Sessions can be renamed and deleted from the library dialog.
+
+#### VocalEnhancer: professional autotune overhaul + artifact elimination
+
+**Pitch correction artifacts eliminated** — replaced the old outer-OLA chunked
+pipeline with a single-pass phase vocoder.  The previous architecture fed
+separate signal buffers to the PV per chunk while carrying over phase state,
+causing phase/signal mismatches that produced "bubble" and "crack" artifacts
+that worsened with stronger correction.  The new pipeline:
+  1. Detects pitch every ~80 ms with EMA smoothing (τ=60 ms) and
+     autocorrelation confidence voicing gate, building a smooth per-frame
+     ratio curve with slew-rate limiting.
+  2. Calls pitchShiftContinuous() exactly once over the whole signal —
+     no outer OLA, no double windowing, no phase discontinuities.
+
+**YIN pitch detection** (de Cheveigné & Kawahara 2002) added alongside the
+existing HPS.  YIN runs first; HPS is the fallback.  Fewer octave errors,
+better accuracy on low voices and pitch glides.
+
+**Scale/key-aware correction** — setScale() / setScalePreset() restrict
+pitch snapping to a musical scale (Major, Minor, Pentatonic Maj/Min, Blues,
+Chromatic).  Key selector (C–B) and scale combo added to PreviewDialog UI.
+
+**Retune speed** — setRetuneSpeed(ms) replaces the opaque lerpParam slew
+calculation.  0 ms = instant/robotic (T-Pain); 300 ms = current natural
+default; 500 ms = very gradual.  Exposed as a slider in PreviewDialog.
+
+**Formant preservation via LPC** — Levinson-Durbin LPC (order 14) extracts
+the spectral envelope before pitch shifting; the phase vocoder operates on
+the de-formanted residual only; the vocal tract filter is re-applied
+afterward.  Toggled via setFormantPreservation() and a UI checkbox.
+
+**Vibrato preservation** — EMA on the pitch track (τ=60 ms) separates slow
+pitch drift (corrected) from fast vibrato cycles (preserved).
+
+**Autocorrelation confidence voicing gate** — replaces the crude ZCR check;
+frames below confidence 0.30 are treated as unvoiced and correction smoothly
+releases toward zero via the slew limiter instead of jumping.
+
+**PreviewDialog UX** — slider debounce raised to 700 ms (discrete controls
+300 ms) so the user can drag without triggering mid-drag re-processing.
+After re-enhancement the playback position is preserved instead of rewinding
+to the start (AudioAmplifier::seekTo() + getPosition() added).
+
+with help of big time friend: Claude Sonnet 4.6
 
 ## Contributing
 

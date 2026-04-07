@@ -9,6 +9,7 @@ void MainWindow::playVideo(const QString& playbackVideoPath) {
 
         videoWidget->hide();
         placeholderLabel->show();
+        transportWidget->hide();  // re-shown when PlayingState fires
 
         vizPlayer->stop();
         playbackTimer->stop();
@@ -70,18 +71,33 @@ void MainWindow::playVideo(const QString& playbackVideoPath) {
 void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
 
     if ( QMediaPlayer::PlayingState == state ) {
-        
-        if ( !isPlayback ) { 
+
+        if ( !isPlayback ) {
             addProgressSong(progressScene, static_cast<int>(getMediaDuration(currentPlayback)));
-        }            
+        }
 
         if ( isRecording )
             sysLatency.restart();
 
         isPlayback = true; // enable seeking now
 
+        transportWidget->show();
+        playPauseButton->setText("⏸");
     }
 
+    if ( QMediaPlayer::PausedState == state || QMediaPlayer::StoppedState == state ) {
+        playPauseButton->setText("▶");
+    }
+
+}
+
+void MainWindow::onPlayPauseClicked() {
+    if (!isPlayback || isRecording || !player || !vizPlayer) return;
+    if (player->playbackState() == QMediaPlayer::PlayingState) {
+        vizPlayer->pause();
+    } else {
+        vizPlayer->play();
+    }
 }
 
 void MainWindow::onPlayerPositionChanged(qint64 position) {

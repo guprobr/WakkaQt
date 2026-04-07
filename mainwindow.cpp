@@ -235,7 +235,26 @@ MainWindow::MainWindow(QWidget *parent)
     layout->addWidget(videoWidget);
     layout->addWidget(banner);
     layout->addLayout(vizLayout);
+    // Transport controls row
+    seekBackButton  = new QPushButton("◀◀", this);
+    playPauseButton = new QPushButton("▶", this);
+    stopButton      = new QPushButton("⏹", this);
+    seekFwdButton   = new QPushButton("▶▶", this);
+    seekBackButton ->setToolTip("Seek backward 10 seconds");
+    playPauseButton->setToolTip("Play / Pause");
+    stopButton     ->setToolTip("Stop and rewind to beginning");
+    seekFwdButton  ->setToolTip("Seek forward 10 seconds");
+    QHBoxLayout *transportLayout = new QHBoxLayout();
+    transportLayout->addWidget(seekBackButton);
+    transportLayout->addWidget(playPauseButton);
+    transportLayout->addWidget(stopButton);
+    transportLayout->addWidget(seekFwdButton);
+    transportWidget = new QWidget(this);
+    transportWidget->setLayout(transportLayout);
+    transportWidget->hide();   // shown only once media starts playing
+
     layout->addWidget(progressView);
+    layout->addWidget(transportWidget);
     layout->addWidget(soundLevelWidget, 1);
     layout->addWidget(singButton);
     layout->addWidget(abortButton);
@@ -286,6 +305,25 @@ MainWindow::MainWindow(QWidget *parent)
     connect(libraryAction, &QAction::triggered, this, &MainWindow::openLibrary);
     connect(previewCheckbox, &QCheckBox::toggled, this, &MainWindow::onPreviewCheckboxToggled);
     connect(vizCheckbox, &QCheckBox::toggled, this, &MainWindow::onVizCheckboxToggled);
+
+    connect(playPauseButton, &QPushButton::clicked, this, &MainWindow::onPlayPauseClicked);
+    connect(stopButton, &QPushButton::clicked, this, [this]() {
+        if (!isPlayback || isRecording) return;
+        vizPlayer->seek(0, true);
+        vizPlayer->pause();
+    });
+    connect(seekBackButton, &QPushButton::clicked, this, [this]() {
+        if (!isPlayback || isRecording) return;
+        const qint64 newPos = qMax(qint64(0), player->position() - 10000);
+        vizPlayer->seek(newPos, true);
+    });
+    connect(seekFwdButton, &QPushButton::clicked, this, [this]() {
+        if (!isPlayback || isRecording) return;
+        const qint64 dur    = player->duration();
+        const qint64 newPos = (dur > 0) ? qMin(dur - 500, player->position() + 10000)
+                                        : player->position() + 10000;
+        vizPlayer->seek(newPos, true);
+    });
 
       // Cover most clickable widgets at once:
     setDefaultFontForClass("QAbstractButton", 10); // QPushButton/QToolButton/etc inherit this
@@ -595,6 +633,12 @@ void MainWindow::enable_playback(bool flag) {
     loadPlaybackAction->setEnabled(flag);
     libraryAction->setEnabled(flag);
     fetchButton->setEnabled(flag);
+
+    // Transport row: keep visible but disable during recording / render
+    playPauseButton->setEnabled(flag);
+    stopButton     ->setEnabled(flag);
+    seekBackButton ->setEnabled(flag);
+    seekFwdButton  ->setEnabled(flag);
 
 }
 

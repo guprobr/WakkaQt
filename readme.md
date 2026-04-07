@@ -129,7 +129,11 @@ The application uses FFmpeg to mix the recorded webcam video and vocals with the
 ## What's new in v1.9.x
 
 ### New features
-- **Session Library** (`File → Session Library` / 📚 Library button): every recording session is automatically saved to `~/.WakkaQt/library/` before the render step. You can restore any previous session directly to the volume/offset adjustment and re-render stage — without having to sing again. Sessions can be renamed and deleted from the library dialog.
+- **Session Library**: (`File → Session Library` / 📚 Library button): every recording session is automatically saved to `~/.WakkaQt/library/` before the render step. You can restore any previous session directly to the volume/offset adjustment and re-render stage — without having to sing again. Sessions can be renamed and deleted from the library dialog.
+
+- **Media Controls**: A [◀◀] [▶/⏸] [⏹] [▶▶] horizontal row that sits between the progress bar and the sound level widget. It starts hidden and slides in the first time the media reaches PlayingState. Sync with vizPlayer: All four buttons go through vizPlayer->* methods, which internally drive both the QMediaPlayer and the AudioVisualizerWidget timers — so they can't fall out of sync:
+
+
 
 #### VocalEnhancer: professional autotune overhaul + artifact elimination
 

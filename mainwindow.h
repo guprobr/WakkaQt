@@ -83,6 +83,7 @@ private slots:
     void handleRecorderError(QMediaRecorder::Error error);
     void onPreviewCheckboxToggled(bool checked);
     void onVizCheckboxToggled(bool enable);
+    void onPlayPauseClicked();
 
 private:
 
@@ -147,6 +148,13 @@ private:
     QPushButton *renderAgainButton;
     QPushButton *chooseLastButton;
     QPushButton *libraryButton;
+
+    // Transport controls (play/pause, stop/rewind, seek ±10 s)
+    QPushButton *playPauseButton;
+    QPushButton *stopButton;
+    QPushButton *seekBackButton;
+    QPushButton *seekFwdButton;
+    QWidget     *transportWidget;
     QLabel* placeholderLabel;
     QLabel *recordingIndicator; 
     QLabel *deviceLabel;

@@ -257,6 +257,17 @@ bool AudioAmplifier::isPlayingPlayback() const
     return playbackSink && playbackSink->state() == QAudio::ActiveState;
 }
 
+void AudioAmplifier::seekTo(qint64 bytePos)
+{
+    playbackPosition = std::clamp(bytePos, qint64(0),
+                                  qint64(amplifiedAudioData.size()));
+    if (audioBuffer && audioBuffer->isOpen())
+        audioBuffer->seek(playbackPosition);
+    if (playbackBuffer && playbackBuffer->isOpen())
+        playbackBuffer->seek(playbackPosition);
+    emitVocalPreviewChunk();
+}
+
 void AudioAmplifier::rewind()
 {
     if (audioBuffer && audioBuffer->isOpen())

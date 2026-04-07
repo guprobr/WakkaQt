@@ -86,6 +86,36 @@ PreviewDialog::PreviewDialog(qint64 offset, qint64 sysLatency, QWidget *parent)
     noiseReductionSlider->setTickInterval(10);
     noiseReductionSlider->setToolTip("How aggressively the preview removes steady background noise.");
 
+    // Key selector
+    keyCombo = new QComboBox(this);
+    keyCombo->addItems({"C", "C#/Db", "D", "D#/Eb", "E", "F",
+                        "F#/Gb", "G", "G#/Ab", "A", "A#/Bb", "B"});
+    keyCombo->setCurrentIndex(0);
+    keyCombo->setToolTip("Root key for scale-aware pitch correction");
+
+    // Scale selector
+    scaleCombo = new QComboBox(this);
+    scaleCombo->addItems({"Chromatic", "Major", "Minor",
+                          "Pentatonic Major", "Pentatonic Minor", "Blues"});
+    scaleCombo->setCurrentIndex(0);
+    scaleCombo->setToolTip("Musical scale to restrict pitch correction targets");
+
+    // Retune speed
+    retuneSpeedLabel = new QLabel(QString("Retune speed: %1 ms  (0=robotic, 500=natural)")
+                                      .arg(int(m_retuneSpeedMs)), this);
+    retuneSpeedSlider = new QSlider(Qt::Horizontal, this);
+    retuneSpeedSlider->setRange(0, 500);
+    retuneSpeedSlider->setValue(int(m_retuneSpeedMs));
+    retuneSpeedSlider->setTickPosition(QSlider::TicksBelow);
+    retuneSpeedSlider->setTickInterval(50);
+    retuneSpeedSlider->setToolTip("0 = instant/robotic (T-Pain); 300 = natural; 500 = very gradual");
+
+    // Formant preservation
+    formantCheckBox = new QCheckBox("Preserve formants (natural timbre)", this);
+    formantCheckBox->setChecked(m_formantPreservation);
+    formantCheckBox->setToolTip(
+        "Uses LPC analysis to keep vocal character unchanged during pitch correction");
+
     progressBar = new QProgressBar(this);
     progressBar->setRange(0, 100);
     progressBar->setFixedSize(QSize(600, 50));
@@ -118,10 +148,23 @@ PreviewDialog::PreviewDialog(qint64 offset, qint64 sysLatency, QWidget *parent)
     layout->addWidget(pitchCorrectionSlider);
     layout->addWidget(noiseReductionLabel);
     layout->addWidget(noiseReductionSlider);
+
+    // Autotune controls row
+    QHBoxLayout *tuneRow = new QHBoxLayout();
+    tuneRow->addWidget(new QLabel("Key:", this));
+    tuneRow->addWidget(keyCombo);
+    tuneRow->addSpacing(12);
+    tuneRow->addWidget(new QLabel("Scale:", this));
+    tuneRow->addWidget(scaleCombo);
+    layout->addLayout(tuneRow);
+    layout->addWidget(retuneSpeedLabel);
+    layout->addWidget(retuneSpeedSlider);
+    layout->addWidget(formantCheckBox);
+
     layout->addWidget(stopButton);
     layout->setAlignment(Qt::AlignHCenter);
     setMinimumSize(680, 620);
-    resize(800, 760);
+    resize(800, 880);
 
     updateEnhancementLabels();
 
@@ -145,6 +188,14 @@ PreviewDialog::PreviewDialog(qint64 offset, qint64 sysLatency, QWidget *parent)
             this, &PreviewDialog::onPitchCorrectionChanged);
     connect(noiseReductionSlider, &QSlider::valueChanged,
             this, &PreviewDialog::onNoiseReductionChanged);
+    connect(keyCombo,   QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &PreviewDialog::onKeyChanged);
+    connect(scaleCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &PreviewDialog::onScaleChanged);
+    connect(retuneSpeedSlider, &QSlider::valueChanged,
+            this, &PreviewDialog::onRetuneSpeedChanged);
+    connect(formantCheckBox, &QCheckBox::toggled,
+            this, &PreviewDialog::onFormantPreservationChanged);
     connect(playbackMute_option, &QCheckBox::checkStateChanged, this, [this]() {
         amplifier->setPlaybackVol(!playbackMute_option->isChecked());
     });
@@ -263,6 +314,10 @@ void PreviewDialog::startEnhancementJob()
         enhanceWatcher = nullptr;
     }
 
+    // Snapshot playback position so we can resume from here after re-processing
+    if (amplifier)
+        m_savedPlaybackPos = amplifier->getPosition();
+
     setPreviewControlsEnabled(false);
     progressBar->setValue(0);
     bannerLabel->setText("Enhancing Vocals");
@@ -270,6 +325,14 @@ void PreviewDialog::startEnhancementJob()
 
     vocalEnhancer->setPitchCorrectionAmount(pitchCorrectionAmount);
     vocalEnhancer->setNoiseReductionAmount(noiseReductionAmount);
+    vocalEnhancer->setRetuneSpeed(m_retuneSpeedMs);
+    vocalEnhancer->setFormantPreservation(m_formantPreservation);
+    // Map combo index to scale preset name
+    const QStringList scaleNames = {"chromatic","major","minor",
+                                     "pentatonic_major","pentatonic_minor","blues"};
+    const QString scaleName = (m_scaleIndex >= 0 && m_scaleIndex < scaleNames.size())
+                            ? scaleNames[m_scaleIndex] : "chromatic";
+    vocalEnhancer->setScalePreset(scaleName, m_keyNote);
 
     enhanceWatcher = new QFutureWatcher<QByteArray>(this);
     connect(enhanceWatcher, &QFutureWatcher<QByteArray>::finished, this, [this]() {
@@ -287,7 +350,8 @@ void PreviewDialog::startEnhancementJob()
         amplifier->setAudioData(tunedData);
         amplifier->setAudioOffset(newOffset);
         amplifier->start();
-        amplifier->rewind();
+        // Resume from where the user was listening instead of rewinding to the start
+        amplifier->seekTo(m_savedPlaybackPos);
         amplifier->setPlaybackVol(!playbackMute_option->isChecked());
 
         progressTimer->stop();
@@ -325,6 +389,10 @@ void PreviewDialog::setPreviewControlsEnabled(bool enabled)
     pitchCorrectionSlider->setEnabled(enabled);
     noiseReductionSlider->setEnabled(enabled);
     playbackMute_option->setEnabled(enabled);
+    keyCombo->setEnabled(enabled);
+    scaleCombo->setEnabled(enabled);
+    retuneSpeedSlider->setEnabled(enabled);
+    formantCheckBox->setEnabled(enabled);
 }
 
 void PreviewDialog::onOffsetSliderChanged(int value)
@@ -340,7 +408,7 @@ void PreviewDialog::onPitchCorrectionChanged(int value)
     pitchCorrectionAmount = double(value) / 100.0;
     updateEnhancementLabels();
     if (!previewInputAudioData.isEmpty())
-        previewRebuildTimer->start(50);
+        previewRebuildTimer->start(700);   // debounce: wait for slider to settle
 }
 
 void PreviewDialog::onNoiseReductionChanged(int value)
@@ -348,7 +416,38 @@ void PreviewDialog::onNoiseReductionChanged(int value)
     noiseReductionAmount = double(value) / 100.0;
     updateEnhancementLabels();
     if (!previewInputAudioData.isEmpty())
-        previewRebuildTimer->start(50);
+        previewRebuildTimer->start(700);
+}
+
+void PreviewDialog::onKeyChanged(int index)
+{
+    m_keyNote = std::clamp(index, 0, 11);
+    if (!previewInputAudioData.isEmpty())
+        previewRebuildTimer->start(300);   // discrete choice — shorter wait
+}
+
+void PreviewDialog::onScaleChanged(int index)
+{
+    m_scaleIndex = index;
+    if (!previewInputAudioData.isEmpty())
+        previewRebuildTimer->start(300);
+}
+
+void PreviewDialog::onRetuneSpeedChanged(int value)
+{
+    m_retuneSpeedMs = double(value);
+    if (retuneSpeedLabel)
+        retuneSpeedLabel->setText(
+            QString("Retune speed: %1 ms  (0=robotic, 500=natural)").arg(value));
+    if (!previewInputAudioData.isEmpty())
+        previewRebuildTimer->start(700);
+}
+
+void PreviewDialog::onFormantPreservationChanged(bool checked)
+{
+    m_formantPreservation = checked;
+    if (!previewInputAudioData.isEmpty())
+        previewRebuildTimer->start(300);   // toggle — respond quickly
 }
 
 void PreviewDialog::updateEnhancementLabels()

@@ -126,6 +126,7 @@ VocalEnhancer::~VocalEnhancer() {
 void VocalEnhancer::resetPVState() {
     m_pvPrevPhase.clear();
     m_pvSumPhase.clear();
+    m_emaSmoothedPitch = 0.0;
 }
 
 // ----------------------
@@ -328,6 +329,46 @@ double VocalEnhancer::getNoiseReductionAmount() const {
 }
 
 // ======================
+// Scale / Key / Retune Speed setters
+// ======================
+void VocalEnhancer::setScale(int keyNote, const QVector<int>& intervals) {
+    m_keyNote = std::clamp(keyNote, 0, 11);
+    m_scaleIntervals = intervals;
+    if (m_scaleIntervals.isEmpty())
+        m_scaleIntervals = {0,1,2,3,4,5,6,7,8,9,10,11};
+    m_scaleName = "Custom";
+}
+
+void VocalEnhancer::setScalePreset(const QString& name, int keyNote) {
+    m_keyNote = std::clamp(keyNote, 0, 11);
+    const QString key = name.toLower();
+    if (key == "major") {
+        m_scaleIntervals = {0, 2, 4, 5, 7, 9, 11};
+        m_scaleName = "Major";
+    } else if (key == "minor") {
+        m_scaleIntervals = {0, 2, 3, 5, 7, 8, 10};
+        m_scaleName = "Minor";
+    } else if (key == "pentatonic_major") {
+        m_scaleIntervals = {0, 2, 4, 7, 9};
+        m_scaleName = "Pentatonic Major";
+    } else if (key == "pentatonic_minor") {
+        m_scaleIntervals = {0, 3, 5, 7, 10};
+        m_scaleName = "Pentatonic Minor";
+    } else if (key == "blues") {
+        m_scaleIntervals = {0, 3, 5, 6, 7, 10};
+        m_scaleName = "Blues";
+    } else {
+        // chromatic default
+        m_scaleIntervals = {0,1,2,3,4,5,6,7,8,9,10,11};
+        m_scaleName = "Chromatic";
+    }
+}
+
+void VocalEnhancer::setRetuneSpeed(double ms) {
+    m_retuneSpeedMs = std::clamp(ms, 0.0, 5000.0);
+}
+
+// ======================
 // Pitch Detection (HPS on log spectrum)
 // ======================
 double VocalEnhancer::detectPitch(const QVector<double>& inputData) const {
@@ -449,6 +490,113 @@ double VocalEnhancer::detectPitch(const QVector<double>& inputData) const {
     return detectedFreq;
 }
 
+// ======================
+// YIN Pitch Detection (de Cheveigne & Kawahara 2002)
+// More accurate than HPS for monophonic vocals; fewer octave errors.
+// ======================
+double VocalEnhancer::detectPitchYIN(const QVector<double>& data) const {
+    // Use the highest-RMS block of up to 2048 samples
+    const int W = std::min<int>(data.size(), 2048);
+    if (W < 512) return 0.0;
+
+    const int minTau = std::max(2, int(double(m_sampleRate) / 1100.0)); // ~1100 Hz max
+    const int maxTau = std::min(W / 2, int(double(m_sampleRate) / 80.0)); // 80 Hz min
+    if (minTau >= maxTau) return 0.0;
+
+    // Choose the block with the highest RMS
+    int bestStart = int(data.size() - W) / 2;
+    double bestRms = 0.0;
+    for (int i = 0; i + W <= int(data.size()); i += W / 4) {
+        double rms = 0.0;
+        for (int j = 0; j < W; ++j) rms += data[i + j] * data[i + j];
+        rms = std::sqrt(rms / W);
+        if (rms > bestRms) { bestRms = rms; bestStart = i; }
+    }
+    if (bestRms < 1e-4) return 0.0;  // silence
+
+    // Step 1: Difference function d[tau] = Σ(x[j] - x[j+tau])^2 for j=0..W/2-1
+    const int half = W / 2;
+    QVector<double> d(maxTau + 1, 0.0);
+    for (int tau = 1; tau <= maxTau; ++tau) {
+        double sum = 0.0;
+        for (int j = 0; j < half; ++j) {
+            const double diff = data[bestStart + j] - data[bestStart + j + tau];
+            sum += diff * diff;
+        }
+        d[tau] = sum;
+    }
+
+    // Step 2: Cumulative Mean Normalized Difference (CMND)
+    QVector<double> cmnd(maxTau + 1, 1.0);
+    double cumSum = 0.0;
+    for (int tau = 1; tau <= maxTau; ++tau) {
+        cumSum += d[tau];
+        cmnd[tau] = (cumSum > 1e-12) ? d[tau] * double(tau) / cumSum : 1.0;
+    }
+
+    // Step 3: Find first tau below threshold (YIN paper recommends 0.10-0.15)
+    constexpr double kYinThreshold = 0.12;
+    int bestTau = -1;
+    for (int tau = minTau; tau < maxTau; ++tau) {
+        if (cmnd[tau] < kYinThreshold) {
+            // Local minimum: advance while still descending
+            while (tau + 1 <= maxTau && cmnd[tau + 1] <= cmnd[tau])
+                ++tau;
+            bestTau = tau;
+            break;
+        }
+    }
+
+    // Fallback: global minimum in range
+    if (bestTau < 1) {
+        int minIdx = minTau;
+        for (int tau = minTau + 1; tau <= maxTau; ++tau)
+            if (cmnd[tau] < cmnd[minIdx]) minIdx = tau;
+        if (cmnd[minIdx] > 0.50) return 0.0; // unreliable, treat as unvoiced
+        bestTau = minIdx;
+    }
+
+    // Step 4: Parabolic interpolation
+    double refinedTau = double(bestTau);
+    if (bestTau > minTau && bestTau < maxTau) {
+        const double y0 = cmnd[bestTau - 1];
+        const double y1 = cmnd[bestTau];
+        const double y2 = cmnd[bestTau + 1];
+        const double denom = y0 - 2.0*y1 + y2;
+        if (std::abs(denom) > 1e-12)
+            refinedTau = double(bestTau) + 0.5 * (y0 - y2) / denom;
+    }
+
+    const double freq = double(m_sampleRate) / std::max(refinedTau, 1.0);
+    qWarning() << "YIN detected pitch:" << freq << "Hz  (cmnd=" << cmnd[bestTau] << ")";
+    return (freq > 50.0 && freq < 1200.0) ? freq : 0.0;
+}
+
+// Hybrid: try YIN first; fall back to HPS if YIN returns nothing.
+double VocalEnhancer::detectPitchBest(const QVector<double>& data) const {
+    const double yin = detectPitchYIN(data);
+    if (yin > 0.0) return yin;
+    return detectPitch(data);  // HPS fallback
+}
+
+// Normalized autocorrelation confidence at the detected pitch period.
+// Returns value in [-1, 1]; confident voicing when > 0.45.
+double VocalEnhancer::computeAutocorrConfidence(const QVector<double>& data,
+                                                 double pitchHz) const {
+    if (pitchHz <= 0.0 || m_sampleRate <= 0) return 0.0;
+    const int tau = int(std::round(double(m_sampleRate) / pitchHz));
+    if (tau < 1 || tau >= int(data.size()) / 2) return 0.0;
+
+    const int N = data.size() - tau;
+    double r0 = 0.0, rTau = 0.0;
+    for (int i = 0; i < N; ++i) {
+        r0   += data[i] * data[i];
+        rTau += data[i] * data[i + tau];
+    }
+    if (r0 < 1e-12) return 0.0;
+    return std::clamp(rTau / r0, -1.0, 1.0);
+}
+
 // Equal-tempered note (12-TET) using formula (no static table)
 static inline double midiToFreq(int midi) {
     return 440.0 * std::pow(2.0, (midi - 69) / 12.0);
@@ -457,8 +605,30 @@ static inline double midiToFreq(int midi) {
 double VocalEnhancer::findClosestNoteFrequency(double frequency) const {
     if (frequency <= 0.0) return 440.0;
     const double midiFloat = 69.0 + 12.0 * std::log2(frequency / 440.0);
-    const int midi = std::clamp<int>(int(std::lround(midiFloat)), 0, 127);
-    return midiToFreq(midi);
+
+    // Fast path: chromatic (all 12 semitones)
+    if (m_scaleIntervals.size() == 12) {
+        const int midi = std::clamp<int>(int(std::lround(midiFloat)), 0, 127);
+        return midiToFreq(midi);
+    }
+
+    // Scale-aware: find the nearest allowed MIDI note.
+    // Try the closest octave and its neighbours to handle boundary wrapping.
+    const int baseOctave = int(std::floor(midiFloat / 12.0));
+    double bestFreq  = 440.0;
+    double bestDist  = 1e18;
+
+    for (int oct = baseOctave - 1; oct <= baseOctave + 1; ++oct) {
+        for (int interval : m_scaleIntervals) {
+            const int candidate = std::clamp(oct * 12 + m_keyNote + interval, 0, 127);
+            const double dist   = std::abs(double(candidate) - midiFloat);
+            if (dist < bestDist) {
+                bestDist = dist;
+                bestFreq = midiToFreq(candidate);
+            }
+        }
+    }
+    return bestFreq;
 }
 
 // ======================
@@ -487,7 +657,8 @@ static double chunkRMS(const QVector<double>& x, int start, int len) {
 // Pitch-correct a single chunk in-place.
 // Returns the ratio that was actually applied (for inter-chunk smoothing).
 // prevRatio: ratio applied to the previous chunk (smoothed into this one).
-double VocalEnhancer::correctPitchChunk(QVector<double>& chunk, double prevRatio) {
+double VocalEnhancer::correctPitchChunk(QVector<double>& chunk, double prevRatio,
+                                         double pitchHzHint) {
     const double rmsIn = chunkRMS(chunk, 0, chunk.size());
     if (rmsIn < 5e-4) return 1.0;
 
@@ -497,14 +668,21 @@ double VocalEnhancer::correctPitchChunk(QVector<double>& chunk, double prevRatio
     const double strength           = lerpParam(0.30, 0.72, correctionAmount);
     const double bypassEps          = lerpParam(4e-3, 2e-3, correctionAmount);
     const double unvoicedReturn     = lerpParam(0.85, 0.70, correctionAmount);
-    const double slewCentsPerSec    = lerpParam(200.0, 420.0, correctionAmount);
-    const double smoothAlpha        = lerpParam(0.40, 0.10, correctionAmount);
+    // Retune speed: 0 ms = instant/robotic, 300 ms = moderate, 500+ ms = very natural
+    // slewCentsPerSec = 100000 / retuneSpeedMs (e.g. 300ms → 333 cents/sec)
+    const double slewCentsPerSec    = std::min(9000.0,
+        100000.0 / std::max(1.0, m_retuneSpeedMs));
+    const double smoothAlpha        = lerpParam(0.35, 0.05, correctionAmount);
 
-    const double detectedPitch = detectPitch(chunk);
-    const double zcr = zeroCrossingRate(chunk);
+    const double detectedPitch = (pitchHzHint > 0.0)
+                               ? pitchHzHint
+                               : detectPitchBest(chunk);
+    const double zcr       = zeroCrossingRate(chunk);
+    const double autoConf  = computeAutocorrConfidence(chunk, detectedPitch);
     const bool likelyUnvoiced = (detectedPitch <= 0.0)
                              || (zcr > 0.38 && rmsIn < 5e-3)
-                             || (rmsIn < 5e-4);
+                             || (rmsIn < 5e-4)
+                             || (autoConf < 0.35);
 
     if (likelyUnvoiced) {
         return unvoicedReturn * prevRatio + (1.0 - unvoicedReturn) * 1.0;
@@ -542,7 +720,22 @@ double VocalEnhancer::correctPitchChunk(QVector<double>& chunk, double prevRatio
                  .arg(zcr,           0, 'f', 3);
 
     if (std::abs(ratio - 1.0) > bypassEps) {
-        chunk = pitchShiftPhaseVocoder(chunk, ratio);
+        if (m_formantPreservation) {
+            // 1. Compute LPC envelope from the pre-shift signal (order=14)
+            const QVector<double> lpc = computeLPCCoeffs(chunk, 14);
+            if (!lpc.isEmpty()) {
+                // 2. Inverse-filter: strip vocal tract → glottal excitation residual
+                const QVector<double> residual = applyLPCInverseFilter(chunk, lpc);
+                // 3. Pitch-shift the residual only (pitch changes, formants stay)
+                const QVector<double> shiftedRes = pitchShiftPhaseVocoder(residual, ratio);
+                // 4. Re-apply vocal tract filter: restore original formant frequencies
+                chunk = applyLPCSynthesisFilter(shiftedRes, lpc);
+            } else {
+                chunk = pitchShiftPhaseVocoder(chunk, ratio);
+            }
+        } else {
+            chunk = pitchShiftPhaseVocoder(chunk, ratio);
+        }
     }
 
     const double rmsAfter = chunkRMS(chunk, 0, chunk.size());
@@ -556,8 +749,12 @@ double VocalEnhancer::correctPitchChunk(QVector<double>& chunk, double prevRatio
 }
 
 // ======================
-// Main pitch correction pipeline (frame-by-frame)
+// Main pitch correction pipeline — single-pass phase vocoder
 // ======================
+// The old outer-OLA-chunked approach fed separate signal buffers to the PV per
+// chunk, causing double-windowing artifacts ("bubbles", cracks).  This version
+// builds a smooth per-PV-frame ratio array first, then runs pitchShiftContinuous()
+// exactly once over the whole signal — no outer OLA, no phase discontinuities.
 void VocalEnhancer::processPitchCorrection(QVector<double>& data) {
 
     const double globalRMS = chunkRMS(data, 0, data.size());
@@ -568,67 +765,114 @@ void VocalEnhancer::processPitchCorrection(QVector<double>& data) {
     }
 
     const int totalSamples = data.size();
-    const int chunkSamples = std::max(4096, (m_sampleRate * 140) / 1000);
-    const int hopSamples   = std::max(1, chunkSamples / 4);  // 75% overlap
+    const int N  = kPvN;   // 2048 — PV frame size (matches pitchShiftContinuous)
+    const int Ha = N / 8;  // 256  — analysis hop
 
-    QVector<double> window = createHannWindow(chunkSamples);
-    QVector<double> out(totalSamples + chunkSamples, 0.0);
-    QVector<double> wSum(totalSamples + chunkSamples, 0.0);
-
-    double prevRatio = 1.0;
-
-    const int totalChunks = std::max(1, (totalSamples + hopSamples - 1) / hopSamples);
-    int chunkIndex = 0;
-
-    for (int pos = 0; pos < totalSamples; pos += hopSamples, ++chunkIndex) {
-        const int valid = std::min(chunkSamples, totalSamples - pos);
-
-        QVector<double> dryChunk(chunkSamples, 0.0);
-        for (int i = 0; i < valid; ++i)
-            dryChunk[i] = data[pos + i];
-
-        QVector<double> wetChunk = dryChunk;
-        const double ratio = correctPitchChunk(wetChunk, prevRatio);
-        prevRatio = ratio;
-
-        const double wetMix = std::clamp(
-            (std::abs(ratio - 1.0) - kBypassEps) / 0.015, 0.0, 1.0);
-        const double dryMix = 1.0 - wetMix;
-
-        // Banner dinâmico real do pipeline principal
-        const double chunkStartSec = double(pos) / double(std::max(1, m_sampleRate));
-        const double chunkEndSec   = double(pos + valid) / double(std::max(1, m_sampleRate));
-        const double zcr           = zeroCrossingRate(dryChunk);
-        const double chunkLevel    = chunkRMS(dryChunk, 0, valid);
-
-        banner = QString(
-            "Pitch correction %1/%2  [%3s-%4s]  r=%5  wet=%6  zcr=%7  rms=%8")
-                     .arg(chunkIndex + 1)
-                     .arg(totalChunks)
-                     .arg(chunkStartSec, 0, 'f', 2)
-                     .arg(chunkEndSec,   0, 'f', 2)
-                     .arg(ratio,         0, 'f', 4)
-                     .arg(wetMix,        0, 'f', 2)
-                     .arg(zcr,           0, 'f', 3)
-                     .arg(chunkLevel,    0, 'f', 4);
-
-        progressValue = std::clamp(double(chunkIndex + 1) / double(totalChunks), 0.0, 1.0);
-
-        for (int i = 0; i < valid; ++i) {
-            const double w = window[i];
-            const double s = dryChunk[i] * dryMix + wetChunk[i] * wetMix;
-            out[pos + i]  += s * w;
-            wSum[pos + i] += w * w;
-        }
+    if (totalSamples < N) {
+        // Too short for PV — just apply dynamics
+        compressDynamics(data, 0.78, 2.2);
+        harmonicExciter(data, 1.12, 0.18);
+        applyLimiter(data, 0.98);
+        progressValue = 1.0;
+        return;
     }
 
-    banner = "Reconstructing overlap-add...";
-    progressValue = 0.96;
+    // ── Correction parameters ─────────────────────────────────────────────
+    const double correctionAmount   = std::clamp(m_pitchCorrectionAmount, 0.0, 1.0);
+    const double deadZoneCents      = lerpParam(30.0, 12.0, correctionAmount);
+    const double maxCorrectionCents = lerpParam(100.0, 160.0, correctionAmount);
+    const double strength           = lerpParam(0.30, 0.72, correctionAmount);
+    const double slewCentsPerSec    = std::min(9000.0,
+                                        100000.0 / std::max(1.0, m_retuneSpeedMs));
+    const double frameDurSec        = double(Ha) / double(std::max(1, m_sampleRate));
+    const double maxSlewPerFrame    = slewCentsPerSec * frameDurSec;
 
-    for (int i = 0; i < totalSamples; ++i) {
-        data[i] = (wSum[i] > 1e-12)
-                ? std::clamp(out[i] / wSum[i], -1.0, 1.0)
-                : std::clamp(data[i], -1.0, 1.0);
+    // ── Per-PV-frame ratio array ──────────────────────────────────────────
+    // Number of frames must match what pitchShiftContinuous() will iterate.
+    const int numFrames = (totalSamples - N) / Ha + 1;
+    QVector<double> frameRatios(numFrames, 1.0);
+
+    // Detect pitch every ~80 ms (≈14 PV frames at 44100 Hz / Ha=256)
+    const int detStepFrames = std::max(1, int(0.080 / frameDurSec));
+    // Detection window: 3 * N ≈ 140 ms (same size the old chunker used)
+    const int detWin = std::min(totalSamples, 3 * N);
+
+    // EMA for vibrato preservation: τ = 60 ms
+    const double emaAlpha = std::exp(-frameDurSec / 0.060);
+
+    double smoothedPitch   = 0.0;
+    double prevTargetCents = 0.0;
+    bool   voiced          = false;
+
+    banner = "Building pitch correction map...";
+
+    for (int f = 0; f < numFrames; ++f) {
+        const int pos = f * Ha;
+        progressValue = 0.60 * double(f) / double(numFrames);
+
+        // ── Periodic pitch detection ──────────────────────────────────────
+        if (f % detStepFrames == 0) {
+            const int wEnd = std::min(totalSamples, pos + detWin);
+            if (wEnd - pos >= 1024) {
+                QVector<double> buf(data.begin() + pos, data.begin() + wEnd);
+                const double rawPitch = detectPitchBest(buf);
+                const double conf     = computeAutocorrConfidence(buf, rawPitch);
+
+                if (rawPitch > 0.0 && conf > 0.30) {
+                    if (smoothedPitch <= 0.0) smoothedPitch = rawPitch;
+                    else smoothedPitch = emaAlpha * smoothedPitch
+                                      + (1.0 - emaAlpha) * rawPitch;
+                    voiced = true;
+                } else {
+                    voiced = false;
+                }
+                banner = QString("Pitch map %1/%2  det=%3 Hz  conf=%4")
+                             .arg(f + 1).arg(numFrames)
+                             .arg(rawPitch, 0, 'f', 1)
+                             .arg(conf,     0, 'f', 2);
+            }
+        }
+
+        // ── Silence / unvoiced gate ───────────────────────────────────────
+        const double rms = chunkRMS(data, pos, std::min(N, totalSamples - pos));
+        if (!voiced || rms < 5e-4 || smoothedPitch <= 0.0) {
+            // Smoothly release pitch correction toward zero (no sudden jump)
+            prevTargetCents += std::clamp(-prevTargetCents,
+                                          -maxSlewPerFrame, +maxSlewPerFrame);
+            frameRatios[f]   = std::pow(2.0, prevTargetCents / 1200.0);
+            continue;
+        }
+
+        // ── Correction cents for this frame ──────────────────────────────
+        const double targetFreq = findClosestNoteFrequency(smoothedPitch);
+        double cents = 1200.0 * std::log2(targetFreq / smoothedPitch);
+
+        if (std::abs(cents) < deadZoneCents)
+            cents = 0.0;
+        else
+            cents = std::clamp(cents, -maxCorrectionCents, maxCorrectionCents) * strength;
+
+        // Slew rate: ratio can move at most maxSlewPerFrame cents per frame
+        const double delta = cents - prevTargetCents;
+        prevTargetCents   += std::clamp(delta, -maxSlewPerFrame, +maxSlewPerFrame);
+        frameRatios[f]     = std::pow(2.0, prevTargetCents / 1200.0);
+    }
+
+    progressValue = 0.60;
+    banner = "Applying single-pass pitch shift...";
+
+    // ── Single-pass PV: no outer OLA, no double windowing ────────────────
+    if (m_formantPreservation) {
+        const QVector<double> lpc = computeLPCCoeffs(data, 14);
+        if (!lpc.isEmpty()) {
+            QVector<double> residual = applyLPCInverseFilter(data, lpc);
+            residual = pitchShiftContinuous(residual, frameRatios);
+            data     = applyLPCSynthesisFilter(residual, lpc);
+        } else {
+            data = pitchShiftContinuous(data, frameRatios);
+        }
+    } else {
+        data = pitchShiftContinuous(data, frameRatios);
     }
 
     banner = "Applying dynamics / exciter / limiter...";
@@ -638,10 +882,7 @@ void VocalEnhancer::processPitchCorrection(QVector<double>& data) {
     harmonicExciter(data, 1.12, 0.18);
     applyLimiter(data, 0.98);
 
-    banner = QString("Done: %1 chunks, len=%2 hop=%3")
-                 .arg(totalChunks)
-                 .arg(chunkSamples)
-                 .arg(hopSamples);
+    banner = QString("Done: single-pass PV, %1 frames").arg(numFrames);
     progressValue = 1.0;
 }
 
@@ -782,6 +1023,88 @@ void VocalEnhancer::applyEcho(QVector<double>& inputData,
         idx1 = (idx1 + 1) % d1;
         idx2 = (idx2 + 1) % d2;
     }
+}
+
+// ======================
+// LPC Formant Preservation
+// ======================
+
+// Compute LPC coefficients via Levinson-Durbin (positive predictor convention:
+// x[n] = Σ a[k]*x[n-k] + e[n]).  Returns a[1..order] as a 0-indexed vector.
+QVector<double> VocalEnhancer::computeLPCCoeffs(const QVector<double>& frame,
+                                                  int order) const {
+    const int N = frame.size();
+    if (N < order + 2 || order < 1) return {};
+
+    // Apply Hann window to reduce edge discontinuities for LPC
+    QVector<double> x(N);
+    for (int i = 0; i < N; ++i)
+        x[i] = frame[i] * 0.5 * (1.0 - std::cos(2.0 * kPi * i / (N - 1)));
+
+    // Biased autocorrelation R[0..order]
+    QVector<double> R(order + 1, 0.0);
+    for (int lag = 0; lag <= order; ++lag) {
+        double s = 0.0;
+        for (int i = lag; i < N; ++i) s += x[i] * x[i - lag];
+        R[lag] = s;
+    }
+    if (R[0] < 1e-12) return QVector<double>(order, 0.0);
+
+    // Levinson-Durbin recursion
+    QVector<double> a(order + 1, 0.0);  // a[1..order]; a[0] unused
+    double E = R[0];
+
+    for (int m = 1; m <= order; ++m) {
+        // Reflection coefficient
+        double lam = R[m];
+        for (int k = 1; k < m; ++k) lam -= a[k] * R[m - k];
+        if (std::abs(E) < 1e-12) break;
+        const double km = lam / E;
+        const double kmClamped = std::clamp(km, -0.999, 0.999);  // stability
+
+        // Symmetric update (requires old values)
+        const QVector<double> aOld = a;
+        for (int k = 1; k < m; ++k)
+            a[k] = aOld[k] - kmClamped * aOld[m - k];
+        a[m] = kmClamped;
+
+        E *= (1.0 - kmClamped * kmClamped);
+        if (E < 1e-12) { E = 1e-12; break; }
+    }
+
+    QVector<double> coeffs(order);
+    for (int i = 0; i < order; ++i) coeffs[i] = a[i + 1];
+    return coeffs;
+}
+
+// Analysis (whitening) FIR filter: e[n] = x[n] - Σ a[k]*x[n-k]
+QVector<double> VocalEnhancer::applyLPCInverseFilter(const QVector<double>& x,
+                                                       const QVector<double>& a) const {
+    const int N = x.size();
+    const int P = a.size();
+    QVector<double> e(N, 0.0);
+    for (int n = 0; n < N; ++n) {
+        double sum = 0.0;
+        for (int k = 0; k < P; ++k)
+            if (n - k - 1 >= 0) sum += a[k] * x[n - k - 1];
+        e[n] = x[n] - sum;
+    }
+    return e;
+}
+
+// Synthesis IIR filter: y[n] = e[n] + Σ a[k]*y[n-k]
+QVector<double> VocalEnhancer::applyLPCSynthesisFilter(const QVector<double>& residual,
+                                                         const QVector<double>& a) const {
+    const int N = residual.size();
+    const int P = a.size();
+    QVector<double> y(N, 0.0);
+    for (int n = 0; n < N; ++n) {
+        double sum = 0.0;
+        for (int k = 0; k < P; ++k)
+            if (n - k - 1 >= 0) sum += a[k] * y[n - k - 1];
+        y[n] = residual[n] + sum;
+    }
+    return y;
 }
 
 // ======================

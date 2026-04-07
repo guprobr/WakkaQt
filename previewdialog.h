@@ -13,6 +13,7 @@
 #include <QPushButton>
 #include <QCheckBox>
 #include <QSlider>
+#include <QComboBox>
 #include <QLabel>
 #include <QProcess>
 #include <QTimer>
@@ -42,6 +43,10 @@ private slots:
     void updateVolume();
     void onPitchCorrectionChanged(int value);
     void onNoiseReductionChanged(int value);
+    void onKeyChanged(int index);
+    void onScaleChanged(int index);
+    void onRetuneSpeedChanged(int value);
+    void onFormantPreservationChanged(bool checked);
     void startEnhancementJob();
 
 private:
@@ -69,7 +74,12 @@ private:
     QDial *volumeDial = nullptr;
     QSlider *offsetSlider = nullptr;
     QSlider *pitchCorrectionSlider = nullptr;
-    QSlider *noiseReductionSlider = nullptr;
+    QSlider   *noiseReductionSlider  = nullptr;
+    QComboBox *keyCombo              = nullptr;
+    QComboBox *scaleCombo            = nullptr;
+    QSlider   *retuneSpeedSlider     = nullptr;
+    QLabel    *retuneSpeedLabel      = nullptr;
+    QCheckBox *formantCheckBox       = nullptr;
     AudioVisualizerWidget *vocalVisualizer = nullptr;
 
     qint64 newOffset = 0;
@@ -87,7 +97,12 @@ private:
     QString chronos;
     double pitchCorrectionAmount = 0.45;
     double noiseReductionAmount = 0.35;
-    bool pendingPreviewRebuild = false;
+    int    m_keyNote          = 0;
+    int    m_scaleIndex       = 0;
+    double m_retuneSpeedMs    = 300.0;
+    bool   m_formantPreservation = true;
+    bool   pendingPreviewRebuild = false;
+    qint64 m_savedPlaybackPos    = 0;
 };
 
 #endif // PREVIEWDIALOG_H

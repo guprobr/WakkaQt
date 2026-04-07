@@ -27,9 +27,11 @@ public:
     bool isPlaying() const;
     bool isPlayingPlayback() const;
     void rewind();
+    void seekTo(qint64 bytePos);
     void seekForward();
     void seekBackward();
     void setAudioOffset(qint64 offset);
+    qint64 getPosition() const { return playbackPosition; }
     QString checkBufferState();
     void resetAudioComponents();
 

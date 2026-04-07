@@ -26,6 +26,20 @@ public:
     void setNoiseReductionAmount(double amount);
     double getNoiseReductionAmount() const;
 
+    // Scale / key-aware correction
+    void    setScale(int keyNote, const QVector<int>& intervals);
+    void    setScalePreset(const QString& name, int keyNote = 0);
+    int     getKeyNote()   const { return m_keyNote; }
+    QString getScaleName() const { return m_scaleName; }
+
+    // Retune speed: 0 ms = instant/robotic, 300 ms ≈ current natural default
+    void   setRetuneSpeed(double ms);
+    double getRetuneSpeed() const { return m_retuneSpeedMs; }
+
+    // Formant preservation via LPC (true = preserve vocal timbre during pitch shift)
+    void setFormantPreservation(bool enabled) { m_formantPreservation = enabled; }
+    bool getFormantPreservation() const       { return m_formantPreservation; }
+
 private:
     // ========= Audio format (Qt6) =========
     int m_sampleRate = 0;
@@ -63,10 +77,8 @@ private:
     fftw_plan     m_ngInv   = nullptr;
 
     // ── Persistent PV phase state ─────────────────────────────────────────
-    // Kept as class members so phase accumulation survives across chunk calls.
-    // Reset explicitly via resetPVState() before each new recording.
-    QVector<double> m_pvPrevPhase;   // analysis phase from previous frame
-    QVector<double> m_pvSumPhase;    // accumulated synthesis phase
+    QVector<double> m_pvPrevPhase;
+    QVector<double> m_pvSumPhase;
 
     // UI / state
     double progressValue = 0.0;
@@ -76,6 +88,20 @@ private:
     double m_pitchCorrectionAmount = 0.45;
     double m_noiseReductionAmount  = 0.35;
 
+    // ── Scale / key ────────────────────────────────────────────────────────
+    int          m_keyNote        = 0;                               // 0=C … 11=B
+    QVector<int> m_scaleIntervals = {0,1,2,3,4,5,6,7,8,9,10,11};   // default: chromatic
+    QString      m_scaleName      = "Chromatic";
+
+    // ── Retune speed ───────────────────────────────────────────────────────
+    double m_retuneSpeedMs = 300.0;    // 0=instant, 300≈current natural default
+
+    // ── Formant preservation ───────────────────────────────────────────────
+    bool m_formantPreservation = true;
+
+    // ── Vibrato EMA state ──────────────────────────────────────────────────
+    double m_emaSmoothedPitch = 0.0;   // reset in resetPVState()
+
     // PCM conversion
     QVector<double> convertToDoubleArray(const QByteArray& input);
     void convertToQByteArray(const QVector<double>& inputData, QByteArray& output);
@@ -83,20 +109,32 @@ private:
     static inline int32_t readInt24LE(uint8_t b0, uint8_t b1, uint8_t b2);
     static inline void writeInt24LE(uint8_t* dst, int32_t value);
 
-    // Pitch
-    double detectPitch(const QVector<double>& data) const;
+    // Pitch detection
+    double detectPitch(const QVector<double>& data) const;        // existing HPS
+    double detectPitchYIN(const QVector<double>& data) const;     // new YIN
+    double detectPitchBest(const QVector<double>& data) const;    // YIN→HPS fallback
+    double computeAutocorrConfidence(const QVector<double>& data, double pitchHz) const;
+
     double findClosestNoteFrequency(double frequency) const;
 
     // Pitch correction
-    double correctPitchChunk(QVector<double>& chunk, double prevRatio);
+    double correctPitchChunk(QVector<double>& chunk, double prevRatio,
+                             double pitchHzHint = 0.0);
     void processPitchCorrection(QVector<double>& data);
 
     // Windowing / interpolation
     QVector<double> createHannWindow(int size) const;
     double cubicInterpolate(double v0, double v1, double v2, double v3, double t) const;
 
+    // LPC formant preservation
+    QVector<double> computeLPCCoeffs(const QVector<double>& frame, int order) const;
+    QVector<double> applyLPCInverseFilter(const QVector<double>& x,
+                                          const QVector<double>& a) const;
+    QVector<double> applyLPCSynthesisFilter(const QVector<double>& residual,
+                                             const QVector<double>& a) const;
+
     // Phase vocoder
-    void            resetPVState();   // call before each new recording
+    void            resetPVState();
     QVector<double> pitchShiftContinuous(const QVector<double>& in, const QVector<double>& frameRatio);
     QVector<double> timeStretchPhaseVocoder(const QVector<double>& in, double stretch);
     QVector<double> pitchShiftPhaseVocoder(const QVector<double>& in, double ratio);
@@ -116,15 +154,15 @@ private:
                    double feedback1,
                    double feedback2);
 
-    // Noise reduction — defaults match the enhance() call site in vocalenhancer.cpp
+    // Noise reduction
     void reduceNoiseSpectralGate(QVector<double>& x,
                     int    fftSize       = 1024,
-                    int    hopSize       = 256,   // N/4
-                    double overSub       = 0.65,  // gentle subtraction, keeps breath
-                    double floorDb       = -10.0, // higher bed = more natural
-                    double noiseLearnSec = 0.40,  // ~400 ms initial noise learn
-                    double adaptivity    = 0.03,  // slow adaptation, less "twinkling"
-                    double lowEnergyDb   = -45.0  // dBFS gate for noise model update
+                    int    hopSize       = 256,
+                    double overSub       = 0.65,
+                    double floorDb       = -10.0,
+                    double noiseLearnSec = 0.40,
+                    double adaptivity    = 0.03,
+                    double lowEnergyDb   = -45.0
                     );
 
     inline double dbToLinear(double db) const {
@@ -133,4 +171,3 @@ private:
 };
 
 #endif // VOCALENHANCER_H
-// appended — will be merged manually

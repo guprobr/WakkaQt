@@ -707,7 +707,15 @@ bool renderVideo(const QString &audioPath,
 
             AVPacket *pkt        = av_packet_alloc();
             AVFrame  *frm        = av_frame_alloc();
+            int64_t  firstSrcPts = AV_NOPTS_VALUE; // normalize video PTS to start at 0
             int64_t  fallbackPts = 0;
+
+            // When videoOffsetMs < 0 the webcam was not seeked; instead delay the
+            // video stream so it starts |videoOffsetMs| ms into the output — matching
+            // how the audio gets an equivalent silence prepend.
+            const int64_t videoDelayTb = (videoOffsetMs < 0)
+                ? av_rescale_q(-videoOffsetMs, AVRational{1, 1000}, videoEncCtx->time_base)
+                : 0;
 
             while (av_read_frame(webcamFmt, pkt) >= 0) {
                 if (pkt->stream_index != webcamVidIdx) { av_packet_unref(pkt); continue; }
@@ -715,25 +723,34 @@ bool renderVideo(const QString &audioPath,
                 av_packet_unref(pkt);
 
                 while (avcodec_receive_frame(webcamDec, frm) == 0) {
-                    // Save PTS before unref, then rescale to encoder timebase
                     const int64_t srcPts = frm->pts;
+
+                    // Record first valid PTS so we can zero-base all subsequent frames.
+                    // After avformat_seek_file the first frame's PTS is non-zero; writing
+                    // it directly while audio starts at 0 causes A/V desync.
+                    if (firstSrcPts == AV_NOPTS_VALUE && srcPts != AV_NOPTS_VALUE)
+                        firstSrcPts = srcPts;
+                    const int64_t relPts = (srcPts != AV_NOPTS_VALUE && firstSrcPts != AV_NOPTS_VALUE)
+                                          ? srcPts - firstSrcPts
+                                          : AV_NOPTS_VALUE;
+
                     sws_scale(swsCtx,
                               (const uint8_t * const*)frm->data, frm->linesize,
                               0, webcamDec->height,
                               videoEncFrame->data, videoEncFrame->linesize);
                     av_frame_unref(frm);
 
-                    videoEncFrame->pts = (srcPts != AV_NOPTS_VALUE)
-                        ? av_rescale_q(srcPts, inputTB, videoEncCtx->time_base)
-                        : fallbackPts;
-                    fallbackPts = videoEncFrame->pts + 1;
+                    videoEncFrame->pts = (relPts != AV_NOPTS_VALUE)
+                        ? av_rescale_q(relPts, inputTB, videoEncCtx->time_base) + videoDelayTb
+                        : fallbackPts + videoDelayTb;
+                    fallbackPts = videoEncFrame->pts - videoDelayTb
+                                  + av_rescale_q(1, inputTB, videoEncCtx->time_base);
 
                     flushEncoder(videoEncCtx, videoOutSt, videoEncFrame);
 
-                    // Video = 10–100%: progress from frame timestamp / total audio duration
-                    if (progressCb && totalDurSec > 0 && srcPts != AV_NOPTS_VALUE) {
-                        const double frameSec = av_q2d(inputTB) * double(srcPts)
-                                                - double(videoOffsetMs) / 1000.0;
+                    // Video = 10–100%: progress from normalized frame time / total audio duration
+                    if (progressCb && totalDurSec > 0 && relPts != AV_NOPTS_VALUE) {
+                        const double frameSec = av_q2d(inputTB) * double(relPts);
                         progressCb(0.1 + 0.9 * std::min(1.0, frameSec / totalDurSec));
                     }
                 }

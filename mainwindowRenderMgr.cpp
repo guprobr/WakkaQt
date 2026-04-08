@@ -1,7 +1,7 @@
 
 #include "mainwindow.h"
 #include "complexes.h"
-#include <QtConcurrent/QtConcurrentRun>
+#include <QThreadPool>
 #ifdef WAKKAQT_FFMPEG_NATIVE
 #include "ffmpegnative.h"
 #endif
@@ -107,7 +107,10 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset) {
     layout->insertWidget(0, progressLabel, 0, Qt::AlignCenter);
     layout->insertWidget(0, progressBar,   0, Qt::AlignCenter);
 
-    const qint64 effectiveAudioOffset = audioOffset + manualOffset;
+    // tunedRecorded was extracted by PreviewDialog::setAudioFile with audioOffset
+    // already trimmed from the front.  Apply only the user's manualOffset here;
+    // adding audioOffset again would double-trim and shift the vocal late.
+    const qint64 effectiveAudioOffset = manualOffset;
     const qint64 effectiveVideoOffset = videoOffset + manualOffset;
 
     auto onFinished = [this, progressLabel](bool success) {
@@ -151,7 +154,7 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset) {
 #ifdef WAKKAQT_FFMPEG_NATIVE
     // Native render — runs in a background thread; progress bar updated via lambda
     QProgressBar *pb = this->progressBar;
-    QtConcurrent::run([=]() {
+    QThreadPool::globalInstance()->start([=]() {
         bool ok = FFmpegNative::renderVideo(
             tunedRecorded,
             webcamRecorded,

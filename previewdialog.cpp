@@ -116,6 +116,11 @@ PreviewDialog::PreviewDialog(qint64 offset, qint64 sysLatency, QWidget *parent)
     formantCheckBox->setToolTip(
         "Uses LPC analysis to keep vocal character unchanged during pitch correction");
 
+    // Apply button — triggers enhancement with current settings
+    applyButton = new QPushButton("Apply Enhancement", this);
+    applyButton->setToolTip("Apply all current settings and re-process the vocals");
+    applyButton->setFont(QFont("", 11, QFont::Bold));
+
     progressBar = new QProgressBar(this);
     progressBar->setRange(0, 100);
     progressBar->setFixedSize(QSize(600, 50));
@@ -160,6 +165,7 @@ PreviewDialog::PreviewDialog(qint64 offset, qint64 sysLatency, QWidget *parent)
     layout->addWidget(retuneSpeedLabel);
     layout->addWidget(retuneSpeedSlider);
     layout->addWidget(formantCheckBox);
+    layout->addWidget(applyButton);
 
     layout->addWidget(stopButton);
     layout->setAlignment(Qt::AlignHCenter);
@@ -196,6 +202,8 @@ PreviewDialog::PreviewDialog(qint64 offset, qint64 sysLatency, QWidget *parent)
             this, &PreviewDialog::onRetuneSpeedChanged);
     connect(formantCheckBox, &QCheckBox::toggled,
             this, &PreviewDialog::onFormantPreservationChanged);
+    connect(applyButton, &QPushButton::clicked,
+            this, &PreviewDialog::startEnhancementJob);
     connect(playbackMute_option, &QCheckBox::checkStateChanged, this, [this]() {
         amplifier->setPlaybackVol(!playbackMute_option->isChecked());
     });
@@ -393,6 +401,7 @@ void PreviewDialog::setPreviewControlsEnabled(bool enabled)
     scaleCombo->setEnabled(enabled);
     retuneSpeedSlider->setEnabled(enabled);
     formantCheckBox->setEnabled(enabled);
+    applyButton->setEnabled(enabled);
 }
 
 void PreviewDialog::onOffsetSliderChanged(int value)
@@ -407,30 +416,22 @@ void PreviewDialog::onPitchCorrectionChanged(int value)
 {
     pitchCorrectionAmount = double(value) / 100.0;
     updateEnhancementLabels();
-    if (!previewInputAudioData.isEmpty())
-        previewRebuildTimer->start(700);   // debounce: wait for slider to settle
 }
 
 void PreviewDialog::onNoiseReductionChanged(int value)
 {
     noiseReductionAmount = double(value) / 100.0;
     updateEnhancementLabels();
-    if (!previewInputAudioData.isEmpty())
-        previewRebuildTimer->start(700);
 }
 
 void PreviewDialog::onKeyChanged(int index)
 {
     m_keyNote = std::clamp(index, 0, 11);
-    if (!previewInputAudioData.isEmpty())
-        previewRebuildTimer->start(300);   // discrete choice — shorter wait
 }
 
 void PreviewDialog::onScaleChanged(int index)
 {
     m_scaleIndex = index;
-    if (!previewInputAudioData.isEmpty())
-        previewRebuildTimer->start(300);
 }
 
 void PreviewDialog::onRetuneSpeedChanged(int value)
@@ -439,15 +440,11 @@ void PreviewDialog::onRetuneSpeedChanged(int value)
     if (retuneSpeedLabel)
         retuneSpeedLabel->setText(
             QString("Retune speed: %1 ms  (0=robotic, 500=natural)").arg(value));
-    if (!previewInputAudioData.isEmpty())
-        previewRebuildTimer->start(700);
 }
 
 void PreviewDialog::onFormantPreservationChanged(bool checked)
 {
     m_formantPreservation = checked;
-    if (!previewInputAudioData.isEmpty())
-        previewRebuildTimer->start(300);   // toggle — respond quickly
 }
 
 void PreviewDialog::updateEnhancementLabels()

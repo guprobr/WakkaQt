@@ -70,6 +70,7 @@ private:
     QPushButton *seekForwardButton = nullptr;
     QPushButton *seekBackwardButton = nullptr;
     QPushButton *stopButton = nullptr;
+    QPushButton *applyButton = nullptr;
     QCheckBox *playbackMute_option = nullptr;
     QDial *volumeDial = nullptr;
     QSlider *offsetSlider = nullptr;

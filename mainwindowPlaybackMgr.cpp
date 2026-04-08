@@ -81,6 +81,12 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
 
         isPlayback = true; // enable seeking now
 
+        // Restore video visibility in case playback resumed after EndOfMedia
+        if (!isAudioOnlyFile(currentPlayback)) {
+            placeholderLabel->hide();
+            videoWidget->show();
+        }
+
         transportWidget->show();
         playPauseButton->setText("⏸");
     }

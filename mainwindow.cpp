@@ -177,6 +177,12 @@ MainWindow::MainWindow(QWidget *parent)
     soundLevelWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
     soundLevelWidget->setToolTip("Sound input visualization widget");
 
+    // Real-time pitch monitor (shown only while recording)
+    pitchMonitor = new PitchMonitorWidget(44100, this);
+    pitchMonitor->setVisible(false);
+    connect(soundLevelWidget, &SndWidget::audioChunkReady,
+            pitchMonitor,     &PitchMonitorWidget::onAudioChunk);
+
     // Device label
     deviceLabel = new QLabel("Selected Device: None", this);
     deviceLabel->setFont(QApplication::font());
@@ -256,6 +262,7 @@ MainWindow::MainWindow(QWidget *parent)
     layout->addWidget(progressView);
     layout->addWidget(transportWidget);
     layout->addWidget(soundLevelWidget, 1);
+    layout->addWidget(pitchMonitor);
     layout->addWidget(singButton);
     layout->addWidget(abortButton);
     layout->addWidget(chooseVideoButton);

@@ -1,6 +1,10 @@
 
 #include "mainwindow.h"
 #include "complexes.h"
+#include <QtConcurrent/QtConcurrentRun>
+#ifdef WAKKAQT_FFMPEG_NATIVE
+#include "ffmpegnative.h"
+#endif
 
 // render //
 void MainWindow::renderAgain()
@@ -84,7 +88,7 @@ void MainWindow::renderAgain()
 }
 
 void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset) {
-    
+
     videoWidget->hide();
     placeholderLabel->show();
     singButton->setEnabled(false);
@@ -92,206 +96,127 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset) {
     chooseInputButton->setEnabled(true);
     chooseInputAction->setEnabled(true);
 
-    // Cache durations — each call spawns an ffprobe subprocess
-    double videoDuration  = getMediaDuration(currentVideoFile);
-    int totalDuration     = static_cast<int>(videoDuration);
-    int recordingDuration = static_cast<int>(getMediaDuration(webcamRecorded));
-    int stopDuration = ( totalDuration - recordingDuration );
-    if ( stopDuration < 0 )
-        stopDuration = 0;
-
     progressBar = new QProgressBar(this);
     progressBar->setMinimumSize(640, 25);
     progressBar->setRange(0, 100);
 
-    // Create QProcess instance
-    QProcess *process = new QProcess(this);
-    QStringList arguments;
-    
-    // Create QLabel for progress indication
-    QLabel *progressLabel = new QLabel("Processing...", this);
+    QLabel *progressLabel = new QLabel("Rendering...", this);
     progressLabel->setAlignment(Qt::AlignCenter);
     progressLabel->setFont(QFont("Arial", 8));
-    // Get the main layout and add the progress label
     QVBoxLayout *layout = qobject_cast<QVBoxLayout*>(centralWidget()->layout());
     layout->insertWidget(0, progressLabel, 0, Qt::AlignCenter);
-    layout->insertWidget(0, progressBar, 0, Qt::AlignCenter);
+    layout->insertWidget(0, progressBar,   0, Qt::AlignCenter);
 
-    QFileInfo outfileInfo(outputFilePath);
-    QFileInfo videofileInfo(currentVideoFile);
-    
-    QString videorama = "";
-    QString offsetFilter;
-/*
-    if (manualOffset < 0) {
-        offsetFilter = QString("setpts=PTS+%1/TB,").arg((-videoOffset - manualOffset) / 1000.0);
-    } else {
-        offsetFilter = QString("trim=start=%1, setpts=PTS-STARTPTS,").arg((videoOffset + manualOffset) / 1000.0);
-    } */
+    const qint64 effectiveAudioOffset = audioOffset + manualOffset;
+    const qint64 effectiveVideoOffset = videoOffset + manualOffset;
 
-    // Get input durations using ffprobe — videoDuration already cached above
-    double webcamDuration = getMediaDuration(webcamRecorded);
-    double audioDuration  = getMediaDuration(tunedRecorded);
-
-    // Determine the longest duration to use for padding
-    double maxDuration = std::max({videoDuration, webcamDuration, audioDuration});
-    double webcamPadding = maxDuration - webcamDuration;
-    double videoPadding = maxDuration - videoDuration;
-
-    // Construct filters (Correct Order of Filters)
-    QString webcamScale = QString("scale=s=%1").arg(setRez);
-    QString videoScale = "";
-
-    // Calculate Picture-in-Picture size (25% of the main video)
-    QStringList mainResParts = setRez.split("x");
-    int pipWidth = mainResParts[0].toInt() * 0.35;  // 25% width
-    int pipHeight = mainResParts[1].toInt() * 0.35; // 25% height
-    QString pipSize = QString("%1x%2").arg(pipWidth).arg(pipHeight);
-    videoScale = QString("scale=s=%1").arg(pipSize);
-
-    QString webcamFilter = QString("[1:v]%1").arg(offsetFilter);
-    webcamFilter += webcamScale;
-    if (webcamPadding > 0) {
-        webcamFilter += QString(",pad=width=%1:height=%2:x=(ow-iw)/2:y=(oh-ih)/2:color=black").arg(mainResParts[0]).arg(mainResParts[1]);
-    }
-    webcamFilter += "[webcam];";
-
-    QString videoFilter = videoScale;
-    if (videoPadding > 0) {
-        videoFilter += QString(",pad=width=%1:height=%2:x=(ow-iw)/2:y=(oh-ih)/2:color=black").arg(pipWidth).arg(pipHeight);
-    }
-    videoFilter += "[video];";
-
-    if ((outputFilePath.endsWith(".mp4", Qt::CaseInsensitive) ||
-        outputFilePath.endsWith(".avi", Qt::CaseInsensitive) ||
-        outputFilePath.endsWith(".mkv", Qt::CaseInsensitive) ||
-        outputFilePath.endsWith(".webm", Qt::CaseInsensitive))) {
-
-        if (!(currentVideoFile.endsWith("mp3", Qt::CaseInsensitive) ||
-            currentVideoFile.endsWith("wav", Qt::CaseInsensitive) ||
-            currentVideoFile.endsWith("opus", Qt::CaseInsensitive) ||
-            currentVideoFile.endsWith("flac", Qt::CaseInsensitive))) {
-
-            // Combine both recorded and playback videos using overlay (Picture-in-Picture)
-            int x = mainResParts[0].toInt() - pipWidth;   // X position (top right)
-            int y = 0;                                   // Y position (top right)
-
-            videorama = webcamFilter + videoFilter + QString("[webcam][video]overlay=x=%1:y=%2[videorama];").arg(x).arg(y);
-        } else {
-            // Output is VIDEO but input playback is AUDIO only. Create a blank video.
-            QStringList partsRez = setRez.split("x");
-            int width = partsRez[0].toInt();
-            int height = partsRez[1].toInt();
-
-            // Create a black video of the required duration
-            videorama = QString("color=c=black:s=%1:d=%2:r=30[black];[1:v]setpts=PTS-STARTPTS,scale=s=%3[webcam];[black][webcam]overlay=0:0[videorama];").arg(QString::number(width) + "x" + QString::number(height)).arg(maxDuration).arg(setRez);
-        }
-    }
-    
-    if (manualOffset < 0) {
-        offsetFilter = QString("adelay=%1|%1").arg((-1*manualOffset));
-    } else {
-        offsetFilter = QString("atrim=start=%1, asetpts=PTS-STARTPTS").arg((manualOffset) / 1000.0);
-    }
-
-
-    arguments << "-y"
-            << "-i" << tunedRecorded
-            << "-ss" << QString("%1ms").arg(videoOffset + manualOffset) << "-i" << webcamRecorded
-            << "-i" << currentVideoFile
-            << "-filter_complex"
-            << QString("[0:a]%1,volume=%2,%3[vocals];[2:a][vocals]amix=inputs=2:normalize=0,aresample=async=1[wakkamix];%4")
-                    .arg(offsetFilter)
-                    .arg(vocalVolume)
-                    .arg(_audioMasterization)
-                    .arg(videorama)
-            << "-map" << "[wakkamix]";
-
-    if (!videorama.isEmpty()) {
-        arguments << "-map" << "[videorama]";
-    }
-
-    arguments << outputFilePath;
-    
-    // Connect signals to display output and errors
-    connect(process, &QProcess::readyReadStandardOutput, [process, progressLabel, this]() {
-        QByteArray outputData = process->readAllStandardOutput();
-        QString output = QString::fromUtf8(outputData).trimmed();  // Convert to QString
-        if (!output.isEmpty()) {
-            qDebug() << "FFmpeg (stdout):" << output;
-            progressLabel->setText("(FFmpeg is active)");
-            logUI("FFmpeg: " + output);
-        }
-    });
-    connect(process, &QProcess::readyReadStandardError, [process, progressLabel, totalDuration, this]() {
-        QByteArray errorData = process->readAllStandardError();
-        QString output = QString::fromUtf8(errorData).trimmed();  // Convert to QString
-        
-        if (!output.isEmpty()) {
-            qDebug() << "FFmpeg (stderr):" << output;
-            progressLabel->setText("(FFmpeg running)");
-            logUI("FFmpeg: " + output);
-            
-            // Update progress based on FFmpeg output
-            updateProgress(output, this->progressBar, totalDuration);
-        }
-    });
-
-    connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), [this, process, progressLabel](int exitCode, QProcess::ExitStatus exitStatus) {
-        qWarning() << "FFmpeg finished with exit code" << exitCode << "and status" << (exitStatus == QProcess::NormalExit ? "NormalExit" : "CrashExit");
-        
+    auto onFinished = [this, progressLabel](bool success) {
         delete progressLabel;
         delete this->progressBar;
-        process->deleteLater(); // Clean up the process object
 
-        if ( exitStatus == QProcess::CrashExit) {
-            logUI("FFmpeg crashed!!");
-            
+        if (!success) {
+            logUI("Render failed.");
             enable_playback(true);
             renderAgainButton->setVisible(true);
-            QMessageBox::critical(this, "FFmpeg crashed :(", "Aborting.. Verify if FFmpeg is correctly installed and in the PATH to be executed. Verify logs for FFmpeg error. This program requires a LV2 plugin callex X42 by Gareus.");
+            QMessageBox::critical(this, "Render Error", "Rendering failed. Check the logs.");
             return;
-        }
-        else {
-            QMessageBox::information(this, "Rendering Done!", "Prepare to preview performance. You can press RenderAgain button to adjust volume again or select a different filename, file type or resolution.");
-            logUI("FFmpeg finished.");
         }
 
         QFile file(outputFilePath);
         if (!file.exists()) {
-            qWarning() << "Output path does not exist: " << outputFilePath;
-            QMessageBox::critical(this, "Check FFmpeg ?", "Aborted playback. Strange error: output file does not exist.");
+            qWarning() << "Output file missing:" << outputFilePath;
+            QMessageBox::critical(this, "Render Error", "Output file was not created.");
             return;
         }
 
-        // And now, for something completely different: play the rendered performance! :D
+        QMessageBox::information(this, "Rendering Done!",
+            "Prepare to preview performance. You can press Render Again to adjust volume "
+            "or select a different filename / format / resolution.");
+        logUI("Rendering finished.");
 
-        isRecording = false; // to enable seeking on the progress bar to be great again
-
+        isRecording = false;
         enable_playback(true);
         renderAgainButton->setVisible(true);
         placeholderLabel->hide();
         videoWidget->show();
 
         resetMediaComponents(false);
-
-        qDebug() << "Setting media source to" << outputFilePath;
         playVideo(outputFilePath);
         logUI("Playing mix!");
         logUI(QString("System Latency: %1 ms").arg(offset));
         logUI(QString("Cam Offset: %1 ms").arg(videoOffset));
         logUI(QString("Audio Offset: %1 ms").arg(audioOffset));
+    };
 
+#ifdef WAKKAQT_FFMPEG_NATIVE
+    // Native render — runs in a background thread; progress bar updated via lambda
+    QProgressBar *pb = this->progressBar;
+    QtConcurrent::run([=]() {
+        bool ok = FFmpegNative::renderVideo(
+            tunedRecorded,
+            webcamRecorded,
+            currentVideoFile,
+            outputFilePath,
+            vocalVolume,
+            effectiveAudioOffset,
+            effectiveVideoOffset,
+            setRez,
+            _audioMasterization,
+            [pb](double p) {
+                QMetaObject::invokeMethod(pb, [pb, p]() {
+                    pb->setValue(int(p * 100));
+                }, Qt::QueuedConnection);
+            });
+        QMetaObject::invokeMethod(qApp, [=]() { onFinished(ok); }, Qt::QueuedConnection);
+    });
+#else
+    // QProcess fallback (ffmpeg must be in PATH)
+    const QString offsetFilter = (manualOffset < 0)
+        ? QString("adelay=%1|%1").arg(-manualOffset)
+        : QString("atrim=start=%1,asetpts=PTS-STARTPTS").arg(manualOffset / 1000.0);
+
+    QString videorama;
+    if (outputFilePath.endsWith(".mp4", Qt::CaseInsensitive) ||
+        outputFilePath.endsWith(".avi", Qt::CaseInsensitive) ||
+        outputFilePath.endsWith(".mkv", Qt::CaseInsensitive) ||
+        outputFilePath.endsWith(".webm", Qt::CaseInsensitive))
+    {
+        videorama = QString("[1:v]scale=s=%1[videorama];").arg(setRez);
+    }
+
+    QStringList arguments;
+    arguments << "-y"
+              << "-i" << tunedRecorded
+              << "-ss" << QString("%1ms").arg(effectiveVideoOffset)
+              << "-i" << webcamRecorded
+              << "-i" << currentVideoFile
+              << "-filter_complex"
+              << QString("[0:a]%1,volume=%2,%3[vocals];"
+                         "[2:a][vocals]amix=inputs=2:normalize=0,aresample=async=1[wakkamix];%4")
+                     .arg(offsetFilter).arg(vocalVolume)
+                     .arg(_audioMasterization).arg(videorama)
+              << "-map" << "[wakkamix]";
+    if (!videorama.isEmpty())
+        arguments << "-map" << "[videorama]";
+    arguments << outputFilePath;
+
+    int totalDuration = static_cast<int>(getMediaDuration(currentVideoFile));
+
+    QProcess *process = new QProcess(this);
+    connect(process, &QProcess::readyReadStandardError,
+            [process, totalDuration, this]() {
+        const QString out = QString::fromUtf8(process->readAllStandardError()).trimmed();
+        if (!out.isEmpty()) updateProgress(out, this->progressBar, totalDuration);
+    });
+    connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            [this, process, onFinished](int exitCode, QProcess::ExitStatus exitStatus) {
+        process->deleteLater();
+        onFinished(exitStatus == QProcess::NormalExit && exitCode == 0);
     });
 
-    // Start the process for FFmpeg command and arguments
     process->start("ffmpeg", arguments);
-
     if (!process->waitForStarted()) {
-        qWarning() << "Failed to start FFmpeg process.";
-        logUI("Failed to start FFmpeg process.");
-        // Remove and free the progress widgets that would otherwise stay in
-        // the layout permanently (the finished-lambda won't fire if we never started)
+        process->deleteLater();
         layout->removeWidget(this->progressBar);
         layout->removeWidget(progressLabel);
         delete this->progressBar;
@@ -299,12 +224,11 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset) {
         progressLabel->deleteLater();
         enable_playback(true);
         renderAgainButton->setVisible(true);
-        process->deleteLater();
         QMessageBox::critical(this, "FFmpeg not found",
             "Failed to start FFmpeg. Verify it is installed and available in PATH.");
         return;
     }
-
+#endif
 }
 
 QString MainWindow::millisecondsToSecondsString(qint64 milliseconds) {
@@ -345,22 +269,29 @@ void MainWindow::updateProgress(const QString& output, QProgressBar* progressBar
 
 
 double MainWindow::getMediaDuration(const QString &filePath) {
+#ifdef WAKKAQT_FFMPEG_NATIVE
+    double duration = FFmpegNative::getDuration(filePath);
+    if (duration <= 0)
+        qWarning() << "FFmpegNative::getDuration returned 0 for" << filePath;
+    else
+        qDebug() << "Media duration:" << int(duration) << "seconds";
+    return duration;
+#else
     QProcess ffprobeProcess;
-    ffprobeProcess.start("ffprobe", QStringList() << "-v" << "error" << "-show_entries" << "format=duration" << "-of" << "default=noprint_wrappers=1:nokey=1" << filePath);
+    ffprobeProcess.start("ffprobe", QStringList() << "-v" << "error" << "-show_entries"
+                         << "format=duration" << "-of" << "default=noprint_wrappers=1:nokey=1"
+                         << filePath);
     ffprobeProcess.waitForFinished();
-
     QString durationStr = QString::fromUtf8(ffprobeProcess.readAllStandardOutput()).trimmed();
-    
     bool ok;
     double duration = durationStr.toDouble(&ok);
     if (!ok || duration <= 0) {
-        qWarning() << "Failed to get duration or duration is invalid:" << durationStr;
+        qWarning() << "Failed to get duration:" << durationStr;
         return 0;
     }
-
-    int durationInSeconds = static_cast<int>(duration);
-    qDebug() << "Media duration:" << durationInSeconds << "seconds";
+    qDebug() << "Media duration:" << int(duration) << "seconds";
     return duration;
+#endif
 }
 
 void MainWindow::updatePlaybackDuration() {

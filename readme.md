@@ -1,188 +1,157 @@
+# WakkaQt
 
-![wakkalogo](https://github.com/user-attachments/assets/0dc389ce-0678-4eaf-a888-04ba306ff2b4)
+**WakkaQt** is a karaoke recording and production studio built with Qt6. It plays back karaoke videos, records your voice (and optionally your webcam), applies real-time vocal enhancement, and renders everything into a finished video file — all from a single desktop window.
 
-- Help requested: for MacOS tests. 
+Current version: **2.0.0**
 
-**Windows x86_64 zip bundle available at the end of this readme**, please follow instructions (mostly unpack, then run WakkaQt.exe)
-On Windows 11 you *must* [disable Audio Enhancements on your microphone](https://support.microsoft.com/en-us/topic/disable-audio-enhancements-0ec686c4-8d79-4588-b7e7-9287dd296f72#:~:text=To%20disable%20audio%20enhancements%3A,Device%20Properties%20%3EAdditional%20device%20properties), because it messes the Qt6 recording process.
+---
 
-# WakkaQt v1.9.4 — Karaoke App
+## Downloads
 
-WakkaQt is a karaoke application built with C++ and Qt6, designed to record vocals over a video/audio track and mix them into a rendered file. This app features webcam recording, YouTube video downloading, real-time sound visualization, and post-recording video rendering with FFmpeg. It automatically does some masterization on the vocal tracks. It also has a custom automatic auto-tuner class called VocalEnhancer that provides slight pitch shift/correction and formant preservation.
+**Windows binaries** are available at: https://gu.pro.br/WakkaQt
+
+For Linux, see the [build instructions](#building-on-linux) below.
 
 ---
 
 ## Features
 
-- **Record karaoke sessions** with synchronized video and audio playback.
-- **Mix webcam video and vocals** with the karaoke video and export the result.
-- **Session Library** — save and restore previous sessions to re-adjust and re-render.
-- **Real-time sound visualization** (green waveform microphone meter).
-- **Download YouTube videos** and use them as karaoke tracks.
-- **Video and Audio device selection** for recording.
-- **Rendering** with FFmpeg for high-quality output, automatic masterization and vocal enhancement.
-- **Vocal enhancement** with a custom auto-tuning class that improves vocals without distorting formants. Adjustable per render.
-- **Intended cross-platform compatibility** (Windows, macOS, Linux).
+### Playback & Recording
+- Plays any video or audio file supported by Qt6 Multimedia (MP4, MKV, WebM, MP3, and more)
+- Records microphone audio with selectable input device
+- Optional webcam recording alongside the vocal track
+- Transport controls: play/pause, stop/rewind, seek ±10 seconds
+- Graphical progress bar with elapsed/total time display
 
-## Requirements
+### Real-Time Monitoring
+- **Waveform visualizer** (`SndWidget`) — live oscilloscope display of the microphone input during recording
+- **Pitch monitor** (`PitchMonitorWidget`) — shows the detected note name, octave, and cents deviation in real time using YIN pitch detection; includes a smoothed deviation bar so you can see how in-tune you are as you sing
 
-To build and run this application, ensure you have the following:
+### Vocal Enhancement Engine
+The `VocalEnhancer` processes the recorded audio through a full DSP pipeline before rendering:
 
-- **C++17** or later
-- **Qt6** (Qt Multimedia module)
-- **FFmpeg** (for video/audio mixing and rendering)
-- **yt-dlp** (for downloading YouTube videos)
-- **fftw3** (for the custom VocalEnhancer class)
+- **Pitch correction** — phase-vocoder-based pitch shifting with adjustable strength (0–100 %). Uses a hybrid YIN + HPS pitch detector with autocorrelation confidence gating for robust detection
+- **Scale-aware correction** — snap corrected notes to a chosen musical scale (Chromatic, Major, Minor, Pentatonic, Blues, Dorian, Mixolydian, Lydian, Phrygian, Locrian, Harmonic Minor, Melodic Minor, Whole Tone, Diminished) in any of the 12 keys
+- **Retune speed** — controls how quickly pitch snaps to target (0 ms = robotic auto-tune effect, up to 300 ms for a natural glide)
+- **Formant preservation** — LPC-based spectral envelope extraction and re-synthesis keeps the vocal timbre natural after pitch shifting
+- **Noise reduction** — spectral subtraction gate with adaptive noise floor estimation, adjustable strength
+- **Reverb** — Freeverb-style Schroeder reverb with room size, decay, and wet/dry mix controls
+- **Dynamics processing** — compressor, limiter, and harmonic exciter applied after pitch correction; level matching via pre/post RMS with 8× cap
+- All FFTW plans (N = 2048 for phase vocoder, N = 1024 for noise gate, N = 4096 for pitch detection) are created once with `FFTW_MEASURE` and reused across the entire recording for maximum performance
 
-## Installation
+### Preview & Mix Dialog
+Before rendering, a preview dialog lets you:
+- Listen to the processed vocal audio with all enhancements applied
+- Adjust vocal volume via a dial
+- Fine-tune the audio/video timing offset with a slider (accounts for system latency automatically)
+- Tweak pitch correction amount, noise reduction amount, key, scale, retune speed, formant preservation, and all reverb parameters
+- Watch a live audio visualizer of the enhanced vocal track
+- Apply changes and preview again without leaving the dialog
+- Seek forward/backward through the preview
 
-1. Clone the repository:
+### Rendering
+- Mixes enhanced vocal audio, webcam video, and original karaoke playback into a single MP4
+- Output resolution: 1920×1080 (karaoke stacked above webcam)
+- **Native FFmpeg integration** — when the FFmpeg development libraries are present at build time, rendering is done entirely in-process via `libavformat`, `libavcodec`, `libavfilter`, `libswresample`, and `libswscale` with a real-time progress callback. Falls back gracefully to spawning `ffmpeg` via `QProcess` if the libraries are absent
+- "Render Again" re-runs the mix from saved session files with updated settings
 
-    ```bash
-    git clone https://github.com/guprobr/WakkaQt.git
-    cd WakkaQt
-    ```
+### Session Library
+- Sessions are saved to `~/.WakkaQt/library/` as UUID-named folders containing all source files and a JSON metadata record
+- The library dialog lists all saved sessions with timestamps and song names
+- Sessions can be renamed, deleted, or re-rendered from the library
+- Metadata stores webcam/audio/tuned paths, playback file, timing offsets, and system latency
 
-2. Install dependencies:
-   
-    - Qt6: Install via your system package manager or the official [Qt website](https://www.qt.io/).
-    - FFmpeg: Install from [FFmpeg website](https://ffmpeg.org/) or via your system package manager.
-    - yt-dlp: Install from [yt-dlp GitHub page](https://github.com/yt-dlp/yt-dlp). *For Ubuntu 24.04 and below you must get the latest version from GitHub.*
-    - libfftw3: for the custom VocalEnhancer class.
+### YouTube / URL Download
+- Built-in `yt-dlp` integration downloads a video from any URL directly into the application
+- A `DownloadDialog` shows download progress and handles cancellation
+- The downloaded file is automatically loaded as the karaoke playback source
 
-# Ubuntu/Debian
-```
-sudo apt update
-sudo apt install qt6-base-dev qt6-multimedia-dev ffmpeg yt-dlp libfftw3-dev
-```
-# Fedora
-```
-sudo dnf install qt6-qtbase-devel qt6-qtmultimedia-devel ffmpeg yt-dlp fftw-devel
-```
-# Arch Linux
-```
-sudo pacman -S qt6-base qt6-multimedia ffmpeg yt-dlp fftw
-```
-# openSUSE
-```
-sudo zypper install qt6-qtbase-devel qt6-qtmultimedia-devel ffmpeg yt-dlp fftw3-devel
-```
-
-3. Build the project:
-
-    ```bash
-    mkdir build
-    cd build
-    cmake ..
-    make
-    ```
-
-4. Run the application:
-
-    ```bash
-    ./WakkaQt
-    ```
-
-## Usage
-
-1. **Load Karaoke Track:** Use the "Load playback" option on the "File" menu to load a video or audio file for the karaoke session. It will start a preview of the playback, and enables the SING button so you can start recording.
-2. **Select Input Device:** Choose the microphone or audio input device for recording.
-3. **Sing & Record:** Click the "♪ SING ♪" button to start recording. The webcam will record video while the audio input records your voice.
-4. **Stop Recording:** Once finished, click the "Finish!" button to stop the recording.
-5. **Adjust vocals volume:** A dialog appears with a knob for you to amplify or reduce volume of the vocals. After rendering it will sound much better than the preview.
-6. **Render the Video:** Renders and previews the mix of vocals and the karaoke track.
-7. **Session Library:** Click the 📚 Library button or use `File → Session Library` to restore any previous session for re-adjustment and re-render without singing again.
-8. **Download YouTube Video:** Enter a YouTube URL to download and use as a karaoke track.
-9. **Render again:** This button appears after rendering, so you can save a new filename and adjust options again.
-
-## Project Structure
-
-- **`mainwindow.cpp` / `mainwindow.h`:** Core application logic, UI setup, media control, recording orchestration, playback, downloads and rendering.
-- **`mainwindowLibraryMgr.cpp`:** Session Library feature — save, restore and manage past recording sessions.
-- **`sessionmanager.cpp` / `sessionmanager.h`:** Disk I/O for the library — saves/loads session artefacts and JSON metadata to `~/.WakkaQt/library/`.
-- **`librarydialog.cpp` / `librarydialog.h`:** Library browser dialog — list, rename, delete and restore sessions.
-- **`sndwidget.cpp` / `sndwidget.h`:** Custom widget for displaying sound levels from the current audio input source.
-- **`previewdialog.cpp` / `previewdialog.h`:** Preview dialog for reviewing and adjusting vocal levels before rendering. Masterization and vocal enhancement takes place here.
-- **`audioamplifier.cpp` / `audioamplifier.h`:** Sample manipulation for volume adjustment; acts as a media player mixing the backing track with recorded vocals.
-- **`audiorecorder.cpp` / `audiorecorder.h`:** Records audio with configurable sample format, channel count and rate.
-- **`audiovizmediaplayer.cpp` / `audiovizmediaplayer.h`:** Extracts audio from playbacks and feeds the AudioVisualizer widget.
-- **`audiovisualizerwidget.cpp` / `audiovisualizerwidget.h`:** The Yelloopy© audio visualizer widget.
-- **`vocalenhancer.cpp` / `vocalenhancer.h`:** Custom pitch shifter — multi-step process combining pitch detection, harmonic scaling, gain normalisation and windowed overlap-add.
-- **`complexes.cpp` / `complexes.h`:** Global constants (FFmpeg filter strings), shared utility functions (`isAudioOnlyFile`, `writeWavHeader`), and global temp-file paths.
-- **`resources.qrc`:** Resource file for including images like the app logo.
-
-## FFmpeg Integration
-
-The application uses FFmpeg to mix the recorded webcam video and vocals with the karaoke video. It applies various audio filters like normalisation, echo, and compression to enhance vocal quality.
-
-## About Windows bundle ZIP
-
-  - **A proper FFMPEG binary** is already in the root of the application directory.
-  - **yt-dlp** is already there too, for your convenience.
-  - NOTE: **antivirus software degrades this software a lot**, and **VPNs might make streaming services block** the fetching of the video file when running *yt-dlp*.
-    
-  - You can download the windows x64 ZIP [Here on my website](https://gu.pro.br/WakkaQt-mswinX64.zip)
+### Audio Visualizer
+- `AudioVisualizerWidget` renders a live waveform of any audio stream (microphone monitor or enhanced vocal preview)
+- Two corner visualizers are shown during webcam preview
 
 ---
 
+## Building on Linux
 
-## What's new in v1.9.x
+### Prerequisites
 
-### New features
-- **Session Library**: (`File → Session Library` / 📚 Library button): every recording session is automatically saved to `~/.WakkaQt/library/` before the render step. You can restore any previous session directly to the volume/offset adjustment and re-render stage — without having to sing again. Sessions can be renamed and deleted from the library dialog.
+Install the required development packages (Debian/Ubuntu):
 
-- **Media Controls**: A [◀◀] [▶/⏸] [⏹] [▶▶] horizontal row that sits between the progress bar and the sound level widget. It starts hidden and slides in the first time the media reaches PlayingState. Sync with vizPlayer: All four buttons go through vizPlayer->* methods, which internally drive both the QMediaPlayer and the AudioVisualizerWidget timers — so they can't fall out of sync:
+```bash
+sudo apt install \
+    build-essential cmake ninja-build \
+    qt6-base-dev qt6-multimedia-dev \
+    libqt6multimedia6 libqt6multimediawidgets6 \
+    libfftw3-dev \
+    libavformat-dev libavcodec-dev libavfilter-dev \
+    libavutil-dev libswresample-dev libswscale-dev \
+    libglib2.0-dev \
+    pkg-config
+```
 
+On Fedora/RHEL-based systems:
 
+```bash
+sudo dnf install \
+    cmake ninja-build gcc-c++ \
+    qt6-qtbase-devel qt6-qtmultimedia-devel \
+    fftw-devel \
+    ffmpeg-free-devel \
+    glib2-devel \
+    pkgconf
+```
 
-#### VocalEnhancer: professional autotune overhaul + artifact elimination
+You also need `ffmpeg` and `yt-dlp` installed as runtime tools:
 
-**Pitch correction artifacts eliminated** — replaced the old outer-OLA chunked
-pipeline with a single-pass phase vocoder.  The previous architecture fed
-separate signal buffers to the PV per chunk while carrying over phase state,
-causing phase/signal mismatches that produced "bubble" and "crack" artifacts
-that worsened with stronger correction.  The new pipeline:
-  1. Detects pitch every ~80 ms with EMA smoothing (τ=60 ms) and
-     autocorrelation confidence voicing gate, building a smooth per-frame
-     ratio curve with slew-rate limiting.
-  2. Calls pitchShiftContinuous() exactly once over the whole signal —
-     no outer OLA, no double windowing, no phase discontinuities.
+```bash
+sudo apt install ffmpeg yt-dlp   # Debian/Ubuntu
+sudo dnf install ffmpeg yt-dlp   # Fedora
+```
 
-**YIN pitch detection** (de Cheveigné & Kawahara 2002) added alongside the
-existing HPS.  YIN runs first; HPS is the fallback.  Fewer octave errors,
-better accuracy on low voices and pitch glides.
+### Configure and Build
 
-**Scale/key-aware correction** — setScale() / setScalePreset() restrict
-pitch snapping to a musical scale (Major, Minor, Pentatonic Maj/Min, Blues,
-Chromatic).  Key selector (C–B) and scale combo added to PreviewDialog UI.
+```bash
+git clone https://github.com/YOUR_USERNAME/WakkaQt.git
+cd WakkaQt
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --parallel
+```
 
-**Retune speed** — setRetuneSpeed(ms) replaces the opaque lerpParam slew
-calculation.  0 ms = instant/robotic (T-Pain); 300 ms = current natural
-default; 500 ms = very gradual.  Exposed as a slider in PreviewDialog.
+If you want a debug build (with debug output enabled):
 
-**Formant preservation via LPC** — Levinson-Durbin LPC (order 14) extracts
-the spectral envelope before pitch shifting; the phase vocoder operates on
-the de-formanted residual only; the vocal tract filter is re-applied
-afterward.  Toggled via setFormantPreservation() and a UI checkbox.
+```bash
+cmake -B build -DCMAKE_BUILD_TYPE=Debug
+cmake --build build --parallel
+```
 
-**Vibrato preservation** — EMA on the pitch track (τ=60 ms) separates slow
-pitch drift (corrected) from fast vibrato cycles (preserved).
+### Run
 
-**Autocorrelation confidence voicing gate** — replaces the crude ZCR check;
-frames below confidence 0.30 are treated as unvoiced and correction smoothly
-releases toward zero via the slew limiter instead of jumping.
+```bash
+./build/WakkaQt
+```
 
-**PreviewDialog UX** — slider debounce raised to 700 ms (discrete controls
-300 ms) so the user can drag without triggering mid-drag re-processing.
-After re-enhancement the playback position is preserved instead of rewinding
-to the start (AudioAmplifier::seekTo() + getPosition() added).
+### Install System-Wide (optional)
 
-with help of big time friend: Claude Sonnet 4.6
+```bash
+sudo cmake --install build
+```
 
-## Contributing
+This installs the binary to `/usr/bin/WakkaQt`, the icon to `/usr/share/icons/hicolor/256x256/apps/WakkaQt.png`, and a `.desktop` launcher to `/usr/share/applications/`.
 
-Feel free to contribute by submitting pull requests or reporting issues in the [GitHub Issues page](https://github.com/guprobr/WakkaQt/issues).
+---
+
+## Runtime Dependencies
+
+| Tool | Purpose |
+|------|---------|
+| `ffmpeg` | Render fallback (used if FFmpeg dev libs were absent at build time) |
+| `yt-dlp` | In-app video download from YouTube and other sites |
+
+Both must be on `$PATH` at runtime. If the native FFmpeg integration was compiled in (default when dev libs are present), `ffmpeg` is only needed for the `QProcess` fallback path.
+
+---
 
 ## License
 
-This project is licensed under the MIT License
+See [LICENSE](LICENSE) for details.

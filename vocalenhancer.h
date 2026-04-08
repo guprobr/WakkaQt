@@ -7,6 +7,7 @@
 #include <QMutex>
 #include <QString>
 #include <QVector>
+#include <algorithm>
 #include <fftw3.h>
 
 class VocalEnhancer : public QObject
@@ -40,6 +41,14 @@ public:
     // Formant preservation via LPC (true = preserve vocal timbre during pitch shift)
     void setFormantPreservation(bool enabled) { m_formantPreservation = enabled; }
     bool getFormantPreservation() const       { return m_formantPreservation; }
+
+    // Reverb — Freeverb-style Schroeder reverb
+    void   setReverbRoomSize(double v) { m_reverbRoomSize = std::clamp(v, 0.0, 1.0); }
+    void   setReverbDecay   (double v) { m_reverbDecay    = std::clamp(v, 0.0, 1.0); }
+    void   setReverbMix     (double v) { m_reverbMix      = std::clamp(v, 0.0, 1.0); }
+    double getReverbRoomSize() const   { return m_reverbRoomSize; }
+    double getReverbDecay()    const   { return m_reverbDecay;    }
+    double getReverbMix()      const   { return m_reverbMix;      }
 
 private:
     // ========= Audio format (Qt6) =========
@@ -107,6 +116,11 @@ private:
     // ── Formant preservation ───────────────────────────────────────────────
     bool m_formantPreservation = true;
 
+    // ── Reverb (Freeverb / Schroeder) ──────────────────────────────────────
+    double m_reverbRoomSize = 0.5;   // 0=small/tight  1=large/cathedral
+    double m_reverbDecay    = 0.5;   // 0=dry/short    1=long decay
+    double m_reverbMix      = 0.0;   // 0=dry  1=full wet  (default off)
+
     // ── Vibrato EMA state ──────────────────────────────────────────────────
     double m_emaSmoothedPitch = 0.0;   // reset in resetPVState()
 
@@ -155,6 +169,7 @@ private:
     void applyLimiter(QVector<double>& data, double ceiling);
     void compressDynamics(QVector<double>& data, double threshold, double ratio);
     void harmonicExciter(QVector<double>& data, double drive, double mix);
+    void applyReverb(QVector<double>& data);
 
     // Echo
     void applyEcho(QVector<double>& data,

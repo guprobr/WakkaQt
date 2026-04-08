@@ -1,6 +1,9 @@
 #include "complexes.h"
 #include "previewdialog.h"
 #include "audioamplifier.h"
+#ifdef WAKKAQT_FFMPEG_NATIVE
+#include "ffmpegnative.h"
+#endif
 
 #include <QtConcurrent/QtConcurrentRun>
 #include <QVBoxLayout>
@@ -116,6 +119,31 @@ PreviewDialog::PreviewDialog(qint64 offset, qint64 sysLatency, QWidget *parent)
     formantCheckBox->setToolTip(
         "Uses LPC analysis to keep vocal character unchanged during pitch correction");
 
+    // Reverb controls
+    reverbLabel = new QLabel("Reverb — Room: 50%  Decay: 50%  Mix: 0% (off)", this);
+    reverbLabel->setToolTip("Schroeder/Freeverb reverb effect");
+
+    reverbRoomSlider = new QSlider(Qt::Horizontal, this);
+    reverbRoomSlider->setRange(0, 100);
+    reverbRoomSlider->setValue(int(m_reverbRoomSize * 100.0));
+    reverbRoomSlider->setTickPosition(QSlider::TicksBelow);
+    reverbRoomSlider->setTickInterval(10);
+    reverbRoomSlider->setToolTip("Room size: 0 = small/tight, 100 = large/cathedral");
+
+    reverbDecaySlider = new QSlider(Qt::Horizontal, this);
+    reverbDecaySlider->setRange(0, 100);
+    reverbDecaySlider->setValue(int(m_reverbDecay * 100.0));
+    reverbDecaySlider->setTickPosition(QSlider::TicksBelow);
+    reverbDecaySlider->setTickInterval(10);
+    reverbDecaySlider->setToolTip("Decay: 0 = dry/short, 100 = long reverb tail");
+
+    reverbMixSlider = new QSlider(Qt::Horizontal, this);
+    reverbMixSlider->setRange(0, 100);
+    reverbMixSlider->setValue(int(m_reverbMix * 100.0));
+    reverbMixSlider->setTickPosition(QSlider::TicksBelow);
+    reverbMixSlider->setTickInterval(10);
+    reverbMixSlider->setToolTip("Wet/dry mix: 0 = dry (off), 100 = full reverb");
+
     // Apply button — triggers enhancement with current settings
     applyButton = new QPushButton("Apply Enhancement", this);
     applyButton->setToolTip("Apply all current settings and re-process the vocals");
@@ -165,6 +193,19 @@ PreviewDialog::PreviewDialog(qint64 offset, qint64 sysLatency, QWidget *parent)
     layout->addWidget(retuneSpeedLabel);
     layout->addWidget(retuneSpeedSlider);
     layout->addWidget(formantCheckBox);
+    layout->addWidget(reverbLabel);
+
+    QHBoxLayout *reverbRow = new QHBoxLayout();
+    reverbRow->addWidget(new QLabel("Room:", this));
+    reverbRow->addWidget(reverbRoomSlider);
+    reverbRow->addSpacing(8);
+    reverbRow->addWidget(new QLabel("Decay:", this));
+    reverbRow->addWidget(reverbDecaySlider);
+    reverbRow->addSpacing(8);
+    reverbRow->addWidget(new QLabel("Mix:", this));
+    reverbRow->addWidget(reverbMixSlider);
+    layout->addLayout(reverbRow);
+
     layout->addWidget(applyButton);
 
     layout->addWidget(stopButton);
@@ -204,6 +245,21 @@ PreviewDialog::PreviewDialog(qint64 offset, qint64 sysLatency, QWidget *parent)
             this, &PreviewDialog::onFormantPreservationChanged);
     connect(applyButton, &QPushButton::clicked,
             this, &PreviewDialog::startEnhancementJob);
+    connect(reverbRoomSlider, &QSlider::valueChanged, this, [this](int v) {
+        m_reverbRoomSize = v / 100.0;
+        reverbLabel->setText(QString("Reverb — Room: %1%  Decay: %2%  Mix: %3%")
+            .arg(v).arg(int(m_reverbDecay*100)).arg(int(m_reverbMix*100)));
+    });
+    connect(reverbDecaySlider, &QSlider::valueChanged, this, [this](int v) {
+        m_reverbDecay = v / 100.0;
+        reverbLabel->setText(QString("Reverb — Room: %1%  Decay: %2%  Mix: %3%")
+            .arg(int(m_reverbRoomSize*100)).arg(v).arg(int(m_reverbMix*100)));
+    });
+    connect(reverbMixSlider, &QSlider::valueChanged, this, [this](int v) {
+        m_reverbMix = v / 100.0;
+        reverbLabel->setText(QString("Reverb — Room: %1%  Decay: %2%  Mix: %3%")
+            .arg(int(m_reverbRoomSize*100)).arg(int(m_reverbDecay*100)).arg(v));
+    });
     connect(playbackMute_option, &QCheckBox::checkStateChanged, this, [this]() {
         amplifier->setPlaybackVol(!playbackMute_option->isChecked());
     });
@@ -246,17 +302,55 @@ void PreviewDialog::setAudioFile(const QString &filePath)
     progressBar->setValue(0);
     vocalVisualizer->clear();
 
-    QProcess *ffmpegProcess = new QProcess(this);
     const QString tempAudioFile = tunedRecorded;
+    const qint64  trimOffset    = audioOffset;
 
+    auto onExtracted = [this, tempAudioFile]() {
+        QFile audioFile(tempAudioFile);
+        if (!audioFile.exists() || audioFile.size() <= 0) {
+            qWarning() << "Audio extraction failed or file is empty.";
+            QMessageBox::critical(this, "Extraction failed",
+                                  "Audio extraction failed or file is empty.");
+            setPreviewControlsEnabled(true);
+            return;
+        }
+        if (!audioFile.open(QIODevice::ReadOnly)) {
+            QMessageBox::critical(this, "Open failed",
+                                  "Failed to read extracted preview audio.");
+            setPreviewControlsEnabled(true);
+            return;
+        }
+        previewInputAudioData = audioFile.readAll();
+        audioFile.close();
+        QFile::remove(tempAudioFile);
+        startEnhancementJob();
+    };
+
+#ifdef WAKKAQT_FFMPEG_NATIVE
+    // Run extraction in a thread so the UI stays responsive
+    [[maybe_unused]] auto extractFuture = QtConcurrent::run([=]() {
+        // Extract stereo (no mono hint — VocalEnhancer handles channel mixing internally)
+        const bool ok = FFmpegNative::extractAudio(audioFilePath, tempAudioFile,
+                                                    trimOffset);
+        QMetaObject::invokeMethod(this, [this, ok, onExtracted]() {
+            if (!ok) {
+                QMessageBox::critical(this, "Extraction failed",
+                                      "Native audio extraction failed.");
+                setPreviewControlsEnabled(true);
+                return;
+            }
+            onExtracted();
+        }, Qt::QueuedConnection);
+    });
+#else
+    QProcess *ffmpegProcess = new QProcess(this);
     QStringList arguments;
     arguments << "-y"
               << "-i" << audioFilePath
               << "-vn"
               << "-filter_complex"
               << QString("%1 atrim=%2ms,asetpts=PTS-STARTPTS,aresample=44100;")
-                    .arg(_audioEnhance)
-                    .arg(audioOffset)
+                     .arg(_audioEnhance).arg(trimOffset)
               << "-ac" << "2"
               << "-acodec" << "pcm_s16le"
               << "-ar" << "44100"
@@ -264,37 +358,15 @@ void PreviewDialog::setAudioFile(const QString &filePath)
               << tempAudioFile;
 
     connect(ffmpegProcess, &QProcess::finished, this,
-            [this, tempAudioFile, ffmpegProcess](int exitCode, QProcess::ExitStatus exitStatus) {
-        if (exitStatus == QProcess::CrashExit || exitCode != 0) {
-            qWarning() << "FFmpeg process crashed or exited with error code:" << exitCode;
-            QMessageBox::critical(this, "FFmpeg crashed", "FFmpeg process crashed!");
-            setPreviewControlsEnabled(true);
-            ffmpegProcess->deleteLater();
-            return;
-        }
-
-        QFile audioFile(tempAudioFile);
-        if (!audioFile.exists() || audioFile.size() <= 0) {
-            qWarning() << "Audio extraction failed or file is empty.";
-            QMessageBox::critical(this, "Extraction failed", "Audio extraction failed or file is empty.");
-            setPreviewControlsEnabled(true);
-            ffmpegProcess->deleteLater();
-            return;
-        }
-
-        if (!audioFile.open(QIODevice::ReadOnly)) {
-            QMessageBox::critical(this, "Open failed", "Failed to read extracted preview audio.");
-            setPreviewControlsEnabled(true);
-            ffmpegProcess->deleteLater();
-            return;
-        }
-
-        previewInputAudioData = audioFile.readAll();
-        audioFile.close();
-        QFile::remove(tempAudioFile);
-
-        startEnhancementJob();
+            [this, onExtracted, ffmpegProcess](int exitCode, QProcess::ExitStatus exitStatus) {
         ffmpegProcess->deleteLater();
+        if (exitStatus == QProcess::CrashExit || exitCode != 0) {
+            qWarning() << "FFmpeg exited with code" << exitCode;
+            QMessageBox::critical(this, "FFmpeg error", "FFmpeg process failed.");
+            setPreviewControlsEnabled(true);
+            return;
+        }
+        onExtracted();
     });
 
     ffmpegProcess->start("ffmpeg", arguments);
@@ -303,6 +375,7 @@ void PreviewDialog::setAudioFile(const QString &filePath)
         ffmpegProcess->deleteLater();
         setPreviewControlsEnabled(true);
     }
+#endif
 }
 
 void PreviewDialog::startEnhancementJob()
@@ -335,6 +408,9 @@ void PreviewDialog::startEnhancementJob()
     vocalEnhancer->setNoiseReductionAmount(noiseReductionAmount);
     vocalEnhancer->setRetuneSpeed(m_retuneSpeedMs);
     vocalEnhancer->setFormantPreservation(m_formantPreservation);
+    vocalEnhancer->setReverbRoomSize(m_reverbRoomSize);
+    vocalEnhancer->setReverbDecay(m_reverbDecay);
+    vocalEnhancer->setReverbMix(m_reverbMix);
     // Map combo index to scale preset name
     const QStringList scaleNames = {"chromatic","major","minor",
                                      "pentatonic_major","pentatonic_minor","blues"};
@@ -401,6 +477,9 @@ void PreviewDialog::setPreviewControlsEnabled(bool enabled)
     scaleCombo->setEnabled(enabled);
     retuneSpeedSlider->setEnabled(enabled);
     formantCheckBox->setEnabled(enabled);
+    reverbRoomSlider->setEnabled(enabled);
+    reverbDecaySlider->setEnabled(enabled);
+    reverbMixSlider->setEnabled(enabled);
     applyButton->setEnabled(enabled);
 }
 

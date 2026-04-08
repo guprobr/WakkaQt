@@ -2,6 +2,7 @@
 #define MAINWINDOW_H
 
 #include "sndwidget.h"
+#include "pitchmonitorwidget.h"
 #include "audiorecorder.h"
 #include "audiovizmediaplayer.h"
 #include "audiovisualizerwidget.h"
@@ -68,7 +69,7 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    QString Wakka_versione = "v1.9.4";
+    QString Wakka_versione = "v2.0.0";
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
@@ -177,7 +178,8 @@ private:
 
     QString downloadedVideoPath; 
 
-    SndWidget *soundLevelWidget;
+    SndWidget           *soundLevelWidget;
+    PitchMonitorWidget  *pitchMonitor;
 
     void playVideo(const QString& playbackVideoPath);
     void chooseVideo();

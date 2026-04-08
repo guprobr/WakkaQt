@@ -81,6 +81,10 @@ private:
     QSlider   *retuneSpeedSlider     = nullptr;
     QLabel    *retuneSpeedLabel      = nullptr;
     QCheckBox *formantCheckBox       = nullptr;
+    QSlider   *reverbRoomSlider      = nullptr;
+    QSlider   *reverbDecaySlider     = nullptr;
+    QSlider   *reverbMixSlider       = nullptr;
+    QLabel    *reverbLabel           = nullptr;
     AudioVisualizerWidget *vocalVisualizer = nullptr;
 
     qint64 newOffset = 0;
@@ -104,6 +108,9 @@ private:
     bool   m_formantPreservation = true;
     bool   pendingPreviewRebuild = false;
     qint64 m_savedPlaybackPos    = 0;
+    double m_reverbRoomSize      = 0.5;
+    double m_reverbDecay         = 0.5;
+    double m_reverbMix           = 0.0;
 };
 
 #endif // PREVIEWDIALOG_H

@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 # Project name
-project(WakkaQt VERSION 1.9.4 LANGUAGES CXX)
+project(WakkaQt VERSION 2.0.0 LANGUAGES CXX)
 
 # Set the C++ standard
 set(CMAKE_CXX_STANDARD 17)
@@ -62,7 +62,55 @@ else()
   pkg_check_modules(FFTW3 REQUIRED fftw3)
 endif()
 
+# --- FFmpeg native libraries ---
+if(WIN32)
+  set(_FF "$ENV{ProgramFiles\(x86\)}/ffmpeg")
+  if(NOT EXISTS "${_FF}")
+    set(_FF "$ENV{ProgramFiles}/ffmpeg")
+  endif()
+  file(TO_CMAKE_PATH "${_FF}" FFMPEG_ROOT)
 
+  find_path(FFMPEG_INCLUDE_DIR libavformat/avformat.h
+    HINTS "${FFMPEG_ROOT}/include")
+  find_library(AVFORMAT_LIB   NAMES avformat   HINTS "${FFMPEG_ROOT}/lib")
+  find_library(AVCODEC_LIB    NAMES avcodec    HINTS "${FFMPEG_ROOT}/lib")
+  find_library(AVFILTER_LIB   NAMES avfilter   HINTS "${FFMPEG_ROOT}/lib")
+  find_library(AVUTIL_LIB     NAMES avutil     HINTS "${FFMPEG_ROOT}/lib")
+  find_library(SWRESAMPLE_LIB NAMES swresample HINTS "${FFMPEG_ROOT}/lib")
+  find_library(SWSCALE_LIB    NAMES swscale    HINTS "${FFMPEG_ROOT}/lib")
+
+  if(NOT FFMPEG_INCLUDE_DIR OR NOT AVFORMAT_LIB)
+    message(WARNING "FFmpeg dev headers not found under ${FFMPEG_ROOT}. Native FFmpeg integration disabled.")
+    set(FFMPEG_FOUND FALSE)
+  else()
+    set(FFMPEG_FOUND TRUE)
+    set(FFMPEG_LIBRARIES ${AVFORMAT_LIB} ${AVCODEC_LIB} ${AVFILTER_LIB}
+                         ${AVUTIL_LIB} ${SWRESAMPLE_LIB} ${SWSCALE_LIB})
+  endif()
+else()
+  find_package(PkgConfig REQUIRED)
+  pkg_check_modules(AVFORMAT  libavformat)
+  pkg_check_modules(AVCODEC   libavcodec)
+  pkg_check_modules(AVFILTER  libavfilter)
+  pkg_check_modules(AVUTIL    libavutil)
+  pkg_check_modules(SWRESAMPLE libswresample)
+  pkg_check_modules(SWSCALE   libswscale)
+
+  if(AVFORMAT_FOUND AND AVCODEC_FOUND AND AVFILTER_FOUND AND AVUTIL_FOUND
+     AND SWRESAMPLE_FOUND AND SWSCALE_FOUND)
+    set(FFMPEG_FOUND TRUE)
+    set(FFMPEG_INCLUDE_DIR ${AVFORMAT_INCLUDE_DIRS})
+    set(FFMPEG_LIBRARIES
+        ${AVFORMAT_LIBRARIES} ${AVCODEC_LIBRARIES} ${AVFILTER_LIBRARIES}
+        ${AVUTIL_LIBRARIES} ${SWRESAMPLE_LIBRARIES} ${SWSCALE_LIBRARIES})
+    set(FFMPEG_CFLAGS
+        ${AVFORMAT_CFLAGS_OTHER} ${AVCODEC_CFLAGS_OTHER})
+    message(STATUS "FFmpeg native libraries found — native integration enabled")
+  else()
+    set(FFMPEG_FOUND FALSE)
+    message(WARNING "FFmpeg dev libraries not found (install libavformat-dev etc.) — native integration disabled")
+  endif()
+endif()
 
 if(UNIX AND NOT APPLE)
     pkg_check_modules(GLIB2 REQUIRED glib-2.0)
@@ -85,6 +133,7 @@ add_executable(${PROJECT_NAME}
     mainwindowLibraryMgr.cpp
     complexes.cpp
     sndwidget.cpp
+    pitchmonitorwidget.cpp
     previewdialog.cpp
     audioamplifier.cpp
     audiorecorder.cpp
@@ -94,9 +143,11 @@ add_executable(${PROJECT_NAME}
     DownloadDialog.cpp
     sessionmanager.cpp
     librarydialog.cpp
+    ffmpegnative.cpp
     mainwindow.h
     complexes.h
     sndwidget.h
+    pitchmonitorwidget.h
     previewdialog.h
     audioamplifier.h
     audiorecorder.h
@@ -106,6 +157,7 @@ add_executable(${PROJECT_NAME}
     DownloadDialog.h
     sessionmanager.h
     librarydialog.h
+    ffmpegnative.h
     ${resources}
 )
 
@@ -126,6 +178,16 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${FFTW3_INCLUDE_DIR}
 )
+
+# FFmpeg native integration (optional — graceful fallback to QProcess if absent)
+if(FFMPEG_FOUND)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE WAKKAQT_FFMPEG_NATIVE=1)
+    target_link_libraries(${PROJECT_NAME} ${FFMPEG_LIBRARIES})
+    target_include_directories(${PROJECT_NAME} PRIVATE ${FFMPEG_INCLUDE_DIR})
+    if(DEFINED FFMPEG_CFLAGS)
+        target_compile_options(${PROJECT_NAME} PRIVATE ${FFMPEG_CFLAGS})
+    endif()
+endif()
 
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DQT_NO_DEBUG_OUTPUT")

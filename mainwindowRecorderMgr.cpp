@@ -1,4 +1,7 @@
 #include "mainwindow.h"
+#ifdef WAKKAQT_FFMPEG_NATIVE
+#include "ffmpegnative.h"
+#endif
 
 
 void MainWindow::abortRecording() {
@@ -69,7 +72,7 @@ void MainWindow::startRecording() {
 void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
 
     if ( QMediaRecorder::RecordingState == state ) {
-        
+
         // Update UI to show recording status
         recordingIndicator->show();
         singButton->setText("Finish!");
@@ -77,6 +80,10 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
         singButton->setEnabled(true);
         singAction->setEnabled(true);
         abortButton->setVisible(true);
+
+        // Show real-time pitch monitor while the user is singing
+        pitchMonitor->reset();
+        pitchMonitor->setVisible(true);
 
     }
     
@@ -133,6 +140,7 @@ void MainWindow::stopRecording() {
         abortButton->setVisible(false);
         singAction->setText("SING");
         singAction->setEnabled(false);
+        pitchMonitor->setVisible(false);
         vizCheckbox->setEnabled(true);
         if (progressSongFull)
             progressSongFull->setToolTip("Nothing to seek");
@@ -290,43 +298,44 @@ void MainWindow::waitForFileFinalization(const QString &filePath, std::function<
     bool fileIsValid = false;
 
     connect(timer, &QTimer::timeout, this, [this, filePath, timer, callback, attempts, fileIsValid]() mutable {
-        
+
         attempts++;
 
         if (attempts > 30) {
-            qWarning() << "Timeout reached. After " << attempts << "  check attempts it did not finalize properly.";
+            qWarning() << "Timeout reached after" << attempts << "attempts.";
             timer->stop();
             timer->deleteLater();
             QMessageBox::critical(this, "Recorder Error", "Timeout reached. Video did not finalize properly.");
             return;
         }
 
-        // Probe with ffprobe to check if the file is a valid MP4
-        QString command = "ffprobe";
+        // Check if the file has a valid video stream
+        bool isValid = false;
+#ifdef WAKKAQT_FFMPEG_NATIVE
+        isValid = FFmpegNative::hasVideoStream(filePath);
+#else
+        QProcess *process = new QProcess(this);
         QStringList arguments;
         arguments << "-v" << "error"
                   << "-select_streams" << "v:0"
                   << "-show_entries" << "stream=codec_type"
                   << "-of" << "default=noprint_wrappers=1:nokey=1"
                   << filePath;
-
-        QProcess *process = new QProcess(this);
-        process->start(command, arguments);
-
+        process->start("ffprobe", arguments);
         process->waitForFinished();
-
-        QByteArray output = process->readAllStandardOutput();
+        const QByteArray output = process->readAllStandardOutput();
         process->deleteLater();
+        isValid = (!output.isEmpty() && output.trimmed() == "video");
+#endif
 
-        // If ffprobe output indicates the file is a valid video stream
-        if (!output.isEmpty() && output.trimmed() == "video") {
-            qDebug() << "File is a valid MP4 video.";
+        if (isValid) {
+            qDebug() << "File is a valid video.";
             fileIsValid = true;
             timer->stop();
             timer->deleteLater();
-            callback();  // Proceed with render logic
+            callback();
         } else {
-            qDebug() << "File is not finalized yet or invalid MP4.";
+            qDebug() << "File not finalized yet, retrying...";
         }
     });
 

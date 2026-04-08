@@ -16,6 +16,11 @@ public:
 
     void setInputDevice(const QAudioDevice &device);
 
+signals:
+    // Emitted every timer tick with the latest batch of PCM samples (mono, 44100 Hz, Int16).
+    // Connect to PitchMonitorWidget for real-time pitch feedback during recording.
+    void audioChunkReady(QVector<qint16> samples);
+
 protected:
     void paintEvent(QPaintEvent *event) override;
 

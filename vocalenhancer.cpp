@@ -324,6 +324,9 @@ QByteArray VocalEnhancer::enhance(const QByteArray& input) {
 
     processPitchCorrection(data);
 
+    // Reverb is applied after pitch correction so the wet signal is also pitch-corrected
+    applyReverb(data);
+
     // Final level match: ensure output loudness equals pre-pitch-correction level.
     // Cap is intentionally higher (8×) than the internal one so large scale corrections
     // (which shift pitch further and lose more OLA energy) are fully compensated.
@@ -929,6 +932,70 @@ void VocalEnhancer::applyLimiter(QVector<double>& x, double ceiling) {
             s = sign * std::min(shaped, ceiling);
         }
     }
+}
+
+// ======================
+// Reverb — Freeverb / Schroeder
+// ======================
+// 8 parallel feedback comb filters (with high-frequency damping) summed,
+// then passed through 2 series allpass filters.
+// Delay lengths are Freeverb constants scaled to the actual sample rate.
+void VocalEnhancer::applyReverb(QVector<double>& data) {
+    if (m_reverbMix < 0.005 || data.isEmpty()) return;
+
+    const int    N      = data.size();
+    const double sRatio = double(std::max(1, m_sampleRate)) / 44100.0;
+
+    // Freeverb reference delay lengths at 44100 Hz
+    static constexpr int kCombD[8] = {1116,1188,1277,1356,1422,1491,1557,1617};
+    static constexpr int kApD[2]   = {556, 441};
+
+    // Room size maps to feedback coefficient (0.28 … 0.96)
+    const double feedback = 0.28 + m_reverbRoomSize * 0.68;
+    // Decay maps to damping coefficient (how fast high freqs die)
+    const double damp = 1.0 - m_reverbDecay * 0.85;
+
+    // ── 8 parallel comb filters ───────────────────────────────────────────
+    QVector<double> wet(N, 0.0);
+
+    for (int c = 0; c < 8; ++c) {
+        const int D = std::max(1, int(kCombD[c] * sRatio));
+        QVector<double> line(D, 0.0);
+        double filterStore = 0.0;
+        int wp = 0;
+
+        for (int n = 0; n < N; ++n) {
+            const double out = line[wp];
+            // Low-pass damp: simulates air absorption of high frequencies
+            filterStore = out * (1.0 - damp) + filterStore * damp;
+            line[wp] = data[n] + filterStore * feedback;
+            if (++wp >= D) wp = 0;
+            wet[n] += out;
+        }
+    }
+    for (auto& s : wet) s *= (1.0 / 8.0);
+
+    // ── 2 series allpass filters ──────────────────────────────────────────
+    for (int a = 0; a < 2; ++a) {
+        const int    D = std::max(1, int(kApD[a] * sRatio));
+        const double g = 0.5;
+        QVector<double> line(D, 0.0);
+        int wp = 0;
+
+        for (int n = 0; n < N; ++n) {
+            const double delayed = line[wp];
+            const double w       = wet[n] + g * delayed;   // w[n] = x[n] + g*w[n-D]
+            line[wp] = w;
+            if (++wp >= D) wp = 0;
+            wet[n] = delayed - g * w;                      // y[n] = w[n-D] - g*w[n]
+        }
+    }
+
+    // ── Wet / dry mix ─────────────────────────────────────────────────────
+    const double wetGain = m_reverbMix;
+    const double dryGain = 1.0 - wetGain;
+    for (int n = 0; n < N; ++n)
+        data[n] = std::clamp(dryGain * data[n] + wetGain * wet[n], -1.0, 1.0);
 }
 
 void VocalEnhancer::applyMakeupGain(QVector<double>& x, double gain) {

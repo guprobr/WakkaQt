@@ -1,6 +1,9 @@
 #include "audiovizmediaplayer.h"
 #include "audiovisualizerwidget.h"
 #include "complexes.h"
+#ifdef WAKKAQT_FFMPEG_NATIVE
+#include "ffmpegnative.h"
+#endif
 
 #include <QApplication>
 #include <QAudioFormat>
@@ -253,55 +256,56 @@ void AudioVizMediaPlayer::updateVisualizer()
 
 void AudioVizMediaPlayer::extractAudio(const QString &source, const QString &outputFile)
 {
-    QThread* ffmpegThread = new QThread(this);  // Thread owned by the current class
-    QProcess* ffmpegProcess = new QProcess();   // Process owned by the thread
+    connect(this, &AudioVizMediaPlayer::ffmpegExtractionFinished,
+            this, &AudioVizMediaPlayer::loadAudioData, Qt::UniqueConnection);
 
+#ifdef WAKKAQT_FFMPEG_NATIVE
+    // Run natively in a background thread
+    QThread *thread = new QThread(this);
+    connect(thread, &QThread::finished, thread, &QThread::deleteLater);
+    connect(thread, &QThread::started, this, [this, source, outputFile, thread]() {
+        const bool ok = FFmpegNative::extractAudio(source, outputFile);
+        if (!ok)
+            qWarning() << "FFmpegNative::extractAudio failed for" << source;
+        else
+            emit ffmpegExtractionFinished(outputFile, source);
+        thread->quit();
+    }, Qt::DirectConnection);
+    thread->start();
+#else
+    QThread *ffmpegThread = new QThread(this);
+    QProcess *ffmpegProcess = new QProcess();
     ffmpegProcess->moveToThread(ffmpegThread);
 
     connect(ffmpegProcess, &QProcess::finished,
             this, [ffmpegProcess, outputFile, source, this]() {
-                QFile file(outputFile);
-                if (!file.exists()) {
-                    qWarning() << "Audio Visualizer audio file was not created.";
-                } else {
-                    emit ffmpegExtractionFinished(outputFile, source);
-                }
-
-                ffmpegProcess->deleteLater();  // Clean up the process safely
-            });
-
+        QFile file(outputFile);
+        if (!file.exists())
+            qWarning() << "Audio Visualizer audio file was not created.";
+        else
+            emit ffmpegExtractionFinished(outputFile, source);
+        ffmpegProcess->deleteLater();
+    });
     connect(ffmpegProcess, &QProcess::errorOccurred, this, [ffmpegProcess]() {
-        qWarning() << "FFmpeg process error occurred. Cleaning up.";
-        ffmpegProcess->deleteLater();  // Cleanup on error
+        qWarning() << "FFmpeg process error occurred.";
+        ffmpegProcess->deleteLater();
     });
-
-    connect(ffmpegThread, &QThread::finished, [ffmpegThread]() {
-        ffmpegThread->deleteLater();
-    });
-
-    connect(this, &AudioVizMediaPlayer::ffmpegExtractionFinished, this, &AudioVizMediaPlayer::loadAudioData, Qt::UniqueConnection);
-
+    connect(ffmpegThread, &QThread::finished, ffmpegThread, &QThread::deleteLater);
     connect(ffmpegThread, &QThread::started, [ffmpegProcess, source, outputFile]() {
-        QStringList ffmpegArgs;
-        ffmpegArgs << "-threads" << "0" << "-y" << "-i" << source 
-                    << "-vn" << "-ac" << "2" 
-                    << "-acodec" << "pcm_s16le" << "-ar" << "44100" << outputFile;
-
-        ffmpegProcess->start("ffmpeg", ffmpegArgs);
-        if (!ffmpegProcess->waitForStarted()) {
-            qWarning() << "Failed to start FFmpeg process for Audio Visualizer.";
-        }
+        QStringList args;
+        args << "-threads" << "0" << "-y" << "-i" << source
+             << "-vn" << "-ac" << "2"
+             << "-acodec" << "pcm_s16le" << "-ar" << "44100" << outputFile;
+        ffmpegProcess->start("ffmpeg", args);
+        if (!ffmpegProcess->waitForStarted())
+            qWarning() << "Failed to start FFmpeg for Audio Visualizer.";
     });
-
     connect(ffmpegProcess, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
             this, [ffmpegThread]() {
-                if (ffmpegThread->isRunning()) {
-                    ffmpegThread->quit();
-                    ffmpegThread->wait();
-                }
-            });
-
+        if (ffmpegThread->isRunning()) { ffmpegThread->quit(); ffmpegThread->wait(); }
+    });
     ffmpegThread->start();
+#endif
 }
 
 void AudioVizMediaPlayer::loadAudioData(const QString &audioFile, const QString &sourceFile)

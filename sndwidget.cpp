@@ -63,10 +63,16 @@ void SndWidget::processBuffer()
     const int numSamples = data.size() / int(sizeof(qint16));
     const qint16 *samples = reinterpret_cast<const qint16 *>(data.constData());
 
-    QMutexLocker locker(&bufferMutex);
-    audioData.resize(numSamples);
+    QVector<qint16> chunk(numSamples);
     for (int i = 0; i < numSamples; ++i)
-        audioData[i] = samples[i];
+        chunk[i] = samples[i];
+
+    {
+        QMutexLocker locker(&bufferMutex);
+        audioData = chunk;
+    }
+
+    emit audioChunkReady(chunk);
 }
 
 void SndWidget::paintEvent(QPaintEvent * /*event*/)

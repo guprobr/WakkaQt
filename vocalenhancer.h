@@ -4,6 +4,7 @@
 #include <QObject>
 #include <QAudioFormat>
 #include <QByteArray>
+#include <QMutex>
 #include <QString>
 #include <QVector>
 #include <fftw3.h>
@@ -86,8 +87,9 @@ private:
     QVector<double> m_pvPrevPhase;
     QVector<double> m_pvSumPhase;
 
-    // UI / state
-    double progressValue = 0.0;
+    // UI / state — guarded by m_stateMutex (read on main thread, written on worker thread)
+    mutable QMutex  m_stateMutex;
+    mutable double  progressValue = 0.0;
     mutable QString banner;
 
     // User-tweakable behaviour (0.0 .. 1.0)
@@ -138,6 +140,9 @@ private:
                                           const QVector<double>& a) const;
     QVector<double> applyLPCSynthesisFilter(const QVector<double>& residual,
                                              const QVector<double>& a) const;
+
+    // Thread-safe status update (called from worker thread; const for use in const methods)
+    void setStatus(const QString& msg, double progress = -1.0) const;
 
     // Phase vocoder
     void            resetPVState();

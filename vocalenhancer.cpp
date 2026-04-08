@@ -134,6 +134,16 @@ VocalEnhancer::~VocalEnhancer() {
     // state and can cause crashes if any other FFTW operation is still in flight.
 }
 
+// ----------------------
+// Thread-safe status update
+// Called from the worker thread; read by the main thread via getProgress()/getBanner().
+// ----------------------
+void VocalEnhancer::setStatus(const QString& msg, double progress) const {
+    QMutexLocker lk(&m_stateMutex);
+    banner = msg;
+    if (progress >= 0.0) progressValue = progress;
+}
+
 void VocalEnhancer::resetPVState() {
     m_pvPrevPhase.clear();
     m_pvSumPhase.clear();
@@ -316,10 +326,12 @@ QByteArray VocalEnhancer::enhance(const QByteArray& input) {
 }
 
 int VocalEnhancer::getProgress() const {
+    QMutexLocker lk(&m_stateMutex);
     return int(progressValue * 100.0);
 }
 
 QString VocalEnhancer::getBanner() const {
+    QMutexLocker lk(&m_stateMutex);
     return banner;
 }
 
@@ -493,7 +505,7 @@ double VocalEnhancer::detectPitch(const QVector<double>& inputData) const {
     double detectedFreq = (refinedBin * m_sampleRate) / fftN;
 
     qWarning() << "HPS(log) detected pitch:" << detectedFreq << "Hz";
-    banner = QString("pitch detected: %1 Hz").arg(detectedFreq, 0, 'f', 2);
+    setStatus(QString("pitch detected: %1 Hz").arg(detectedFreq, 0, 'f', 2));
     return detectedFreq;
 }
 
@@ -719,12 +731,12 @@ double VocalEnhancer::correctPitchChunk(QVector<double>& chunk, double prevRatio
 
     ratio = prevRatio * smoothAlpha + ratio * (1.0 - smoothAlpha);
 
-    banner = QString("Chunk PV: det=%1Hz tgt=%2Hz cents=%3 r=%4 zcr=%5")
+    setStatus(QString("Chunk PV: det=%1Hz tgt=%2Hz cents=%3 r=%4 zcr=%5")
                  .arg(detectedPitch, 0, 'f', 2)
                  .arg(targetFreq,    0, 'f', 2)
                  .arg(targetCents,   0, 'f', 1)
                  .arg(ratio,         0, 'f', 4)
-                 .arg(zcr,           0, 'f', 3);
+                 .arg(zcr,           0, 'f', 3));
 
     if (std::abs(ratio - 1.0) > bypassEps) {
         if (m_formantPreservation) {
@@ -766,8 +778,7 @@ void VocalEnhancer::processPitchCorrection(QVector<double>& data) {
 
     const double globalRMS = chunkRMS(data, 0, data.size());
     if (globalRMS < 1e-6) {
-        banner = "Enhancer: silence (bypass)";
-        progressValue = 1.0;
+        setStatus("Enhancer: silence (bypass)", 1.0);
         return;
     }
 
@@ -780,7 +791,7 @@ void VocalEnhancer::processPitchCorrection(QVector<double>& data) {
         compressDynamics(data, 0.78, 2.2);
         harmonicExciter(data, 1.12, 0.18);
         applyLimiter(data, 0.98);
-        progressValue = 1.0;
+        setStatus("Done (short clip)", 1.0);
         return;
     }
 
@@ -811,11 +822,10 @@ void VocalEnhancer::processPitchCorrection(QVector<double>& data) {
     double prevTargetCents = 0.0;
     bool   voiced          = false;
 
-    banner = "Building pitch correction map...";
+    setStatus("Building pitch correction map...");
 
     for (int f = 0; f < numFrames; ++f) {
         const int pos = f * Ha;
-        progressValue = 0.60 * double(f) / double(numFrames);
 
         // ── Periodic pitch detection ──────────────────────────────────────
         if (f % detStepFrames == 0) {
@@ -833,10 +843,12 @@ void VocalEnhancer::processPitchCorrection(QVector<double>& data) {
                 } else {
                     voiced = false;
                 }
-                banner = QString("Pitch map %1/%2  det=%3 Hz  conf=%4")
-                             .arg(f + 1).arg(numFrames)
-                             .arg(rawPitch, 0, 'f', 1)
-                             .arg(conf,     0, 'f', 2);
+                setStatus(
+                    QString("Pitch map %1/%2  det=%3 Hz  conf=%4")
+                        .arg(f + 1).arg(numFrames)
+                        .arg(rawPitch, 0, 'f', 1)
+                        .arg(conf,     0, 'f', 2),
+                    0.60 * double(f) / double(numFrames));
             }
         }
 
@@ -865,22 +877,15 @@ void VocalEnhancer::processPitchCorrection(QVector<double>& data) {
         frameRatios[f]     = std::pow(2.0, prevTargetCents / 1200.0);
     }
 
-    progressValue = 0.60;
-    banner = "Applying single-pass pitch shift...";
+    setStatus("Applying single-pass pitch shift...", 0.60);
 
     // ── Single-pass PV: no outer OLA, no double windowing ────────────────
-    if (m_formantPreservation) {
-        const QVector<double> lpc = computeLPCCoeffs(data, 14);
-        if (!lpc.isEmpty()) {
-            QVector<double> residual = applyLPCInverseFilter(data, lpc);
-            residual = pitchShiftContinuous(residual, frameRatios);
-            data     = applyLPCSynthesisFilter(residual, lpc);
-        } else {
-            data = pitchShiftContinuous(data, frameRatios);
-        }
-    } else {
-        data = pitchShiftContinuous(data, frameRatios);
-    }
+    // Note: whole-signal LPC is intentionally NOT used here. LPC formant
+    // preservation requires per-short-frame coefficients; computing one set
+    // of LPC coefficients for the entire recording produces an averaged vocal-
+    // tract filter that colors the whole signal ("inside a can"). The per-chunk
+    // LPC path in correctPitchChunk() is still available for short segments.
+    data = pitchShiftContinuous(data, frameRatios);
 
     // RMS makeup: restore level lost during phase vocoder normalization
     {
@@ -892,15 +897,13 @@ void VocalEnhancer::processPitchCorrection(QVector<double>& data) {
         }
     }
 
-    banner = "Applying dynamics / exciter / limiter...";
-    progressValue = 0.98;
+    setStatus("Applying dynamics / exciter / limiter...", 0.98);
 
     compressDynamics(data, 0.78, 2.2);
     harmonicExciter(data, 1.12, 0.18);
     applyLimiter(data, 0.98);
 
-    banner = QString("Done: single-pass PV, %1 frames").arg(numFrames);
-    progressValue = 1.0;
+    setStatus(QString("Done: single-pass PV, %1 frames").arg(numFrames), 1.0);
 }
 
 
@@ -1359,8 +1362,7 @@ void VocalEnhancer::reduceNoiseSpectralGate(QVector<double>& x,
         fftw_free(ifftOut);
     }
 
-    // Optional banner update
-    banner = "Noise reduction (spectral gate) applied";
+    setStatus("Noise reduction (spectral gate) applied");
 }
 
 // ======================

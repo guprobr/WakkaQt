@@ -6,7 +6,7 @@
 **Windows x86_64 zip bundle available at the end of this readme**, please follow instructions (mostly unpack, then run WakkaQt.exe)
 On Windows 11 you *must* [disable Audio Enhancements on your microphone](https://support.microsoft.com/en-us/topic/disable-audio-enhancements-0ec686c4-8d79-4588-b7e7-9287dd296f72#:~:text=To%20disable%20audio%20enhancements%3A,Device%20Properties%20%3EAdditional%20device%20properties), because it messes the Qt6 recording process.
 
-# WakkaQt v1.9 — Karaoke App
+# WakkaQt v1.9.3 — Karaoke App
 
 WakkaQt is a karaoke application built with C++ and Qt6, designed to record vocals over a video/audio track and mix them into a rendered file. This app features webcam recording, YouTube video downloading, real-time sound visualization, and post-recording video rendering with FFmpeg. It automatically does some masterization on the vocal tracks. It also has a custom automatic auto-tuner class called VocalEnhancer that provides slight pitch shift/correction and formant preservation.
 

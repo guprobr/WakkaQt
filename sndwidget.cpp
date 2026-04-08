@@ -1,122 +1,115 @@
 #include "sndwidget.h"
 
-#include <QVBoxLayout>
 #include <QPainter>
 #include <QPaintEvent>
 
-#include <cstring> // for std::memcpy
-#include <algorithm> // for std::clamp
+#include <algorithm>
 
-SndWidget::SndWidget(QWidget *parent) 
-    : QWidget(parent), 
-      timer(new QTimer(this)),
-      audioSource(nullptr),
-      audioBuffer(new QBuffer(this)) {
-
-    // Set up the default audio format
+SndWidget::SndWidget(QWidget *parent)
+    : QWidget(parent),
+      timer(new QTimer(this))
+{
     format.setSampleRate(44100);
     format.setChannelCount(1);
     format.setSampleFormat(QAudioFormat::Int16);
 
     connect(timer, &QTimer::timeout, this, &SndWidget::updateWaveform);
-    timer->start(100); // Update every 100 milliseconds
+    timer->start(100);
 }
 
-SndWidget::~SndWidget() {
-    if (audioSource) {
+SndWidget::~SndWidget()
+{
+    if (audioSource)
         audioSource->stop();
-    }
 }
 
 void SndWidget::setInputDevice(const QAudioDevice &device)
 {
+    // Tear down any existing source cleanly
     if (audioSource) {
         disconnect(audioSource, nullptr, this, nullptr);
         audioSource->stop();
-        audioSource->deleteLater();
-        audioSource = nullptr;
+        delete audioSource;
+        audioSource   = nullptr;
+        m_pullDevice  = nullptr;
     }
-
-    if (audioBuffer->isOpen())
-        audioBuffer->close();
-
-    audioBuffer->buffer().clear();
-    audioBuffer->seek(0);
-    audioBuffer->open(QIODevice::ReadWrite);
 
     audioSource = new QAudioSource(device, format, this);
 
-    connect(audioSource,
-            &QAudioSource::stateChanged,
-            this,
-            &SndWidget::onAudioStateChanged,
+    connect(audioSource, &QAudioSource::stateChanged,
+            this, &SndWidget::onAudioStateChanged,
             Qt::UniqueConnection);
 
-    audioSource->start(audioBuffer);
+    // Pull mode: QAudioSource owns an internal ring buffer; we read from
+    // the returned QIODevice on every timer tick.  No shared QBuffer, no
+    // concurrent-write data race.
+    m_pullDevice = audioSource->start();
 }
 
-void SndWidget::processBuffer() {
-    QMutexLocker locker(&bufferMutex);
-    
-    // Retrieve data from the buffer
-    QByteArray data = audioBuffer->data();
-    if (data.isEmpty()) return;
+void SndWidget::processBuffer()
+{
+    if (!m_pullDevice || !audioSource)
+        return;
 
-    // Process the data
+    // Read whatever has accumulated since the last tick
+    const qint64 available = m_pullDevice->bytesAvailable();
+    if (available <= 0)
+        return;
+
+    QByteArray data = m_pullDevice->read(available);
+    if (data.isEmpty())
+        return;
+
+    const int numSamples = data.size() / int(sizeof(qint16));
     const qint16 *samples = reinterpret_cast<const qint16 *>(data.constData());
-    int numSamples = data.size() / sizeof(qint16);
 
-    // Clear the previous data
-    audioData.clear();
-    audioData.reserve(numSamples);  // Reserve memory to avoid reallocations
-    
-    // Append the new data
-    for (int i = 0; i < numSamples; ++i) {
-        audioData.append(samples[i]);
-    }
-
-    // Clear the buffer
-    audioBuffer->buffer().clear();
-    audioBuffer->seek(0);  // Reset the buffer to the beginning
+    QMutexLocker locker(&bufferMutex);
+    audioData.resize(numSamples);
+    for (int i = 0; i < numSamples; ++i)
+        audioData[i] = samples[i];
 }
 
-
-void SndWidget::paintEvent(QPaintEvent *event) {
+void SndWidget::paintEvent(QPaintEvent * /*event*/)
+{
     QPainter painter(this);
     painter.fillRect(rect(), Qt::black);
     painter.setPen(Qt::green);
 
     QMutexLocker locker(&bufferMutex);
-    int width = this->width();
-    int height = this->height();
-    int middle = height / 2;
-    int numSamples = audioData.size();
+    const int numSamples = audioData.size();
+    if (numSamples == 0)
+        return;
 
-    if (numSamples == 0) return;
+    const int width  = this->width();
+    const int height = this->height();
+    const int middle = height / 2;
+    constexpr float kSensitivity = 3.5f;
 
-    // Sensitivity factor to amplify or attenuate the waveform
-    float sensitivity = 3.5f; // Increase or decrease this value (e.g., 1.0f for no change)
-
-    // Draw the waveform
     for (int i = 0; i < width; ++i) {
-        int sampleIndex = (i * numSamples) / width;
-        if (sampleIndex >= numSamples) break; // Avoid out-of-bounds access
-        int sampleValue = audioData[sampleIndex];
-
-        // Scale the sample to fit in the widget's height
-        int y = middle - (std::clamp(sampleValue * sensitivity, -32768.0f, 32767.0f) * middle / 32768);
+        const int idx = (i * numSamples) / width;
+        if (idx >= numSamples) break;
+        const float v = std::clamp(audioData[idx] * kSensitivity, -32768.0f, 32767.0f);
+        const int y   = middle - int(v * middle / 32768.0f);
         painter.drawLine(i, middle, i, y);
     }
 }
 
-void SndWidget::updateWaveform() {
-    processBuffer(); // Process the buffer to update audioData
-    update(); // Trigger a repaint
+void SndWidget::updateWaveform()
+{
+    processBuffer();
+    update();
 }
 
-void SndWidget::onAudioStateChanged(QAudio::State state) {
-    if (state == QAudio::IdleState) {
-        audioSource->stop();
-        audioBuffer->close();
+void SndWidget::onAudioStateChanged(QAudio::State state)
+{
+    // On Windows (WASAPI) IdleState fires whenever the capture buffer
+    // momentarily drains — that is normal and must not stop the source.
+    // Only react to a hard stop caused by an actual device error.
+    if (state == QAudio::StoppedState
+        && audioSource
+        && audioSource->error() != QAudio::NoError)
+    {
+        // Device error: try to recover by restarting
+        m_pullDevice = audioSource->start();
     }
 }

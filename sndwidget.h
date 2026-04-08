@@ -4,8 +4,7 @@
 #include <QWidget>
 #include <QTimer>
 #include <QAudioSource>
-#include <QAudioBuffer>
-#include <QBuffer>
+#include <QIODevice>
 #include <QMutex>
 
 class SndWidget : public QWidget {
@@ -30,8 +29,8 @@ private:
     QTimer *timer;
 
     QAudioFormat format;
-    QAudioSource *audioSource;
-    QBuffer *audioBuffer;
+    QAudioSource *audioSource = nullptr;
+    QIODevice    *m_pullDevice = nullptr;   // pull-mode device owned by audioSource
 
     QVector<qint16> audioData;
     QMutex bufferMutex;

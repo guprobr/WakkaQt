@@ -105,6 +105,12 @@ VocalEnhancer::VocalEnhancer(const QAudioFormat& format, QObject *parent)
         m_ngFwd = fftw_plan_dft_r2c_1d(kNgN, m_ngIn,   m_ngOut,  FFTW_MEASURE);
         m_ngInv = fftw_plan_dft_c2r_1d(kNgN, m_ngSpec, m_ngIfft, FFTW_MEASURE);
     }
+
+    // Pitch detection (N=4096) — pre-allocated to avoid per-call plan creation
+    m_detIn  = (double*)      fftw_malloc(sizeof(double)       * kDetN);
+    m_detOut = (fftw_complex*)fftw_malloc(sizeof(fftw_complex) * (kDetN/2 + 1));
+    if (m_detIn && m_detOut)
+        m_detFwd = fftw_plan_dft_r2c_1d(kDetN, m_detIn, m_detOut, FFTW_ESTIMATE);
 }
 
 VocalEnhancer::~VocalEnhancer() {
@@ -120,7 +126,12 @@ VocalEnhancer::~VocalEnhancer() {
     fftw_free(m_ngIn);   fftw_free(m_ngOut);
     fftw_free(m_ngSpec); fftw_free(m_ngIfft);
 
-    fftw_cleanup();
+    // Destroy cached pitch detection plan
+    if (m_detFwd) fftw_destroy_plan(m_detFwd);
+    fftw_free(m_detIn);
+    fftw_free(m_detOut);
+    // Note: fftw_cleanup() intentionally omitted — it destroys all global FFTW
+    // state and can cause crashes if any other FFTW operation is still in flight.
 }
 
 void VocalEnhancer::resetPVState() {
@@ -420,16 +431,16 @@ double VocalEnhancer::detectPitch(const QVector<double>& inputData) const {
     for (int i = 0; i < fftN; ++i) mean += inputData[start + i];
     mean /= fftN;
 
-    fftw_complex* fftOut = (fftw_complex*)fftw_malloc(sizeof(fftw_complex) * (fftN / 2 + 1));
-    double* fftIn = (double*)fftw_malloc(sizeof(double) * fftN);
+    // Use the pre-allocated cached detection plan (thread-safe: no new plan creation)
+    if (!m_detFwd || !m_detIn || !m_detOut) return 0.0;
+    fftw_complex* fftOut = m_detOut;
 
     for (int i = 0; i < fftN; ++i) {
         double x = inputData[start + i] - mean;
-        fftIn[i] = x * window[i];
+        m_detIn[i] = x * window[i];
     }
 
-    fftw_plan plan = fftw_plan_dft_r2c_1d(fftN, fftIn, fftOut, FFTW_ESTIMATE);
-    fftw_execute(plan);
+    fftw_execute(m_detFwd);
 
     const int bins = fftN / 2 + 1;
     QVector<double> logMag(bins);
@@ -480,10 +491,6 @@ double VocalEnhancer::detectPitch(const QVector<double>& inputData) const {
     }
 
     double detectedFreq = (refinedBin * m_sampleRate) / fftN;
-
-    fftw_destroy_plan(plan);
-    fftw_free(fftOut);
-    fftw_free(fftIn);
 
     qWarning() << "HPS(log) detected pitch:" << detectedFreq << "Hz";
     banner = QString("pitch detected: %1 Hz").arg(detectedFreq, 0, 'f', 2);
@@ -873,6 +880,16 @@ void VocalEnhancer::processPitchCorrection(QVector<double>& data) {
         }
     } else {
         data = pitchShiftContinuous(data, frameRatios);
+    }
+
+    // RMS makeup: restore level lost during phase vocoder normalization
+    {
+        const double rmsAfter = chunkRMS(data, 0, data.size());
+        if (rmsAfter > 1e-9) {
+            const double makeup = std::clamp(globalRMS / rmsAfter, 0.5, 4.0);
+            if (makeup > 1.02 || makeup < 0.98)
+                applyMakeupGain(data, makeup);
+        }
     }
 
     banner = "Applying dynamics / exciter / limiter...";

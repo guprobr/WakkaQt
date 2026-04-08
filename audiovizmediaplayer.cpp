@@ -231,7 +231,13 @@ void AudioVizMediaPlayer::updateVisualizer()
         m_visualizer_right->updateVisualization(audioChunk, m_audioFormat);  
 
 
-        m_audioPosition += bytesToVisualize;
+        // Lock audio position to actual player position to prevent drift
+        const qint64 playerMs = m_mediaPlayer->position();
+        m_audioPosition = (m_framePositions->isEmpty() || m_mediaPlayer->duration() == 0)
+            ? m_audioPosition + bytesToVisualize
+            : m_framePositions->at(
+                qMin<qint64>(playerMs * m_framePositions->size() / m_mediaPlayer->duration(),
+                             m_framePositions->size() - 1));
 
         // Ensure audioPosition doesn't exceed the audio data size
         if (m_audioPosition >= m_decodedAudioData->size()) {

@@ -76,6 +76,12 @@ private:
     fftw_plan     m_ngFwd   = nullptr;
     fftw_plan     m_ngInv   = nullptr;
 
+    // Pitch detection plan (N=4096) — mutable so detectPitch() can remain const
+    static constexpr int kDetN = 4096;
+    mutable double*       m_detIn  = nullptr;
+    mutable fftw_complex* m_detOut = nullptr;
+    mutable fftw_plan     m_detFwd = nullptr;
+
     // ── Persistent PV phase state ─────────────────────────────────────────
     QVector<double> m_pvPrevPhase;
     QVector<double> m_pvSumPhase;

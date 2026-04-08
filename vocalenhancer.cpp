@@ -318,7 +318,25 @@ QByteArray VocalEnhancer::enhance(const QByteArray& input) {
         lowEnergyDb
     );
 
+    // Snapshot RMS after noise reduction, before pitch processing.
+    // Used at the end to restore output level regardless of scale/correction amount.
+    const double preProcessRMS = chunkRMS(data, 0, data.size());
+
     processPitchCorrection(data);
+
+    // Final level match: ensure output loudness equals pre-pitch-correction level.
+    // Cap is intentionally higher (8×) than the internal one so large scale corrections
+    // (which shift pitch further and lose more OLA energy) are fully compensated.
+    if (preProcessRMS > 1e-6) {
+        const double postRMS = chunkRMS(data, 0, data.size());
+        if (postRMS > 1e-9) {
+            const double makeup = std::clamp(preProcessRMS / postRMS, 0.25, 8.0);
+            if (makeup > 1.02 || makeup < 0.98) {
+                applyMakeupGain(data, makeup);
+                applyLimiter(data, 0.98); // re-limit after boosting
+            }
+        }
+    }
 
     QByteArray output(data.size() * m_frameBytes, 0);
     convertToQByteArray(data, output);
@@ -776,8 +794,7 @@ double VocalEnhancer::correctPitchChunk(QVector<double>& chunk, double prevRatio
 // exactly once over the whole signal — no outer OLA, no phase discontinuities.
 void VocalEnhancer::processPitchCorrection(QVector<double>& data) {
 
-    const double globalRMS = chunkRMS(data, 0, data.size());
-    if (globalRMS < 1e-6) {
+    if (chunkRMS(data, 0, data.size()) < 1e-6) {
         setStatus("Enhancer: silence (bypass)", 1.0);
         return;
     }
@@ -880,22 +897,7 @@ void VocalEnhancer::processPitchCorrection(QVector<double>& data) {
     setStatus("Applying single-pass pitch shift...", 0.60);
 
     // ── Single-pass PV: no outer OLA, no double windowing ────────────────
-    // Note: whole-signal LPC is intentionally NOT used here. LPC formant
-    // preservation requires per-short-frame coefficients; computing one set
-    // of LPC coefficients for the entire recording produces an averaged vocal-
-    // tract filter that colors the whole signal ("inside a can"). The per-chunk
-    // LPC path in correctPitchChunk() is still available for short segments.
     data = pitchShiftContinuous(data, frameRatios);
-
-    // RMS makeup: restore level lost during phase vocoder normalization
-    {
-        const double rmsAfter = chunkRMS(data, 0, data.size());
-        if (rmsAfter > 1e-9) {
-            const double makeup = std::clamp(globalRMS / rmsAfter, 0.5, 4.0);
-            if (makeup > 1.02 || makeup < 0.98)
-                applyMakeupGain(data, makeup);
-        }
-    }
 
     setStatus("Applying dynamics / exciter / limiter...", 0.98);
 

@@ -717,6 +717,15 @@ bool renderVideo(const QString &audioPath,
                 ? av_rescale_q(-videoOffsetMs, AVRational{1, 1000}, videoEncCtx->time_base)
                 : 0;
 
+            // Keyframe-alignment correction: avformat_seek_file snaps to the nearest
+            // keyframe BEFORE the requested position.  After PTS normalization the
+            // first video frame lands at output PTS=0 but its content is from
+            // T_kf_ms, while the audio was trimmed at exactly videoOffsetMs.
+            // The difference (videoOffsetMs - T_kf_ms) must be added to every
+            // video PTS so the streams are sample-accurate.
+            // This is computed once the first decoded frame reveals firstSrcPts.
+            int64_t seekCorrectionTb = 0; // set after first frame when videoOffsetMs > 0
+
             while (av_read_frame(webcamFmt, pkt) >= 0) {
                 if (pkt->stream_index != webcamVidIdx) { av_packet_unref(pkt); continue; }
                 if (avcodec_send_packet(webcamDec, pkt) < 0) { av_packet_unref(pkt); continue; }
@@ -728,8 +737,21 @@ bool renderVideo(const QString &audioPath,
                     // Record first valid PTS so we can zero-base all subsequent frames.
                     // After avformat_seek_file the first frame's PTS is non-zero; writing
                     // it directly while audio starts at 0 causes A/V desync.
-                    if (firstSrcPts == AV_NOPTS_VALUE && srcPts != AV_NOPTS_VALUE)
+                    if (firstSrcPts == AV_NOPTS_VALUE && srcPts != AV_NOPTS_VALUE) {
                         firstSrcPts = srcPts;
+                        if (videoOffsetMs > 0) {
+                            // T_kf_ms: where the keyframe actually landed (ms)
+                            const int64_t T_kf_ms = static_cast<int64_t>(
+                                firstSrcPts * av_q2d(inputTB) * 1000.0);
+                            seekCorrectionTb = av_rescale_q(
+                                videoOffsetMs - T_kf_ms,
+                                AVRational{1, 1000},
+                                videoEncCtx->time_base);
+                            qDebug() << "FFmpegNative: seekTarget=" << videoOffsetMs
+                                     << "ms  keyframeLanded=" << T_kf_ms
+                                     << "ms  correction=" << (videoOffsetMs - T_kf_ms) << "ms";
+                        }
+                    }
                     const int64_t relPts = (srcPts != AV_NOPTS_VALUE && firstSrcPts != AV_NOPTS_VALUE)
                                           ? srcPts - firstSrcPts
                                           : AV_NOPTS_VALUE;
@@ -741,9 +763,9 @@ bool renderVideo(const QString &audioPath,
                     av_frame_unref(frm);
 
                     videoEncFrame->pts = (relPts != AV_NOPTS_VALUE)
-                        ? av_rescale_q(relPts, inputTB, videoEncCtx->time_base) + videoDelayTb
-                        : fallbackPts + videoDelayTb;
-                    fallbackPts = videoEncFrame->pts - videoDelayTb
+                        ? av_rescale_q(relPts, inputTB, videoEncCtx->time_base) + videoDelayTb + seekCorrectionTb
+                        : fallbackPts + videoDelayTb + seekCorrectionTb;
+                    fallbackPts = videoEncFrame->pts - videoDelayTb - seekCorrectionTb
                                   + av_rescale_q(1, inputTB, videoEncCtx->time_base);
 
                     flushEncoder(videoEncCtx, videoOutSt, videoEncFrame);

@@ -91,10 +91,19 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset) {
 
     videoWidget->hide();
     placeholderLabel->show();
+
+    // Disable everything that shouldn't be reachable while FFmpeg is running.
+    // enable_playback covers: transport buttons, load-playback, library, fetch.
+    // isPlayback=false blocks the progress-bar seek event filter as well.
+    isPlayback = false;
+    enable_playback(false);
+    if (progressSongFull)
+        progressSongFull->setToolTip("Nothing to seek");
+
     singButton->setEnabled(false);
     singAction->setEnabled(false);
-    chooseInputButton->setEnabled(true);
-    chooseInputAction->setEnabled(true);
+    chooseInputButton->setEnabled(false);
+    chooseInputAction->setEnabled(false);
 
     progressBar = new QProgressBar(this);
     progressBar->setMinimumSize(640, 25);
@@ -107,11 +116,12 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset) {
     layout->insertWidget(0, progressLabel, 0, Qt::AlignCenter);
     layout->insertWidget(0, progressBar,   0, Qt::AlignCenter);
 
-    // tunedRecorded was extracted by PreviewDialog::setAudioFile with audioOffset
-    // already trimmed from the front.  Apply only the user's manualOffset here;
-    // adding audioOffset again would double-trim and shift the vocal late.
+    // Vocal is trimmed by manualOffset (via renderVideo / QProcess offsetFilter).
+    // Webcam must be seeked by the exact same amount so that both start at the
+    // same real-world moment → A/V sync in the output.
+    // (videoOffset ≈ -manualOffset and would cancel the seek if included.)
     const qint64 effectiveAudioOffset = manualOffset;
-    const qint64 effectiveVideoOffset = videoOffset + manualOffset;
+    const qint64 effectiveVideoOffset = manualOffset;
 
     auto onFinished = [this, progressLabel](bool success) {
         delete progressLabel;
@@ -120,6 +130,8 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset) {
         if (!success) {
             logUI("Render failed.");
             enable_playback(true);
+            chooseInputButton->setEnabled(true);
+            chooseInputAction->setEnabled(true);
             renderAgainButton->setVisible(true);
             QMessageBox::critical(this, "Render Error", "Rendering failed. Check the logs.");
             return;
@@ -128,6 +140,10 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset) {
         QFile file(outputFilePath);
         if (!file.exists()) {
             qWarning() << "Output file missing:" << outputFilePath;
+            enable_playback(true);
+            chooseInputButton->setEnabled(true);
+            chooseInputAction->setEnabled(true);
+            renderAgainButton->setVisible(true);
             QMessageBox::critical(this, "Render Error", "Output file was not created.");
             return;
         }
@@ -139,6 +155,8 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset) {
 
         isRecording = false;
         enable_playback(true);
+        chooseInputButton->setEnabled(true);
+        chooseInputAction->setEnabled(true);
         renderAgainButton->setVisible(true);
         placeholderLabel->hide();
         videoWidget->show();
@@ -226,6 +244,8 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset) {
         this->progressBar = nullptr;
         progressLabel->deleteLater();
         enable_playback(true);
+        chooseInputButton->setEnabled(true);
+        chooseInputAction->setEnabled(true);
         renderAgainButton->setVisible(true);
         QMessageBox::critical(this, "FFmpeg not found",
             "Failed to start FFmpeg. Verify it is installed and available in PATH.");

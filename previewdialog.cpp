@@ -215,7 +215,7 @@ PreviewDialog::PreviewDialog(qint64 offset, qint64 sysLatency, QWidget *parent)
 
     updateEnhancementLabels();
 
-    format.setSampleRate(44100);
+    format.setSampleRate(48000);  // default; overridden from WAV header in onExtracted
     format.setChannelCount(2);
     format.setSampleFormat(QAudioFormat::SampleFormat::Int16);
 
@@ -323,6 +323,28 @@ void PreviewDialog::setAudioFile(const QString &filePath)
         previewInputAudioData = audioFile.readAll();
         audioFile.close();
         QFile::remove(tempAudioFile);
+
+        // Reinitialize audio pipeline if the extracted WAV's rate differs from the
+        // current format (e.g. recording at 48000 Hz vs. previous default 44100 Hz).
+        // Standard PCM WAV: channels at byte 22, sample rate at byte 24.
+        if (previewInputAudioData.size() >= 44) {
+            const int16_t wavCh   = *reinterpret_cast<const int16_t*>(
+                                        previewInputAudioData.constData() + 22);
+            const int32_t wavRate = *reinterpret_cast<const int32_t*>(
+                                        previewInputAudioData.constData() + 24);
+            if (wavRate > 0 && (wavRate != format.sampleRate() ||
+                                wavCh   != format.channelCount())) {
+                format.setSampleRate(wavRate);
+                format.setChannelCount(wavCh);
+                amplifier.reset(new AudioAmplifier(format, this));
+                connect(amplifier.data(), &AudioAmplifier::vocalPreviewChunk,
+                        vocalVisualizer, &AudioVisualizerWidget::updateVisualization);
+                vocalEnhancer.reset(new VocalEnhancer(format, this));
+                qDebug() << "PreviewDialog: audio pipeline reinitialized at"
+                         << wavRate << "Hz," << wavCh << "ch";
+            }
+        }
+
         startEnhancementJob();
     };
 
@@ -349,11 +371,10 @@ void PreviewDialog::setAudioFile(const QString &filePath)
               << "-i" << audioFilePath
               << "-vn"
               << "-filter_complex"
-              << QString("%1 atrim=%2ms,asetpts=PTS-STARTPTS,aresample=44100;")
+              << QString("%1 atrim=%2ms,asetpts=PTS-STARTPTS;")
                      .arg(_audioEnhance).arg(trimOffset)
               << "-ac" << "2"
               << "-acodec" << "pcm_s16le"
-              << "-ar" << "44100"
               << "-async" << "1"
               << tempAudioFile;
 

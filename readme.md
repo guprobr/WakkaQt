@@ -2,7 +2,7 @@
 
 **WakkaQt** is a karaoke recording and production studio built with Qt6. It plays back karaoke videos, records your voice (and optionally your webcam), applies real-time vocal enhancement, and renders everything into a finished video file — all from a single desktop window.
 
-Current version: **2.0.0**
+Current version: **2.0.1**
 
 ---
 
@@ -36,7 +36,7 @@ The `VocalEnhancer` processes the recorded audio through a full DSP pipeline bef
 - **Formant preservation** — LPC-based spectral envelope extraction and re-synthesis keeps the vocal timbre natural after pitch shifting
 - **Noise reduction** — spectral subtraction gate with adaptive noise floor estimation, adjustable strength
 - **Reverb** — Freeverb-style Schroeder reverb with room size, decay, and wet/dry mix controls
-- **Dynamics processing** — compressor, limiter, and harmonic exciter applied after pitch correction; level matching via pre/post RMS with 8× cap
+- **Dynamics processing** — compressor, limiter, and harmonic exciter applied once after all pitch work; level matching via pre/post RMS with 4× cap to avoid over-boosting
 - All FFTW plans (N = 2048 for phase vocoder, N = 1024 for noise gate, N = 4096 for pitch detection) are created once with `FFTW_MEASURE` and reused across the entire recording for maximum performance
 
 ### Preview & Mix Dialog
@@ -55,6 +55,11 @@ Before rendering, a preview dialog lets you:
 - **Native FFmpeg integration** — when the FFmpeg development libraries are present at build time, rendering is done entirely in-process via `libavformat`, `libavcodec`, `libavfilter`, `libswresample`, and `libswscale` with a real-time progress callback. Falls back gracefully to spawning `ffmpeg` via `QProcess` if the libraries are absent
 - "Render Again" re-runs the mix from saved session files with updated settings
 
+### Rendering Safety
+- All UI controls (transport, load, library, fetch, sing) are disabled for the entire duration of an FFmpeg render — whether triggered from the record flow or from the library's re-render path
+- Progress-bar seek is blocked while rendering (`isPlayback = false`)
+- Controls are reliably re-enabled on render success, failure, or missing output file
+
 ### Session Library
 - Sessions are saved to `~/.WakkaQt/library/` as UUID-named folders containing all source files and a JSON metadata record
 - The library dialog lists all saved sessions with timestamps and song names
@@ -69,6 +74,18 @@ Before rendering, a preview dialog lets you:
 ### Audio Visualizer
 - `AudioVisualizerWidget` renders a live waveform of any audio stream (microphone monitor or enhanced vocal preview)
 - Two corner visualizers are shown during webcam preview
+
+---
+
+## Changelog
+
+### v2.0.1
+- **VocalEnhancer: fixed progressive robotic distortion** — the compressor and harmonic exciter were running inside the pitch-correction loop, compounding on every re-enhance pass. They are now applied exactly once, after all pitch work is done
+- **VocalEnhancer: fixed stale pitch state at section boundaries** — `smoothedPitch` was never reset after silence, causing wrong pitch-shift ratios at the start of each new phrase. After ~400 ms of unvoiced audio the pitch state is now cleared
+- **VocalEnhancer: added octave detection guard** — when pitch confidence is low, a 2× or 0.5× detection error is corrected before it can influence the EMA
+- **A/V sync: fixed negative manual-offset case** — when the user decremented the offset below zero, the webcam pre-roll footage was no longer seeked past, causing audio and video to drift. The `effectiveVideoOffset` formula now correctly accounts for the `offset` pre-roll in both directions
+- **Rendering: UI fully locked during FFmpeg** — all controls (transport, load, library, fetch, input select) are disabled for the entire render regardless of which code path triggers it
+- **FFmpeg native: keyframe alignment correction** — after `avformat_seek_file`, the first decoded frame may be earlier than requested due to keyframe rounding; the PTS of that first frame is used to compute a `seekCorrectionTb` that shifts all subsequent video frames back into exact alignment
 
 ---
 

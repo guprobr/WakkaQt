@@ -27,8 +27,8 @@ AudioVizMediaPlayer::AudioVizMediaPlayer(QMediaPlayer *m_player, AudioVisualizer
     // Connect signals and slots
     connect(m_audioTimer, &QTimer::timeout, this, &AudioVizMediaPlayer::updateVisualizer);
 
-    // Set a default audio format
-    m_audioFormat.setSampleRate(44100);
+    // Set a default audio format (overridden from WAV header in loadAudioData)
+    m_audioFormat.setSampleRate(48000);
     m_audioFormat.setChannelCount(2);
     m_audioFormat.setSampleFormat(QAudioFormat::Int16);
 }
@@ -318,6 +318,15 @@ void AudioVizMediaPlayer::loadAudioData(const QString &audioFile, const QString 
 
     *m_decodedAudioData = file.readAll();  // Read all audio data
     file.close();
+
+    // Update format from WAV header so frame-position timing is accurate.
+    // Standard PCM WAV: sample rate at byte 24.
+    if (m_decodedAudioData->size() >= 44) {
+        const int32_t wavRate = *reinterpret_cast<const int32_t*>(
+                                    m_decodedAudioData->constData() + 24);
+        if (wavRate > 0)
+            m_audioFormat.setSampleRate(wavRate);
+    }
 
     m_framePositions->clear();  // Clear any previous data
     for (int i = 0; i < m_decodedAudioData->size(); i += m_audioFormat.bytesForDuration(100000)) { // 100ms

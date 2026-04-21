@@ -324,22 +324,28 @@ QByteArray VocalEnhancer::enhance(const QByteArray& input) {
 
     processPitchCorrection(data);
 
+    // ── Single-pass dynamics and exciter (run once, after all pitch work) ────
+    // Previously these lived inside processPitchCorrection and compounded on
+    // every re-enhance, causing progressive distortion and volume fluctuation.
+    // Running them here, once, on the final pitch-corrected signal is clean.
+    compressDynamics(data, 0.82, 2.0);
+    harmonicExciter(data, 1.08, 0.14);
+
     // Reverb is applied after pitch correction so the wet signal is also pitch-corrected
     applyReverb(data);
 
     // Final level match: ensure output loudness equals pre-pitch-correction level.
-    // Cap is intentionally higher (8×) than the internal one so large scale corrections
-    // (which shift pitch further and lose more OLA energy) are fully compensated.
+    // Tighter cap (4×) avoids over-boosting quiet inputs after compression+exciter.
     if (preProcessRMS > 1e-6) {
         const double postRMS = chunkRMS(data, 0, data.size());
         if (postRMS > 1e-9) {
-            const double makeup = std::clamp(preProcessRMS / postRMS, 0.25, 8.0);
+            const double makeup = std::clamp(preProcessRMS / postRMS, 0.5, 4.0);
             if (makeup > 1.02 || makeup < 0.98) {
                 applyMakeupGain(data, makeup);
-                applyLimiter(data, 0.98); // re-limit after boosting
             }
         }
     }
+    applyLimiter(data, 0.98); // single final clip guard
 
     QByteArray output(data.size() * m_frameBytes, 0);
     convertToQByteArray(data, output);
@@ -807,9 +813,8 @@ void VocalEnhancer::processPitchCorrection(QVector<double>& data) {
     const int Ha = N / 8;  // 256  — analysis hop
 
     if (totalSamples < N) {
-        // Too short for PV — just apply dynamics
-        compressDynamics(data, 0.78, 2.2);
-        harmonicExciter(data, 1.12, 0.18);
+        // Too short for PV — apply a soft limiter only; dynamics/exciter are
+        // handled by enhance() on the full signal after pitch correction.
         applyLimiter(data, 0.98);
         setStatus("Done (short clip)", 1.0);
         return;
@@ -838,9 +843,13 @@ void VocalEnhancer::processPitchCorrection(QVector<double>& data) {
     // EMA for vibrato preservation: τ = 60 ms
     const double emaAlpha = std::exp(-frameDurSec / 0.060);
 
-    double smoothedPitch   = 0.0;
-    double prevTargetCents = 0.0;
-    bool   voiced          = false;
+    double smoothedPitch    = 0.0;
+    double prevTargetCents  = 0.0;
+    bool   voiced           = false;
+    int    unvoicedDetCount = 0;   // consecutive unvoiced detection events
+    // Reset smoothedPitch after ~400 ms of consecutive unvoiced detections so
+    // section transitions don't carry a stale pitch into the next voiced phrase.
+    const int kResetAfterDetections = std::max(1, int(0.400 / (frameDurSec * detStepFrames)));
 
     setStatus("Building pitch correction map...");
 
@@ -852,16 +861,34 @@ void VocalEnhancer::processPitchCorrection(QVector<double>& data) {
             const int wEnd = std::min(totalSamples, pos + detWin);
             if (wEnd - pos >= 1024) {
                 QVector<double> buf(data.begin() + pos, data.begin() + wEnd);
-                const double rawPitch = detectPitchBest(buf);
-                const double conf     = computeAutocorrConfidence(buf, rawPitch);
+                double rawPitch = detectPitchBest(buf);
+                const double conf = computeAutocorrConfidence(buf, rawPitch);
 
                 if (rawPitch > 0.0 && conf > 0.30) {
+                    // ── Octave-error guard ────────────────────────────────
+                    // If the new detection is an octave away from the EMA and
+                    // confidence is borderline, prefer the octave-corrected value.
+                    if (smoothedPitch > 0.0 && conf < 0.55) {
+                        const double ratio = rawPitch / smoothedPitch;
+                        if (ratio > 1.7 && ratio < 2.3)       rawPitch = rawPitch * 0.5;
+                        else if (ratio > 0.43 && ratio < 0.6) rawPitch = rawPitch * 2.0;
+                    }
+
                     if (smoothedPitch <= 0.0) smoothedPitch = rawPitch;
                     else smoothedPitch = emaAlpha * smoothedPitch
                                       + (1.0 - emaAlpha) * rawPitch;
                     voiced = true;
+                    unvoicedDetCount = 0;
                 } else {
                     voiced = false;
+                    ++unvoicedDetCount;
+                    // After sustained silence, clear stale pitch so the next
+                    // phrase starts with fresh detection instead of wrong slew.
+                    if (unvoicedDetCount >= kResetAfterDetections) {
+                        smoothedPitch    = 0.0;
+                        prevTargetCents  = 0.0;
+                        unvoicedDetCount = 0;
+                    }
                 }
                 setStatus(
                     QString("Pitch map %1/%2  det=%3 Hz  conf=%4")
@@ -902,10 +929,9 @@ void VocalEnhancer::processPitchCorrection(QVector<double>& data) {
     // ── Single-pass PV: no outer OLA, no double windowing ────────────────
     data = pitchShiftContinuous(data, frameRatios);
 
-    setStatus("Applying dynamics / exciter / limiter...", 0.98);
-
-    compressDynamics(data, 0.78, 2.2);
-    harmonicExciter(data, 1.12, 0.18);
+    // Soft-limit after PV to prevent inter-sample spikes; dynamics and harmonic
+    // exciter are applied by enhance() on the fully processed signal so they
+    // run exactly once and never compound with pitch-correction iterations.
     applyLimiter(data, 0.98);
 
     setStatus(QString("Done: single-pass PV, %1 frames").arg(numFrames), 1.0);

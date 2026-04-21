@@ -15,7 +15,8 @@ LibraryDialog::LibraryDialog(QWidget *parent)
     QLabel *headerLabel = new QLabel(
         "<b>Session Library</b><br>"
         "<small>Every recording is saved automatically. "
-        "Select a session and press <b>Resume Session</b> to re-adjust and re-render.</small>",
+        "Select a session and press <b>Resume Session</b> to re-adjust and re-render. "
+        "Use Ctrl+click or Shift+click to select multiple sessions for bulk deletion.</small>",
         this);
     headerLabel->setWordWrap(true);
     headerLabel->setAlignment(Qt::AlignCenter);
@@ -24,7 +25,7 @@ LibraryDialog::LibraryDialog(QWidget *parent)
     // ── Session list ──────────────────────────────────────────────────────
     m_list = new QListWidget(this);
     m_list->setAlternatingRowColors(true);
-    m_list->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_list->setSelectionMode(QAbstractItemView::ExtendedSelection);
     m_list->setFont(QApplication::font());
 
     // ── Detail panel ─────────────────────────────────────────────────────
@@ -45,7 +46,7 @@ LibraryDialog::LibraryDialog(QWidget *parent)
     m_renameBtn->setEnabled(false);
 
     m_deleteBtn = new QPushButton("\xe2\x9c\x95  Delete", this);
-    m_deleteBtn->setToolTip("Permanently remove this session from the library");
+    m_deleteBtn->setToolTip("Permanently remove selected session(s) from the library (Ctrl+click to multi-select)");
     m_deleteBtn->setEnabled(false);
 
     m_closeBtn = new QPushButton("Close", this);
@@ -145,18 +146,32 @@ static QString selectedId(QListWidget *list)
 // ── onSelectionChanged ────────────────────────────────────────────────────────
 void LibraryDialog::onSelectionChanged()
 {
-    const QString id = ::selectedId(m_list);
-    const bool have = !id.isEmpty();
+    // Count only rows that are actually selectable (filters out the empty-list placeholder)
+    int selectableCount = 0;
+    for (QListWidgetItem *item : m_list->selectedItems())
+        if (item->flags() & Qt::ItemIsSelectable)
+            ++selectableCount;
 
-    m_restoreBtn->setEnabled(have);
-    m_deleteBtn->setEnabled(have);
-    m_renameBtn->setEnabled(have);
+    // Restore and Rename require exactly one session; Delete works for any non-zero count.
+    m_restoreBtn->setEnabled(selectableCount == 1);
+    m_renameBtn->setEnabled(selectableCount == 1);
+    m_deleteBtn->setEnabled(selectableCount >= 1);
 
-    if (!have) {
+    if (selectableCount == 0) {
         m_detailLabel->setText("Select a session to see details.");
         return;
     }
 
+    if (selectableCount > 1) {
+        m_detailLabel->setText(
+            QString("<b>%1 sessions selected.</b><br>"
+                    "<span style='color: gray;'>Press <b>Delete</b> to remove all of them.</span>")
+                .arg(selectableCount));
+        return;
+    }
+
+    // Exactly one — show full detail
+    const QString id = ::selectedId(m_list);
     for (const SessionEntry &e : m_entries) {
         if (e.id != id) continue;
 
@@ -198,24 +213,39 @@ void LibraryDialog::onRestoreClicked()
 // ── onDeleteClicked ───────────────────────────────────────────────────────────
 void LibraryDialog::onDeleteClicked()
 {
-    const QString id = ::selectedId(m_list);
-    if (id.isEmpty()) return;
+    // Collect all selected, selectable ids
+    QStringList ids;
+    for (QListWidgetItem *item : m_list->selectedItems()) {
+        if (!(item->flags() & Qt::ItemIsSelectable)) continue;
+        const QString id = item->data(Qt::UserRole).toString();
+        if (!id.isEmpty())
+            ids << id;
+    }
+    if (ids.isEmpty()) return;
 
-    QString label;
-    for (const SessionEntry &e : m_entries)
-        if (e.id == id) { label = e.label; break; }
+    QString confirmMsg;
+    if (ids.size() == 1) {
+        QString label;
+        for (const SessionEntry &e : m_entries)
+            if (e.id == ids.first()) { label = e.label; break; }
+        confirmMsg = QString("Permanently delete this session?\n\n\"%1\"\n\nThis cannot be undone.")
+                         .arg(label);
+    } else {
+        confirmMsg = QString("Permanently delete %1 sessions?\n\nThis cannot be undone.")
+                         .arg(ids.size());
+    }
 
     const int ret = QMessageBox::question(
-        this,
-        "Delete Session",
-        QString("Permanently delete this session?\n\n\"%1\"\n\nThis cannot be undone.")
-            .arg(label),
+        this, "Delete Session", confirmMsg,
         QMessageBox::Yes | QMessageBox::No,
         QMessageBox::No);
 
     if (ret == QMessageBox::Yes) {
-        m_mgr.deleteSession(id);
-        m_detailLabel->setText("Session deleted.");
+        for (const QString &id : ids)
+            m_mgr.deleteSession(id);
+        m_detailLabel->setText(
+            ids.size() == 1 ? "Session deleted."
+                            : QString("%1 sessions deleted.").arg(ids.size()));
         refreshList();
     }
 }

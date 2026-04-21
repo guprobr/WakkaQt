@@ -97,7 +97,9 @@ bool extractAudio(const QString &input, const QString &output,
     }
 
     const bool wantMono = filterStr.contains("mono", Qt::CaseInsensitive);
-    const int   outRate  = 44100;
+    // Preserve the source sample rate so the VocalEnhancer pipeline runs at native
+    // quality. Callers that mix multiple streams handle resampling themselves.
+    const int   outRate  = (decCtx->sample_rate > 0) ? decCtx->sample_rate : 44100;
     const int   outCh    = wantMono ? 1 : 2;
     const uint64_t outMask = wantMono ? AV_CH_LAYOUT_MONO : AV_CH_LAYOUT_STEREO;
 

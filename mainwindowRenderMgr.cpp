@@ -116,12 +116,17 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset) {
     layout->insertWidget(0, progressLabel, 0, Qt::AlignCenter);
     layout->insertWidget(0, progressBar,   0, Qt::AlignCenter);
 
-    // Vocal is trimmed by manualOffset (via renderVideo / QProcess offsetFilter).
-    // Webcam must be seeked by the exact same amount so that both start at the
-    // same real-world moment → A/V sync in the output.
-    // (videoOffset ≈ -manualOffset and would cancel the seek if included.)
+    // Vocal is trimmed/delayed by manualOffset ms.
+    // Webcam: at positive manualOffset we seek directly (pre-roll trim + user delta).
+    // At negative manualOffset the user wants to delay both streams, but the webcam
+    // still has ~|offset| ms of pre-roll footage that must be seeked past first.
+    // effectiveVideoOffset = offset + manualOffset keeps the pre-roll seek intact
+    // while shifting by the user's delta, preventing the "shows pre-song footage"
+    // discrepancy that occurred when manualOffset went negative.
     const qint64 effectiveAudioOffset = manualOffset;
-    const qint64 effectiveVideoOffset = manualOffset;
+    const qint64 effectiveVideoOffset = (manualOffset >= 0)
+        ? manualOffset
+        : qMax<qint64>(-(qint64)offset, offset + manualOffset);
 
     auto onFinished = [this, progressLabel](bool success) {
         delete progressLabel;

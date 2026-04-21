@@ -29,6 +29,39 @@ AudioAmplifier::AudioAmplifier(const QAudioFormat &format, QObject *parent)
     }
     playbackData = playbackFile.readAll();
 
+    // Resample backing track if its rate doesn't match the vocal format rate.
+    // Both streams go through the same QAudioSink; mismatched rates cause
+    // chipmunk/slow-motion effects and byte-offset seek errors.
+    if (playbackData.size() >= 44) {
+        const int16_t pbCh   = *reinterpret_cast<const int16_t*>(playbackData.constData() + 22);
+        const int32_t pbRate = *reinterpret_cast<const int32_t*>(playbackData.constData() + 24);
+        const int targetRate = audioFormat.sampleRate();
+        if (pbRate > 0 && pbRate != targetRate && pbCh == audioFormat.channelCount()) {
+            const QByteArray pcm = playbackData.mid(44);
+            const int inFrames   = pcm.size() / (pbCh * 2);
+            const int outFrames  = int(qint64(inFrames) * targetRate / pbRate);
+            QByteArray resampled(outFrames * pbCh * 2, 0);
+            const int16_t *src = reinterpret_cast<const int16_t*>(pcm.constData());
+            int16_t *dst = reinterpret_cast<int16_t*>(resampled.data());
+            for (int i = 0; i < outFrames; ++i) {
+                const double pos = double(i) * pbRate / targetRate;
+                const int i0 = std::min(static_cast<int>(pos), inFrames - 1);
+                const int i1 = std::min(i0 + 1, inFrames - 1);
+                const double f = pos - i0;
+                for (int c = 0; c < pbCh; ++c)
+                    dst[i * pbCh + c] = static_cast<int16_t>(
+                        src[i0 * pbCh + c] * (1.0 - f) + src[i1 * pbCh + c] * f);
+            }
+            QByteArray hdr = playbackData.left(44);
+            *reinterpret_cast<int32_t*>(hdr.data() +  4) = resampled.size() + 36;
+            *reinterpret_cast<int32_t*>(hdr.data() + 24) = targetRate;
+            *reinterpret_cast<int32_t*>(hdr.data() + 28) = targetRate * pbCh * 2;
+            *reinterpret_cast<int32_t*>(hdr.data() + 40) = resampled.size();
+            playbackData = hdr + resampled;
+            qDebug() << "AudioAmplifier: resampled backing" << pbRate << "Hz ->" << targetRate << "Hz";
+        }
+    }
+
     dataPushTimer.reset(new QTimer(this));
     connect(dataPushTimer.data(), &QTimer::timeout,
             this, &AudioAmplifier::checkBufferState);

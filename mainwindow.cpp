@@ -177,9 +177,7 @@ MainWindow::MainWindow(QWidget *parent)
     soundLevelWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
     soundLevelWidget->setToolTip("Sound input visualization widget");
 
-    // Real-time pitch monitor (shown only while recording)
     pitchMonitor = new PitchMonitorWidget(44100, this);
-    pitchMonitor->setVisible(false);
     connect(soundLevelWidget, &SndWidget::audioChunkReady,
             pitchMonitor,     &PitchMonitorWidget::onAudioChunk);
 

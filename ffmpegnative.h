@@ -31,6 +31,7 @@ bool renderVideo(const QString &audioPath,          ///< enhanced vocal audio (W
                  qint64         videoOffsetMs,      ///< webcam timing adjustment (ms)
                  const QString &resolution,         ///< e.g. "1920x1080"
                  const QString &audioMasterization, ///< libavfilter chain string
+                 const QString &rawVocalPath = {},  ///< raw vocal for pitch overlay (optional)
                  std::function<void(double)> progressCb = {});
 
 } // namespace FFmpegNative

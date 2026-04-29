@@ -68,7 +68,7 @@ void MainWindow::renderAgain()
     qDebug() << "Will overlay each video with resolution:" << setRez;
 
     // Show the preview dialog
-    previewDialog.reset(new PreviewDialog(audioOffset, offset, this));
+    previewDialog.reset(new PreviewDialog(audioOffset, this));
     previewDialog->setAudioFile(audioRecorded);
     if (previewDialog->exec() == QDialog::Accepted)
     {
@@ -116,17 +116,24 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset) {
     layout->insertWidget(0, progressLabel, 0, Qt::AlignCenter);
     layout->insertWidget(0, progressBar,   0, Qt::AlignCenter);
 
-    // Vocal is trimmed/delayed by manualOffset ms.
-    // Webcam: at positive manualOffset we seek directly (pre-roll trim + user delta).
-    // At negative manualOffset the user wants to delay both streams, but the webcam
-    // still has ~|offset| ms of pre-roll footage that must be seeked past first.
-    // effectiveVideoOffset = offset + manualOffset keeps the pre-roll seek intact
-    // while shifting by the user's delta, preventing the "shows pre-song footage"
-    // discrepancy that occurred when manualOffset went negative.
+    // effectiveAudioOffset and effectiveVideoOffset are intentionally identical.
+    //
+    // Both audio and video recordings start at the same instant and share the same
+    // pre-roll length (offset ms before the song begins).  The rendered output must
+    // apply the same shift to both streams so their relative timing is preserved:
+    //
+    //   manualOffset > 0  →  trim manualOffset ms from the start of both audio
+    //                        (decodeAudioToFloat skip) and video (avformat_seek_file).
+    //   manualOffset < 0  →  prepend |manualOffset| ms of silence to audio AND delay
+    //                        the video stream by the same |manualOffset| ms.
+    //                        Both files are read from t=0; their pre-roll content lands
+    //                        at the same output time → streams stay in sync.
+    //
+    // The old formula (max(-offset, offset+manualOffset)) was wrong for the negative
+    // case: it produced a delay smaller than |manualOffset|, causing audio to lag video
+    // by (|manualOffset| - |effectiveVideoOffset|) ms.
     const qint64 effectiveAudioOffset = manualOffset;
-    const qint64 effectiveVideoOffset = (manualOffset >= 0)
-        ? manualOffset
-        : qMax<qint64>(-(qint64)offset, offset + manualOffset);
+    const qint64 effectiveVideoOffset = manualOffset;
 
     auto onFinished = [this, progressLabel](bool success) {
         delete progressLabel;
@@ -188,6 +195,7 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset) {
             effectiveVideoOffset,
             setRez,
             _audioMasterization,
+            audioRecorded,
             [pb](double p) {
                 QMetaObject::invokeMethod(pb, [pb, p]() {
                     pb->setValue(int(p * 100));

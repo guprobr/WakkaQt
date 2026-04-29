@@ -378,6 +378,327 @@ static QVector<int16_t> applyAudioFilter(const QVector<float> &input,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Pitch overlay helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+struct PitchPoint {
+    int64_t ms;
+    double  hz;
+    double  cents;
+    int     noteIdx;
+    int     octave;
+    bool    valid;
+};
+
+// 5×8 bitmap font. bit7 = leftmost column.
+// Index map: 0=' ' 1='#' 2='+' 3='-' 4-13='0'-'9' 14-20='A'-'G' 21='c'
+static const uint8_t kFont5x8[22][8] = {
+    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}, // ' '
+    {0x50,0x50,0xF8,0x50,0xF8,0x50,0x50,0x00}, // '#'
+    {0x00,0x20,0x20,0xF8,0x20,0x20,0x00,0x00}, // '+'
+    {0x00,0x00,0x00,0xF8,0x00,0x00,0x00,0x00}, // '-'
+    {0x70,0x88,0x88,0x88,0x88,0x88,0x70,0x00}, // '0'
+    {0x20,0x60,0x20,0x20,0x20,0x20,0x70,0x00}, // '1'
+    {0x70,0x88,0x08,0x10,0x20,0x40,0xF8,0x00}, // '2'
+    {0x70,0x88,0x08,0x30,0x08,0x88,0x70,0x00}, // '3'
+    {0x10,0x30,0x50,0x90,0xF8,0x10,0x10,0x00}, // '4'
+    {0xF8,0x80,0xF0,0x08,0x08,0x88,0x70,0x00}, // '5'
+    {0x70,0x80,0xF0,0x88,0x88,0x88,0x70,0x00}, // '6'
+    {0xF8,0x08,0x10,0x20,0x20,0x20,0x20,0x00}, // '7'
+    {0x70,0x88,0x88,0x70,0x88,0x88,0x70,0x00}, // '8'
+    {0x70,0x88,0x88,0x78,0x08,0x88,0x70,0x00}, // '9'
+    {0x70,0x88,0x88,0xF8,0x88,0x88,0x88,0x00}, // 'A'
+    {0xF0,0x88,0x88,0xF0,0x88,0x88,0xF0,0x00}, // 'B'
+    {0x70,0x88,0x80,0x80,0x80,0x88,0x70,0x00}, // 'C'
+    {0xF0,0x88,0x88,0x88,0x88,0x88,0xF0,0x00}, // 'D'
+    {0xF8,0x80,0x80,0xF0,0x80,0x80,0xF8,0x00}, // 'E'
+    {0xF8,0x80,0x80,0xF0,0x80,0x80,0x80,0x00}, // 'F'
+    {0x70,0x88,0x80,0xB8,0x88,0x88,0x70,0x00}, // 'G'
+    {0x00,0x00,0x00,0x70,0x80,0x80,0x70,0x00}, // 'c'
+};
+
+static const char * const kNoteNames[12] = {
+    "C","C#","D","D#","E","F","F#","G","G#","A","A#","B"
+};
+
+static int fontIndex(char c)
+{
+    if (c == ' ') return 0;
+    if (c == '#') return 1;
+    if (c == '+') return 2;
+    if (c == '-') return 3;
+    if (c >= '0' && c <= '9') return 4 + (c - '0');
+    if (c >= 'A' && c <= 'G') return 14 + (c - 'A');
+    if (c == 'c') return 21;
+    return 0;
+}
+
+static void drawGlyph(AVFrame *f, int x, int y, char c,
+                      uint8_t Yv, uint8_t Uv, uint8_t Vv, int scale)
+{
+    const uint8_t *glyph = kFont5x8[fontIndex(c)];
+    for (int row = 0; row < 8; ++row) {
+        const uint8_t bits = glyph[row];
+        for (int col = 0; col < 5; ++col) {
+            if (!(bits & (0x80u >> col))) continue;
+            for (int sy = 0; sy < scale; ++sy) {
+                const int py = y + row * scale + sy;
+                if (py < 0 || py >= f->height) continue;
+                for (int sx = 0; sx < scale; ++sx) {
+                    const int px = x + col * scale + sx;
+                    if (px < 0 || px >= f->width) continue;
+                    f->data[0][py * f->linesize[0] + px] = Yv;
+                    const int ux = px >> 1, uy = py >> 1;
+                    if (ux < f->width / 2 && uy < f->height / 2) {
+                        f->data[1][uy * f->linesize[1] + ux] = Uv;
+                        f->data[2][uy * f->linesize[2] + ux] = Vv;
+                    }
+                }
+            }
+        }
+    }
+}
+
+static double yinDetect(const float *samples, int n, int sampleRate)
+{
+    const int W = std::min(n / 2, 512);
+    if (W < 32) return -1.0;
+
+    std::vector<double> d(W, 0.0);
+    for (int tau = 1; tau < W; ++tau)
+        for (int j = 0; j < W; ++j) {
+            const double diff = samples[j] - samples[j + tau];
+            d[tau] += diff * diff;
+        }
+
+    std::vector<double> cmnd(W);
+    cmnd[0] = 1.0;
+    double runSum = 0.0;
+    for (int tau = 1; tau < W; ++tau) {
+        runSum += d[tau];
+        cmnd[tau] = (runSum > 0.0) ? d[tau] * tau / runSum : 1.0;
+    }
+
+    const double thresh = 0.10;
+    for (int tau = 2; tau < W - 1; ++tau) {
+        if (cmnd[tau] < thresh && cmnd[tau] <= cmnd[tau-1] && cmnd[tau] <= cmnd[tau+1]) {
+            const double s0 = cmnd[tau-1], s1 = cmnd[tau], s2 = cmnd[tau+1];
+            const double denom = 2.0 * s1 - s0 - s2;
+            const double adj = (denom != 0.0) ? 0.5 * (s2 - s0) / denom : 0.0;
+            const double tauF = tau + adj;
+            if (tauF > 0.5) return double(sampleRate) / tauF;
+            break;
+        }
+    }
+    return -1.0;
+}
+
+static QVector<PitchPoint> analyzePitch(const QString &audioPath)
+{
+    AVFormatContext *fmt = nullptr;
+    if (avformat_open_input(&fmt, audioPath.toUtf8().constData(), nullptr, nullptr) < 0)
+        return {};
+    avformat_find_stream_info(fmt, nullptr);
+
+    const int audioIdx = av_find_best_stream(fmt, AVMEDIA_TYPE_AUDIO, -1, -1, nullptr, 0);
+    if (audioIdx < 0) { avformat_close_input(&fmt); return {}; }
+
+    const AVCodec *dec = avcodec_find_decoder(fmt->streams[audioIdx]->codecpar->codec_id);
+    if (!dec) { avformat_close_input(&fmt); return {}; }
+    AVCodecContext *ctx = avcodec_alloc_context3(dec);
+    avcodec_parameters_to_context(ctx, fmt->streams[audioIdx]->codecpar);
+    avcodec_open2(ctx, dec, nullptr);
+
+    SwrContext *swr = nullptr;
+    AVChannelLayout srcCL, dstCL;
+    av_channel_layout_copy(&srcCL, &ctx->ch_layout);
+    if (srcCL.nb_channels == 0) av_channel_layout_default(&srcCL, 1);
+    av_channel_layout_default(&dstCL, 1); // mono output
+    swr_alloc_set_opts2(&swr, &dstCL, AV_SAMPLE_FMT_FLT, 44100,
+                         &srcCL, ctx->sample_fmt, ctx->sample_rate, 0, nullptr);
+    swr_init(swr);
+    av_channel_layout_uninit(&srcCL);
+    av_channel_layout_uninit(&dstCL);
+
+    QVector<float> mono;
+    mono.reserve(44100 * 60);
+
+    AVPacket *pkt = av_packet_alloc();
+    AVFrame  *frm = av_frame_alloc();
+    while (av_read_frame(fmt, pkt) >= 0) {
+        if (pkt->stream_index != audioIdx) { av_packet_unref(pkt); continue; }
+        if (avcodec_send_packet(ctx, pkt) < 0) { av_packet_unref(pkt); continue; }
+        av_packet_unref(pkt);
+        while (avcodec_receive_frame(ctx, frm) == 0) {
+            const int outN = (int)av_rescale_rnd(
+                swr_get_delay(swr, ctx->sample_rate) + frm->nb_samples,
+                44100, ctx->sample_rate, AV_ROUND_UP);
+            QVector<float> tmp(outN);
+            uint8_t *ptr = reinterpret_cast<uint8_t*>(tmp.data());
+            const int got = swr_convert(swr, &ptr, outN,
+                                        (const uint8_t**)frm->data, frm->nb_samples);
+            if (got > 0) {
+                const int oldSz = mono.size();
+                mono.resize(oldSz + got);
+                memcpy(mono.data() + oldSz, tmp.constData(), got * sizeof(float));
+            }
+            av_frame_unref(frm);
+        }
+    }
+    {
+        const int outN = (int)swr_get_delay(swr, 44100) + 1024;
+        QVector<float> tmp(outN);
+        uint8_t *ptr = reinterpret_cast<uint8_t*>(tmp.data());
+        const int got = swr_convert(swr, &ptr, outN, nullptr, 0);
+        if (got > 0) {
+            const int oldSz = mono.size();
+            mono.resize(oldSz + got);
+            memcpy(mono.data() + oldSz, tmp.constData(), got * sizeof(float));
+        }
+    }
+    av_frame_free(&frm);
+    av_packet_free(&pkt);
+    swr_free(&swr);
+    avcodec_free_context(&ctx);
+    avformat_close_input(&fmt);
+
+    if (mono.isEmpty()) return {};
+
+    constexpr int kSR  = 44100;
+    constexpr int kHop = kSR * 80 / 1000; // 80 ms hop
+    constexpr int kWin = 2048;
+
+    QVector<PitchPoint> result;
+    double smoothHz = 0.0, smoothCents = 0.0;
+    bool hadVoice = false;
+
+    for (int pos = 0; pos + kWin <= mono.size(); pos += kHop) {
+        const int64_t ms = int64_t(pos) * 1000 / kSR;
+        const double hz  = yinDetect(mono.constData() + pos, kWin, kSR);
+
+        PitchPoint pp;
+        pp.ms = ms;
+        if (hz > 60.0 && hz < 1600.0) {
+            if (!hadVoice) { smoothHz = hz; hadVoice = true; }
+            else           smoothHz = 0.3 * hz + 0.7 * smoothHz;
+
+            const double midiF = 69.0 + 12.0 * std::log2(smoothHz / 440.0);
+            const int midi = (int)std::round(midiF);
+            pp.noteIdx = ((midi % 12) + 12) % 12;
+            pp.octave  = midi / 12 - 1;
+
+            const double rawCents = (midiF - midi) * 100.0;
+            smoothCents = 0.3 * rawCents + 0.7 * smoothCents;
+            pp.cents = smoothCents;
+            pp.hz    = smoothHz;
+            pp.valid = true;
+        } else {
+            smoothCents *= 0.85;
+            pp.hz      = 0.0;
+            pp.cents   = smoothCents;
+            pp.noteIdx = 0;
+            pp.octave  = 0;
+            pp.valid   = false;
+            if (std::abs(smoothCents) < 1.0) hadVoice = false;
+        }
+        result.append(pp);
+    }
+    return result;
+}
+
+static void paintPitchOverlay(AVFrame *frame, int64_t lookupMs,
+                               const QVector<PitchPoint> &pitches)
+{
+    if (pitches.isEmpty()) return;
+
+    const int W = frame->width;
+    const int H = frame->height;
+    const int scale  = (W >= 1280) ? 3 : 2;
+    const int glyphW = 5 * scale + scale; // 5 cols + 1 gap
+    const int stripH = 8 * scale + 4 * scale;
+    const int stripY = H - stripH;
+
+    // Dark background strip
+    for (int y = stripY; y < H; ++y)
+        memset(frame->data[0] + y * frame->linesize[0], 20, W);
+    for (int y = stripY / 2; y < H / 2; ++y) {
+        memset(frame->data[1] + y * frame->linesize[1], 128, W / 2);
+        memset(frame->data[2] + y * frame->linesize[2], 128, W / 2);
+    }
+
+    // Find closest pitch point (last entry with ms <= lookupMs)
+    int lo = 0, hi = pitches.size() - 1, best = 0;
+    while (lo <= hi) {
+        const int mid = (lo + hi) / 2;
+        if (pitches[mid].ms <= lookupMs) { best = mid; lo = mid + 1; }
+        else hi = mid - 1;
+    }
+    const PitchPoint &pp = pitches[best];
+    if (!pp.valid) return;
+
+    // Color: green <10 ¢, yellow 10–30 ¢, red >30 ¢
+    const int absCents = (int)std::abs(std::round(pp.cents));
+    uint8_t Yv, Uv, Vv;
+    if      (absCents < 10) { Yv = 148; Uv =  81; Vv =  69; } // green
+    else if (absCents < 30) { Yv = 177; Uv =  55; Vv = 148; } // yellow
+    else                    { Yv = 109; Uv = 104; Vv = 198; } // red
+
+    const int textY = stripY + 2 * scale;
+
+    // Left: note + octave  e.g. "C#4"
+    const QString noteStr = QString::fromLatin1(kNoteNames[pp.noteIdx])
+                            + QString::number(pp.octave);
+    int x = 2 * scale;
+    for (QChar ch : noteStr) {
+        drawGlyph(frame, x, textY, ch.toLatin1(), Yv, Uv, Vv, scale);
+        x += glyphW;
+    }
+
+    // Center: gray baseline + white center tick + colored marker
+    const int barW  = W / 3;
+    const int barX  = (W - barW) / 2;
+    const int midY  = stripY + stripH / 2;
+    const float frac = std::clamp(float(pp.cents + 50.0) / 100.0f, 0.0f, 1.0f);
+    const int markerX = barX + (int)(frac * barW);
+
+    for (int px = barX; px < barX + barW && px < W; ++px) {
+        if (px < 0) continue;
+        frame->data[0][midY * frame->linesize[0] + px] = 80;
+        const int ux = px >> 1, uy = midY >> 1;
+        if (ux < W/2 && uy < H/2) {
+            frame->data[1][uy * frame->linesize[1] + ux] = 128;
+            frame->data[2][uy * frame->linesize[2] + ux] = 128;
+        }
+    }
+    for (int py = stripY + scale; py < H - scale; ++py) { // center tick
+        const int cx = W / 2;
+        if (cx >= 0 && cx < W) frame->data[0][py * frame->linesize[0] + cx] = 200;
+    }
+    for (int py = midY - 2*scale; py <= midY + 2*scale && py < H; ++py) {
+        if (py < 0) continue;
+        for (int px = markerX - scale; px <= markerX + scale && px < W; ++px) {
+            if (px < 0) continue;
+            frame->data[0][py * frame->linesize[0] + px] = Yv;
+            const int ux = px >> 1, uy = py >> 1;
+            if (ux < W/2 && uy < H/2) {
+                frame->data[1][uy * frame->linesize[1] + ux] = Uv;
+                frame->data[2][uy * frame->linesize[2] + ux] = Vv;
+            }
+        }
+    }
+
+    // Right: cents value e.g. "+12c"
+    const int centsRounded = (int)std::round(pp.cents);
+    const QString centsStr = (centsRounded >= 0 ? "+" : "")
+                             + QString::number(centsRounded) + "c";
+    x = W - (int)centsStr.length() * glyphW - 2 * scale;
+    for (QChar ch : centsStr) {
+        drawGlyph(frame, x, textY, ch.toLatin1(), Yv, Uv, Vv, scale);
+        x += glyphW;
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // renderVideo
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -390,6 +711,7 @@ bool renderVideo(const QString &audioPath,
                  qint64 videoOffsetMs,
                  const QString &resolution,
                  const QString &audioMasterization,
+                 const QString &rawVocalPath,
                  std::function<void(double)> progressCb)
 {
     const QString ext = QFileInfo(outputPath).suffix().toLower();
@@ -670,6 +992,10 @@ bool renderVideo(const QString &audioPath,
 
     // ── Step 7: Encode video ──────────────────────────────────────────────────
     if (videoEncCtx && videoOutSt && videoEncFrame) {
+        QVector<PitchPoint> pitchData;
+        if (!rawVocalPath.isEmpty())
+            pitchData = analyzePitch(rawVocalPath);
+
         AVFormatContext *webcamFmt = nullptr;
         AVCodecContext  *webcamDec = nullptr;
         int webcamVidIdx = -1;
@@ -763,6 +1089,12 @@ bool renderVideo(const QString &audioPath,
                               0, webcamDec->height,
                               videoEncFrame->data, videoEncFrame->linesize);
                     av_frame_unref(frm);
+
+                    if (!pitchData.isEmpty() && relPts != AV_NOPTS_VALUE) {
+                        const int64_t frameMs = (int64_t)(av_q2d(inputTB) * double(relPts) * 1000.0);
+                        const int64_t lookupMs = std::max<int64_t>(0, frameMs + audioOffsetMs);
+                        paintPitchOverlay(videoEncFrame, lookupMs, pitchData);
+                    }
 
                     videoEncFrame->pts = (relPts != AV_NOPTS_VALUE)
                         ? av_rescale_q(relPts, inputTB, videoEncCtx->time_base) + videoDelayTb + seekCorrectionTb

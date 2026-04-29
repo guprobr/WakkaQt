@@ -81,9 +81,7 @@ void MainWindow::onRecorderStateChanged(QMediaRecorder::RecorderState state) {
         singAction->setEnabled(true);
         abortButton->setVisible(true);
 
-        // Show real-time pitch monitor while the user is singing
         pitchMonitor->reset();
-        pitchMonitor->setVisible(true);
 
     }
     
@@ -140,7 +138,6 @@ void MainWindow::stopRecording() {
         abortButton->setVisible(false);
         singAction->setText("SING");
         singAction->setEnabled(false);
-        pitchMonitor->setVisible(false);
         vizCheckbox->setEnabled(true);
         if (progressSongFull)
             progressSongFull->setToolTip("Nothing to seek");

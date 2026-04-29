@@ -12,10 +12,10 @@
 #include <QFont>
 #include <QDebug>
 
-PreviewDialog::PreviewDialog(qint64 offset, qint64 sysLatency, QWidget *parent)
+PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
     : QDialog(parent),
       audioOffset(offset),
-      newOffset(sysLatency),
+      newOffset(offset),
       amplifier(nullptr),
       volume(1.0),
       pendingVolumeValue(100)

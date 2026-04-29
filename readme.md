@@ -2,7 +2,7 @@
 
 **WakkaQt** is a karaoke recording and production studio built with Qt6. It plays back karaoke videos, records your voice (and optionally your webcam), applies real-time vocal enhancement, and renders everything into a finished video file — all from a single desktop window.
 
-Current version: **2.0.1**
+Current version: **2.0.2**
 
 ---
 
@@ -25,7 +25,7 @@ For Linux, see the [build instructions](#building-on-linux) below.
 
 ### Real-Time Monitoring
 - **Waveform visualizer** (`SndWidget`) — live oscilloscope display of the microphone input during recording
-- **Pitch monitor** (`PitchMonitorWidget`) — shows the detected note name, octave, and cents deviation in real time using YIN pitch detection; includes a smoothed deviation bar so you can see how in-tune you are as you sing
+- **Pitch monitor** (`PitchMonitorWidget`) — always visible; shows the detected note name, octave, and cents deviation in real time using YIN pitch detection; includes a smoothed deviation bar so you can see how in-tune you are as you sing
 
 ### Vocal Enhancement Engine
 The `VocalEnhancer` processes the recorded audio through a full DSP pipeline before rendering:
@@ -54,6 +54,7 @@ Before rendering, a preview dialog lets you:
 - Output resolution: 1920×1080 (karaoke stacked above webcam)
 - **Native FFmpeg integration** — when the FFmpeg development libraries are present at build time, rendering is done entirely in-process via `libavformat`, `libavcodec`, `libavfilter`, `libswresample`, and `libswscale` with a real-time progress callback. Falls back gracefully to spawning `ffmpeg` via `QProcess` if the libraries are absent
 - "Render Again" re-runs the mix from saved session files with updated settings
+- **Pitch overlay** — a thin bar burned into the bottom of the webcam track shows the detected note name, cents deviation, and a color-coded tuning indicator (green < 10 ¢, yellow < 30 ¢, red ≥ 30 ¢). Pitch is analyzed at render time from the raw vocal recording using YIN detection with EMA smoothing; no data is logged during recording
 
 ### Rendering Safety
 - All UI controls (transport, load, library, fetch, sing) are disabled for the entire duration of an FFmpeg render — whether triggered from the record flow or from the library's re-render path
@@ -78,6 +79,14 @@ Before rendering, a preview dialog lets you:
 ---
 
 ## Changelog
+
+### v2.0.2
+- **Pitch overlay on rendered video** — a thin strip at the bottom of the webcam track shows the current note (e.g. "C#4"), a deviation bar, and a "+/−Nc" cents value. Color is green within 10 ¢, yellow within 30 ¢, and red beyond. Pitch is detected from the raw vocal track at render time (YIN + EMA) — no logging during recording. Scale adapts to resolution (3× for 1280+, 2× for smaller)
+- **PitchMonitorWidget always visible** — the pitch display is now shown at all times, not just during recording
+- **Library: multi-select deletion** — Ctrl+click or Shift+click selects multiple sessions; the Delete button is enabled for any selection, while Restore and Rename require exactly one session
+- **Native sample rate preservation** — recorded audio is now extracted and processed at the microphone's native sample rate (e.g. 48 kHz); no forced downsampling to 44100 Hz in the vocal pipeline. The karaoke backing track is resampled to match if the rates differ, preventing chipmunk effects
+- **Library: tuned.wav not saved** — the library no longer stores the intermediate tuned vocal; it is regenerated from the raw audio on every re-render, ensuring the preview dialog always reflects the current enhancement settings
+- **A/V sync: fixed video desync when delay is applied** — when `manualOffset` was negative (vocal delayed relative to playback), the video delay was computed from a formula involving the system latency `offset` rather than `manualOffset` directly, causing the video to lag or lead audio by up to several hundred milliseconds. Both `effectiveAudioOffset` and `effectiveVideoOffset` are now set to `manualOffset` so the same shift is applied to both streams; positive → equal trim/seek, negative → equal silence prepend/video delay
 
 ### v2.0.1
 - **VocalEnhancer: fixed progressive robotic distortion** — the compressor and harmonic exciter were running inside the pitch-correction loop, compounding on every re-enhance pass. They are now applied exactly once, after all pitch work is done

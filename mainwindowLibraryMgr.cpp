@@ -193,7 +193,7 @@ void MainWindow::restoreAndRender(const QString &sessionId)
     // ── PreviewDialog — volume / offset / pitch adjustment ────────────────
     outputFilePath = restoredOutput;
 
-    previewDialog.reset(new PreviewDialog(audioOffset, offset, this));
+    previewDialog.reset(new PreviewDialog(audioOffset, this));
     previewDialog->setAudioFile(audioRecorded);
 
     if (previewDialog->exec() == QDialog::Accepted) {

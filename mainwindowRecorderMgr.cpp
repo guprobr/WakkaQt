@@ -162,19 +162,20 @@ void MainWindow::stopRecording() {
                 qWarning() << "VIDEO is ready. Proceeding...";
             
                 // DETERMINE audioOffset
+                // Pre-roll = how long the recording ran before the song started.
+                // recDuration - pos gives this directly: positive means the file
+                // has pre-roll that must be trimmed; negative means recording
+                // started late and silence must be prepended.
+                // Using the file duration avoids the sysLatency approximation,
+                // which only measures time to the next recorder tick and diverges
+                // from the real pre-roll at above-average system latency.
                 qWarning() << "Recording duration:";
                 qint64 recDuration = 1000 * getMediaDuration(audioRecorded);
-                qWarning() << "current Playback duration:";
-                qint64 playbackDuration = 1000 * getMediaDuration(currentPlayback);
-                audioOffset = offset;
-                if ( (playbackDuration - pos) <= (playbackDuration - recDuration) )
-                    audioOffset *= -1;
+                audioOffset = recDuration - pos;
 
                 // DETERMINE videoOffset
                 recDuration = 1000 * getMediaDuration(webcamRecorded);
-                videoOffset = offset;
-                if ( (playbackDuration - pos) <= (playbackDuration - recDuration) )
-                    videoOffset *= -1;
+                videoOffset = recDuration - pos;
                 
                 qWarning() << "System Latency: " << offset << " ms";
                 qWarning() << "Audio Gap: " << audioOffset << " ms";

@@ -132,22 +132,25 @@ MainWindow::MainWindow(QWidget *parent)
     setBanner(Wakka_welcome);
 
     // Create buttons
-    QPushButton *exitButton = new QPushButton("Exit", this);
-    chooseVideoButton = new QPushButton("Load playback from disk", this);
+    QPushButton *exitButton = new QPushButton("🚪 Exit", this);
+    chooseVideoButton = new QPushButton("📂 Load Playback", this);
     chooseVideoButton->setToolTip("Load media files from disk");
-    chooseLastButton = new QPushButton("Load Again", this);
+    chooseLastButton = new QPushButton("🔄 Load Again", this);
     chooseLastButton->setToolTip("Load last playback");
-    singButton = new QPushButton("♪ SING ♪", this);
+    singButton = new QPushButton("🎤 SING", this);
     singButton->setFont(QApplication::font());
     singButton->setToolTip("Start/Stop recording");
-    abortButton = new QPushButton("* A B O R T *", this);
+    abortButton = new QPushButton("⛔ ABORT", this);
     abortButton->setFont(QApplication::font());
     abortButton->setToolTip("TRASH recording");
-    chooseInputButton = new QPushButton("Choose Input Devices", this);
-    renderAgainButton = new QPushButton("RENDER AGAIN", this);
+    chooseInputButton = new QPushButton("🎛️ Input Devices", this);
+    chooseInputButton->setToolTip("Choose microphone and camera");
+    renderAgainButton = new QPushButton("🎬 Render Again", this);
     renderAgainButton->setToolTip("Repeat render and adjustments without singing again");
     libraryButton = new QPushButton("📚 Library", this);
     libraryButton->setToolTip("Open Session Library — restore or manage previous recordings");
+    backingTrackButton = new QPushButton("🎵 Backing Track", this);
+    backingTrackButton->setToolTip("Separate vocals with MDX-Net and export the instrumental track");
 
     // Recording indicator
     recordingIndicator = new QLabel("⦿ rec", this);
@@ -178,6 +181,7 @@ MainWindow::MainWindow(QWidget *parent)
     soundLevelWidget->setToolTip("Sound input visualization widget");
 
     pitchMonitor = new PitchMonitorWidget(44100, this);
+    pitchMonitor->setMaximumHeight(48);
     connect(soundLevelWidget, &SndWidget::audioChunkReady,
             pitchMonitor,     &PitchMonitorWidget::onAudioChunk);
 
@@ -261,14 +265,31 @@ MainWindow::MainWindow(QWidget *parent)
     layout->addWidget(transportWidget);
     layout->addWidget(soundLevelWidget, 1);
     layout->addWidget(pitchMonitor);
-    layout->addWidget(singButton);
-    layout->addWidget(abortButton);
-    layout->addWidget(chooseVideoButton);
-    layout->addWidget(chooseLastButton);
-    layout->addWidget(libraryButton);
-    layout->addWidget(chooseInputButton);
-    layout->addWidget(renderAgainButton);
-    layout->addWidget(exitButton);
+    // Row 1 — file / navigation
+    QHBoxLayout *fileRow = new QHBoxLayout();
+    fileRow->addWidget(chooseVideoButton);
+    fileRow->addWidget(chooseLastButton);
+    fileRow->addWidget(libraryButton);
+    layout->addLayout(fileRow);
+
+    // Row 2 — recording (SING and ABORT share the same row)
+    QHBoxLayout *recRow = new QHBoxLayout();
+    recRow->addWidget(singButton);
+    recRow->addWidget(abortButton);
+    layout->addLayout(recRow);
+
+    // Row 3 — post-processing tools
+    QHBoxLayout *postRow = new QHBoxLayout();
+    postRow->addWidget(backingTrackButton);
+    postRow->addWidget(renderAgainButton);
+    layout->addLayout(postRow);
+
+    // Row 4 — system / rarely visible
+    QHBoxLayout *sysRow = new QHBoxLayout();
+    sysRow->addWidget(chooseInputButton);
+    sysRow->addWidget(exitButton);
+    layout->addLayout(sysRow);
+
     layout->addWidget(deviceLabel);
     layout->addLayout(fetchLayout);
     layout->addWidget(logTextEdit);
@@ -288,6 +309,7 @@ MainWindow::MainWindow(QWidget *parent)
     singButton->setEnabled(false);
     singAction->setEnabled(false);
     renderAgainButton->setVisible(false);
+    backingTrackButton->setVisible(false);
     exitButton->setVisible(false);
     deviceLabel->setVisible(true);
     logTextEdit->setVisible(false);
@@ -306,6 +328,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(singAction, &QAction::triggered, this, &MainWindow::startRecording);
     connect(fetchButton, &QPushButton::clicked, this, &MainWindow::fetchVideo);
     connect(renderAgainButton, &QPushButton::clicked, this, &MainWindow::renderAgain);
+    connect(backingTrackButton, &QPushButton::clicked, this, &MainWindow::generateBackingTrack);
     connect(libraryButton, &QPushButton::clicked, this, &MainWindow::openLibrary);
     connect(libraryAction, &QAction::triggered, this, &MainWindow::openLibrary);
     connect(previewCheckbox, &QCheckBox::toggled, this, &MainWindow::onPreviewCheckboxToggled);

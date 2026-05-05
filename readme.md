@@ -1,100 +1,114 @@
-# WakkaQt
+# WakkaQt 🎤
 
-**WakkaQt** is a karaoke recording and production studio built with Qt6. It plays back karaoke videos, records your voice (and optionally your webcam), applies real-time vocal enhancement, and renders everything into a finished video file — all from a single desktop window.
+> *"Because Auto-Tune is expensive and your bathroom acoustics only get you so far."*
 
-Current version: **2.0.2**
+**WakkaQt** is a free, open-source karaoke recording and production studio built with Qt6. Load a karaoke video, grab a mic, sing your heart out, and walk away with a finished, mixed, pitch-corrected MP4 — complete with a webcam feed, vocal overlay, and a pitch indicator that will mercilessly show the world every flat note you tried to sneak past.
+
+No subscriptions. No cloud. No judgment. (Well, maybe a little judgment from the pitch monitor.)
+
+Current version: **2.1.3**
 
 ---
 
 ## Downloads
 
-**Windows binaries** are available at: https://gu.pro.br/WakkaQt
+**Windows binaries** — ready to run, no setup required:
+👉 https://gu.pro.br/WakkaQt
 
-For Linux, see the [build instructions](#building-on-linux) below.
+**Linux users** — you get to build it yourself, which is a feature, not a bug. See [build instructions](#building-on-linux) below.
 
 ---
 
-## Features
+## What It Does
 
-### Playback & Recording
-- Plays any video or audio file supported by Qt6 Multimedia (MP4, MKV, WebM, MP3, and more)
-- Records microphone audio with selectable input device
-- Optional webcam recording alongside the vocal track
-- Transport controls: play/pause, stop/rewind, seek ±10 seconds
-- Graphical progress bar with elapsed/total time display
+### 1. Plays Your Karaoke Track
+Drop in any MP4, MKV, WebM, AVI, MOV, MP3, WAV, FLAC, or OPUS file. If Qt6 Multimedia can play it, WakkaQt will play it. You can also paste a YouTube URL and download the video directly from inside the app (powered by `yt-dlp`).
 
-### Real-Time Monitoring
-- **Waveform visualizer** (`SndWidget`) — live oscilloscope display of the microphone input during recording
-- **Pitch monitor** (`PitchMonitorWidget`) — always visible; shows the detected note name, octave, and cents deviation in real time using YIN pitch detection; includes a smoothed deviation bar so you can see how in-tune you are as you sing
+### 2. Records You Singing It
+Select your microphone from a list of all detected devices. Hit **🎤 SING**. Optionally capture your webcam at the same time — for those who want to remember exactly what they looked like belting out Bohemian Rhapsody at 2 AM.
 
-### Vocal Enhancement Engine
-The `VocalEnhancer` processes the recorded audio through a full DSP pipeline before rendering:
+### 3. Makes You Sound Better Than You Are
+Before rendering, the vocal track runs through a full DSP pipeline:
 
-- **Pitch correction** — phase-vocoder-based pitch shifting with adjustable strength (0–100 %). Uses a hybrid YIN + HPS pitch detector with autocorrelation confidence gating for robust detection
-- **Scale-aware correction** — snap corrected notes to a chosen musical scale (Chromatic, Major, Minor, Pentatonic, Blues, Dorian, Mixolydian, Lydian, Phrygian, Locrian, Harmonic Minor, Melodic Minor, Whole Tone, Diminished) in any of the 12 keys
-- **Retune speed** — controls how quickly pitch snaps to target (0 ms = robotic auto-tune effect, up to 300 ms for a natural glide)
-- **Formant preservation** — LPC-based spectral envelope extraction and re-synthesis keeps the vocal timbre natural after pitch shifting
-- **Noise reduction** — spectral subtraction gate with adaptive noise floor estimation, adjustable strength
-- **Reverb** — Freeverb-style Schroeder reverb with room size, decay, and wet/dry mix controls
-- **Dynamics processing** — compressor, limiter, and harmonic exciter applied once after all pitch work; level matching via pre/post RMS with 4× cap to avoid over-boosting
-- All FFTW plans (N = 2048 for phase vocoder, N = 1024 for noise gate, N = 4096 for pitch detection) are created once with `FFTW_MEASURE` and reused across the entire recording for maximum performance
+- **Pitch correction** — phase-vocoder pitch shifting with adjustable strength (0 = raw humanity, 100 = robot perfection)
+- **Scale-aware snapping** — snap pitch to Major, Minor, Pentatonic, Blues, Dorian, Mixolydian, Lydian, Phrygian, Locrian, Harmonic Minor, Melodic Minor, Whole Tone, Diminished, or plain Chromatic — in any of the 12 keys
+- **Retune speed** — 0 ms for that T-Pain effect, up to 300 ms for a natural glide
+- **Formant preservation** — LPC-based envelope re-synthesis keeps your voice sounding human even after aggressive pitch shifting
+- **Noise reduction** — spectral subtraction gate with adaptive noise floor estimation (goodbye, fan noise)
+- **Reverb** — Freeverb-style Schroeder reverb with room size, decay, and wet/dry controls
+- **Dynamics** — compressor, limiter, and harmonic exciter for a polished, loud-enough final mix
 
-### Preview & Mix Dialog
-Before rendering, a preview dialog lets you:
-- Listen to the processed vocal audio with all enhancements applied
-- Adjust vocal volume via a dial
-- Fine-tune the audio/video timing offset with a slider (accounts for system latency automatically)
-- Tweak pitch correction amount, noise reduction amount, key, scale, retune speed, formant preservation, and all reverb parameters
-- Watch a live audio visualizer of the enhanced vocal track
-- Apply changes and preview again without leaving the dialog
-- Seek forward/backward through the preview
+All FFTW plans are created once and reused for the entire recording — no plan allocation mid-session, no glitches.
 
-### Rendering
-- Mixes enhanced vocal audio, webcam video, and original karaoke playback into a single MP4
-- Output resolution: 1920×1080 (karaoke stacked above webcam)
-- **Native FFmpeg integration** — when the FFmpeg development libraries are present at build time, rendering is done entirely in-process via `libavformat`, `libavcodec`, `libavfilter`, `libswresample`, and `libswscale` with a real-time progress callback. Falls back gracefully to spawning `ffmpeg` via `QProcess` if the libraries are absent
-- "Render Again" re-runs the mix from saved session files with updated settings
-- **Pitch overlay** — a thin bar burned into the bottom of the webcam track shows the detected note name, cents deviation, and a color-coded tuning indicator (green < 10 ¢, yellow < 30 ¢, red ≥ 30 ¢). Pitch is analyzed at render time from the raw vocal recording using YIN detection with EMA smoothing; no data is logged during recording
+### 4. Lets You Preview and Tweak
+A full-featured preview dialog lets you hear the processed vocal, adjust every enhancement parameter in real time, nudge the audio/video sync offset, and preview again — as many times as you need before committing to a render.
 
-### Rendering Safety
-- All UI controls (transport, load, library, fetch, sing) are disabled for the entire duration of an FFmpeg render — whether triggered from the record flow or from the library's re-render path
-- Progress-bar seek is blocked while rendering (`isPlayback = false`)
-- Controls are reliably re-enabled on render success, failure, or missing output file
+### 5. Renders a Professional-Looking Video
+Output: a 1920×1080 MP4 with the karaoke video on top and your webcam below. The vocal is mixed in with all enhancements applied. A pitch indicator strip is burned into the webcam frame — green when you're in tune, yellow when you're drifting, red when you're… having a moment.
 
-### Session Library
-- Sessions are saved to `~/.WakkaQt/library/` as UUID-named folders containing all source files and a JSON metadata record
-- The library dialog lists all saved sessions with timestamps and song names
-- Sessions can be renamed, deleted, or re-rendered from the library
-- Metadata stores webcam/audio/tuned paths, playback file, timing offsets, and system latency
+Native FFmpeg integration renders entirely in-process with a real-time progress bar. Falls back gracefully to spawning `ffmpeg` via a subprocess if the dev libraries weren't present at build time.
 
-### YouTube / URL Download
-- Built-in `yt-dlp` integration downloads a video from any URL directly into the application
-- A `DownloadDialog` shows download progress and handles cancellation
-- The downloaded file is automatically loaded as the karaoke playback source
+### 6. Generates a Backing Track (NEW in v2.1.3)
+Load any song and click **🎵 Backing Track**. WakkaQt downloads the **UVR-MDX-NET-Inst_HQ_3** ONNX vocal separation model (~80 MB, once) and runs it locally on your machine — no internet required after the first download, no cloud service, no privacy leak, no subscription.
 
-### Audio Visualizer
-- `AudioVisualizerWidget` renders a live waveform of any audio stream (microphone monitor or enhanced vocal preview)
-- Two corner visualizers are shown during webcam preview
+The model separates vocals from the instrumental using MDX-Net deep learning, processed through a full STFT/iSTFT pipeline with FFTW3. The result is exported as WAV or MP3. Perfect for turning any song into a backing track for your next performance.
+
+### 7. Keeps a Session Library
+Every recording is saved to `~/.WakkaQt/library/` with a UUID folder, all source files, and JSON metadata. The library dialog lists everything with timestamps. You can rename, delete, or re-render any session — with updated enhancement settings — at any time.
+
+---
+
+## Feature Overview
+
+| Feature | Status |
+|---|---|
+| MP4/MKV/WebM/MP3/WAV/FLAC playback | ✅ |
+| Microphone recording (selectable device) | ✅ |
+| Webcam recording | ✅ |
+| Real-time pitch monitor (YIN, always visible) | ✅ |
+| Real-time waveform visualizer | ✅ |
+| Pitch correction (phase vocoder) | ✅ |
+| Scale/key-aware pitch snapping | ✅ |
+| Formant preservation (LPC) | ✅ |
+| Noise reduction (spectral subtraction) | ✅ |
+| Reverb (Freeverb/Schroeder) | ✅ |
+| Compressor + limiter + harmonic exciter | ✅ |
+| Preview dialog with live tweak | ✅ |
+| Native FFmpeg rendering (in-process) | ✅ |
+| Pitch overlay on rendered video | ✅ |
+| Session library (save/rename/delete/re-render) | ✅ |
+| YouTube download (via yt-dlp) | ✅ |
+| AI vocal separation → backing track (ONNX) | ✅ |
+| Cross-platform (Linux / Windows) | ✅ |
+| Subscription required | ❌ |
+| Phone home to a server | ❌ |
+| Judgment about your singing | mostly ❌ |
 
 ---
 
 ## Changelog
 
+### v2.1.3
+- **Generate Backing Track** — new feature powered by the UVR-MDX-NET-Inst_HQ_3 ONNX model. Downloads the model on first use (~80 MB), then separates vocals from any loaded track entirely offline. Output can be saved as WAV or MP3. The button appears automatically when a file is loaded and disappears when it isn't needed
+- **Save to existing file fixed** — overwriting an already-existing WAV with the backing track output no longer fails silently and loses the processed audio. The destination is removed first; on copy failure the temp file is preserved and its path is shown in the error dialog
+- **Playback stopped before separation** — WakkaQt now stops playback before starting the ONNX separation process to free audio and CPU resources for the model run
+- **CMake: ONNX Runtime optional dependency** — ONNX Runtime is detected at configure time; if absent, the backing-track feature is disabled gracefully with a build warning and everything else continues to work
+
 ### v2.0.2
-- **Pitch overlay on rendered video** — a thin strip at the bottom of the webcam track shows the current note (e.g. "C#4"), a deviation bar, and a "+/−Nc" cents value. Color is green within 10 ¢, yellow within 30 ¢, and red beyond. Pitch is detected from the raw vocal track at render time (YIN + EMA) — no logging during recording. Scale adapts to resolution (3× for 1280+, 2× for smaller)
-- **PitchMonitorWidget always visible** — the pitch display is now shown at all times, not just during recording
-- **Library: multi-select deletion** — Ctrl+click or Shift+click selects multiple sessions; the Delete button is enabled for any selection, while Restore and Rename require exactly one session
-- **Native sample rate preservation** — recorded audio is now extracted and processed at the microphone's native sample rate (e.g. 48 kHz); no forced downsampling to 44100 Hz in the vocal pipeline. The karaoke backing track is resampled to match if the rates differ, preventing chipmunk effects
-- **Library: tuned.wav not saved** — the library no longer stores the intermediate tuned vocal; it is regenerated from the raw audio on every re-render, ensuring the preview dialog always reflects the current enhancement settings
-- **A/V sync: fixed video desync when delay is applied** — when `manualOffset` was negative (vocal delayed relative to playback), the video delay was computed from a formula involving the system latency `offset` rather than `manualOffset` directly, causing the video to lag or lead audio by up to several hundred milliseconds. Both `effectiveAudioOffset` and `effectiveVideoOffset` are now set to `manualOffset` so the same shift is applied to both streams; positive → equal trim/seek, negative → equal silence prepend/video delay
+- **Pitch overlay on rendered video** — note name (e.g. "C#4"), cents deviation bar, and "+/−Nc" value burned into the bottom of the webcam track. Color-coded: green < 10 ¢, yellow < 30 ¢, red ≥ 30 ¢
+- **PitchMonitorWidget always visible** — pitch display is shown at all times, not just during recording
+- **Library: multi-select deletion** — Ctrl+click or Shift+click to select multiple sessions for batch delete
+- **Native sample rate preservation** — recorded audio is processed at the microphone's native sample rate (e.g. 48 kHz); no forced downsampling to 44100 Hz
+- **Library: tuned.wav not saved** — the intermediate tuned vocal is regenerated from the raw audio on every re-render, so the preview dialog always reflects current settings
+- **A/V sync: fixed video desync with manual offset** — both audio and video offsets are now set to `manualOffset` directly; previously a formula involving system latency caused the video to lag or lead by hundreds of milliseconds
 
 ### v2.0.1
-- **VocalEnhancer: fixed progressive robotic distortion** — the compressor and harmonic exciter were running inside the pitch-correction loop, compounding on every re-enhance pass. They are now applied exactly once, after all pitch work is done
-- **VocalEnhancer: fixed stale pitch state at section boundaries** — `smoothedPitch` was never reset after silence, causing wrong pitch-shift ratios at the start of each new phrase. After ~400 ms of unvoiced audio the pitch state is now cleared
-- **VocalEnhancer: added octave detection guard** — when pitch confidence is low, a 2× or 0.5× detection error is corrected before it can influence the EMA
-- **A/V sync: fixed negative manual-offset case** — when the user decremented the offset below zero, the webcam pre-roll footage was no longer seeked past, causing audio and video to drift. The `effectiveVideoOffset` formula now correctly accounts for the `offset` pre-roll in both directions
-- **Rendering: UI fully locked during FFmpeg** — all controls (transport, load, library, fetch, input select) are disabled for the entire render regardless of which code path triggers it
-- **FFmpeg native: keyframe alignment correction** — after `avformat_seek_file`, the first decoded frame may be earlier than requested due to keyframe rounding; the PTS of that first frame is used to compute a `seekCorrectionTb` that shifts all subsequent video frames back into exact alignment
+- **VocalEnhancer: fixed progressive robotic distortion** — compressor and harmonic exciter were running inside the pitch-correction loop; now applied exactly once after all pitch work
+- **VocalEnhancer: fixed stale pitch state at section boundaries** — pitch state is cleared after ~400 ms of silence, eliminating wrong shift ratios at phrase starts
+- **VocalEnhancer: octave detection guard** — 2× / 0.5× detection errors corrected when pitch confidence is low
+- **A/V sync: fixed negative manual-offset case** — webcam pre-roll footage is correctly seeked past in both directions
+- **Rendering: UI fully locked during FFmpeg** — all controls disabled for the entire render regardless of code path
+- **FFmpeg native: keyframe alignment correction** — PTS of the first decoded frame is used to shift all subsequent video frames into exact alignment after a seek
 
 ---
 
@@ -115,6 +129,25 @@ sudo apt install \
     libglib2.0-dev \
     pkg-config
 ```
+
+For the **AI backing-track feature**, also install the ONNX Runtime development package.
+
+**Debian/Ubuntu:**
+```bash
+sudo apt install libonnxruntime-dev
+```
+
+**Fedora / RHEL** (not in standard repos — install from the official release):
+```bash
+ORT_VERSION=1.20.1
+wget https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-x64-${ORT_VERSION}.tgz
+tar -xzf onnxruntime-linux-x64-${ORT_VERSION}.tgz
+sudo cp -r onnxruntime-linux-x64-${ORT_VERSION}/include/onnxruntime /usr/local/include/
+sudo cp onnxruntime-linux-x64-${ORT_VERSION}/lib/libonnxruntime.so* /usr/local/lib/
+sudo ldconfig
+```
+
+ONNX Runtime is entirely optional — if it is not found at configure time, WakkaQt builds and runs normally without it and the backing-track button simply won't appear.
 
 On Fedora/RHEL-based systems:
 
@@ -144,7 +177,7 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 ```
 
-If you want a debug build (with debug output enabled):
+Debug build:
 
 ```bash
 cmake -B build -DCMAKE_BUILD_TYPE=Debug
@@ -163,18 +196,18 @@ cmake --build build --parallel
 sudo cmake --install build
 ```
 
-This installs the binary to `/usr/bin/WakkaQt`, the icon to `/usr/share/icons/hicolor/256x256/apps/WakkaQt.png`, and a `.desktop` launcher to `/usr/share/applications/`.
+Installs to `/usr/bin/WakkaQt`, with an icon at `/usr/share/icons/hicolor/256x256/apps/WakkaQt.png` and a `.desktop` launcher in `/usr/share/applications/`.
 
 ---
 
 ## Runtime Dependencies
 
 | Tool | Purpose |
-|------|---------|
-| `ffmpeg` | Render fallback (used if FFmpeg dev libs were absent at build time) |
+|---|---|
+| `ffmpeg` | Render fallback when FFmpeg dev libs were absent at build time |
 | `yt-dlp` | In-app video download from YouTube and other sites |
 
-Both must be on `$PATH` at runtime. If the native FFmpeg integration was compiled in (default when dev libs are present), `ffmpeg` is only needed for the `QProcess` fallback path.
+Both must be on `$PATH` at runtime. The ONNX model (~80 MB) is downloaded automatically on first use of the backing-track feature and cached in `~/.WakkaQt/models/`.
 
 ---
 

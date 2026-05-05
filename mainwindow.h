@@ -69,7 +69,7 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    QString Wakka_versione = "v2.0.2";
+    QString Wakka_versione = "v2.1.3";
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
@@ -149,6 +149,7 @@ private:
     QPushButton *renderAgainButton;
     QPushButton *chooseLastButton;
     QPushButton *libraryButton;
+    QPushButton *backingTrackButton;
 
     // Transport controls (play/pause, stop/rewind, seek ±10 s)
     QPushButton *playPauseButton;
@@ -205,6 +206,7 @@ private:
     void openLibrary();
     void saveCurrentSession();
     void restoreAndRender(const QString &sessionId);
+    void generateBackingTrack();
 
     void resetMediaComponents(bool isStarting);
     void configureMediaComponents();

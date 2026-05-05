@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 # Project name
-project(WakkaQt VERSION 2.0.0 LANGUAGES CXX)
+project(WakkaQt VERSION 2.1.3 LANGUAGES CXX)
 
 # Set the C++ standard
 set(CMAKE_CXX_STANDARD 17)
@@ -24,6 +24,7 @@ find_package(Qt6 REQUIRED COMPONENTS
     Multimedia
     MultimediaWidgets
     Concurrent
+    Network
 )
 
 # --- FFTW (Windows / MinGW) ---
@@ -118,6 +119,27 @@ if(UNIX AND NOT APPLE)
     link_directories(${GLIB2_LIBRARY_DIRS})
 endif()
 
+# --- ONNX Runtime (optional — vocal separation feature) ---
+find_path(ONNXRUNTIME_INCLUDE_DIR
+    NAMES onnxruntime/onnxruntime_cxx_api.h
+          onnxruntime/core/session/onnxruntime_cxx_api.h
+    PATHS /usr/local/include /usr/include
+    NO_DEFAULT_PATH)
+find_library(ONNXRUNTIME_LIB
+    NAMES onnxruntime
+    PATHS /usr/local/lib /usr/lib /usr/lib/x86_64-linux-gnu
+    NO_DEFAULT_PATH)
+
+if(ONNXRUNTIME_INCLUDE_DIR AND ONNXRUNTIME_LIB)
+    set(ONNXRUNTIME_FOUND TRUE)
+    message(STATUS "ONNX Runtime found — vocal separation enabled")
+    message(STATUS "  include: ${ONNXRUNTIME_INCLUDE_DIR}")
+    message(STATUS "  lib:     ${ONNXRUNTIME_LIB}")
+else()
+    set(ONNXRUNTIME_FOUND FALSE)
+    message(WARNING "ONNX Runtime not found (install libonnxruntime-dev) — vocal separation disabled")
+endif()
+
 # Add the resource file
 qt_add_resources(resources resources.qrc)
 message(STATUS "Resources added: ${resources}")
@@ -144,6 +166,8 @@ add_executable(${PROJECT_NAME}
     sessionmanager.cpp
     librarydialog.cpp
     ffmpegnative.cpp
+    vocalseparator.cpp
+    mainwindowSeparatorMgr.cpp
     mainwindow.h
     complexes.h
     sndwidget.h
@@ -158,6 +182,7 @@ add_executable(${PROJECT_NAME}
     sessionmanager.h
     librarydialog.h
     ffmpegnative.h
+    vocalseparator.h
     ${resources}
 )
 
@@ -169,6 +194,7 @@ target_link_libraries(${PROJECT_NAME}
     Qt6::Multimedia
     Qt6::MultimediaWidgets
     Qt6::Concurrent
+    Qt6::Network
     ${GLIB2_LIBRARIES}
     ${FFTW3_LIBRARIES}
 )
@@ -187,6 +213,13 @@ if(FFMPEG_FOUND)
     if(DEFINED FFMPEG_CFLAGS)
         target_compile_options(${PROJECT_NAME} PRIVATE ${FFMPEG_CFLAGS})
     endif()
+endif()
+
+# ONNX Runtime integration (optional — graceful no-op if absent)
+if(ONNXRUNTIME_FOUND)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE WAKKAQT_ONNX=1)
+    target_link_libraries(${PROJECT_NAME} ${ONNXRUNTIME_LIB})
+    target_include_directories(${PROJECT_NAME} PRIVATE ${ONNXRUNTIME_INCLUDE_DIR})
 endif()
 
 if(CMAKE_BUILD_TYPE STREQUAL "Release")

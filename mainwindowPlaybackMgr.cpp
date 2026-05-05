@@ -53,7 +53,8 @@ void MainWindow::playVideo(const QString& playbackVideoPath) {
             placeholderLabel->show();
         }
         vizPlayer->play();
-                
+        backingTrackButton->setVisible(true);
+
     }
 
     if ( QMediaPlayer::MediaStatus::EndOfMedia == status ) {

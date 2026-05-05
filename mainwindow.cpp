@@ -52,10 +52,29 @@ MainWindow::MainWindow(QWidget *parent)
         aboutBox.setIconPixmap(logoPixmap.scaled(100, 100, Qt::KeepAspectRatio));
 
         QString aboutText = R"(
-            <p>WakkaQt is a karaoke application built with C++ and Qt6, designed to record vocals over a video/audio track and mix them into a rendered file.</p>
-            <p>This app features webcam recording, YouTube video downloading, real-time sound visualization, and post-recording video rendering with FFmpeg. It automatically does some mastering on the vocal tracks. It also has a custom AutoTuner class called VocalEnhancer that provides slight pitch shift/correction and formant preservation.</p>
-            <p>©2024 The author is Gustavo L Conte. Visit the author's website: <a href="https://gu.pro.br">https://gu.pro.br</a></p>
-            <p>WakkaQt is open source and the code is available <a href="https://github.com/guprobr/WakkaQt">on GitHub</a>.</p>
+            <p><b>WakkaQt</b> — because your bathroom acoustics only get you so far.</p>
+            <p>A full karaoke recording &amp; production studio built with C++ and Qt6.
+            Load a track, grab a mic, sing your heart out, and walk away with a
+            finished MP4 — complete with webcam, pitch indicator, and just enough
+            auto-tune to make you sound like you practiced.</p>
+            <b>What's inside:</b>
+            <ul>
+              <li>🎤 Microphone recording with selectable input device</li>
+              <li>📷 Webcam recording (for those who want proof)</li>
+              <li>🎵 Real-time pitch monitor — it sees every flat note, no mercy</li>
+              <li>〰 Live waveform visualizer</li>
+              <li>🎛 VocalEnhancer DSP: pitch correction, formant preservation,
+                  noise reduction, reverb, compressor, limiter, harmonic exciter</li>
+              <li>🎬 Native FFmpeg rendering — in-process, fast, no subprocess drama</li>
+              <li>📊 Pitch overlay burned into rendered video (green / yellow / red)</li>
+              <li>📚 Session library — save, rename, delete, re-render at any time</li>
+              <li>⬇ YouTube download via yt-dlp, built right in</li>
+              <li>🤖 AI vocal separation → backing track generator
+                  (UVR-MDX-NET-Inst_HQ_3, runs 100%% offline via ONNX Runtime)</li>
+            </ul>
+            <p>©2024–2026 Gustavo L Conte —
+            <a href="https://gu.pro.br">https://gu.pro.br</a><br>
+            Open source: <a href="https://github.com/guprobr/WakkaQt">github.com/guprobr/WakkaQt</a></p>
             <p>%1</p>
         )";
 

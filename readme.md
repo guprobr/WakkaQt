@@ -147,6 +147,26 @@ sudo cp onnxruntime-linux-x64-${ORT_VERSION}/lib/libonnxruntime.so* /usr/local/l
 sudo ldconfig
 ```
 
+**Windows (MinGW / MSVC):**
+
+1. Download `onnxruntime-win-x64-*.zip` from the [ONNX Runtime releases page](https://github.com/microsoft/onnxruntime/releases).
+2. Extract and copy the contents to `C:\Program Files\onnxruntime\`.
+3. Inside that folder, create the subfolder `include\onnxruntime\` and move **all header files** from `include\` into it. The final structure must be:
+   ```
+   C:\Program Files\onnxruntime\
+     include\
+       onnxruntime\
+         onnxruntime_cxx_api.h
+         onnxruntime_c_api.h
+         ... (all other .h files)
+     lib\
+       onnxruntime.lib
+       onnxruntime.dll
+   ```
+4. Copy `onnxruntime.dll` next to `WakkaQt.exe` in your build/install folder — Windows needs the DLL at runtime.
+
+CMake will find the library automatically in `Program Files\onnxruntime` during configure.
+
 ONNX Runtime is entirely optional — if it is not found at configure time, WakkaQt builds and runs normally without it and the backing-track button simply won't appear.
 
 On Fedora/RHEL-based systems:

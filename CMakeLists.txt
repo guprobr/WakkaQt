@@ -120,15 +120,35 @@ if(UNIX AND NOT APPLE)
 endif()
 
 # --- ONNX Runtime (optional — vocal separation feature) ---
-find_path(ONNXRUNTIME_INCLUDE_DIR
-    NAMES onnxruntime/onnxruntime_cxx_api.h
-          onnxruntime/core/session/onnxruntime_cxx_api.h
-    PATHS /usr/local/include /usr/include
-    NO_DEFAULT_PATH)
-find_library(ONNXRUNTIME_LIB
-    NAMES onnxruntime
-    PATHS /usr/local/lib /usr/lib /usr/lib/x86_64-linux-gnu
-    NO_DEFAULT_PATH)
+if(WIN32)
+  set(_PF "$ENV{ProgramFiles\(x86\)}")
+  if(NOT _PF)
+    set(_PF "$ENV{ProgramFiles}")
+  endif()
+  file(TO_CMAKE_PATH "${_PF}" _PF)
+  set(ONNXRUNTIME_ROOT "${_PF}/onnxruntime")
+
+  # Windows zip puts headers directly in include\ — we expect include\onnxruntime\
+  # so the user must create that subfolder (see README for setup instructions).
+  find_path(ONNXRUNTIME_INCLUDE_DIR
+      NAMES onnxruntime/onnxruntime_cxx_api.h
+      HINTS "${ONNXRUNTIME_ROOT}/include"
+      NO_DEFAULT_PATH)
+  find_library(ONNXRUNTIME_LIB
+      NAMES onnxruntime
+      HINTS "${ONNXRUNTIME_ROOT}/lib"
+      NO_DEFAULT_PATH)
+else()
+  find_path(ONNXRUNTIME_INCLUDE_DIR
+      NAMES onnxruntime/onnxruntime_cxx_api.h
+            onnxruntime/core/session/onnxruntime_cxx_api.h
+      PATHS /usr/local/include /usr/include
+      NO_DEFAULT_PATH)
+  find_library(ONNXRUNTIME_LIB
+      NAMES onnxruntime
+      PATHS /usr/local/lib /usr/lib /usr/lib/x86_64-linux-gnu
+      NO_DEFAULT_PATH)
+endif()
 
 if(ONNXRUNTIME_INCLUDE_DIR AND ONNXRUNTIME_LIB)
     set(ONNXRUNTIME_FOUND TRUE)

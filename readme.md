@@ -191,7 +191,7 @@ sudo dnf install ffmpeg yt-dlp   # Fedora
 ### Configure and Build
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/WakkaQt.git
+git clone https://github.com/guprobr/WakkaQt.git
 cd WakkaQt
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel

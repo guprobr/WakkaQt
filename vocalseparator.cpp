@@ -274,7 +274,13 @@ QString VocalSeparator::separate(const QString &inputFile,
     Ort::SessionOptions opts;
     opts.SetIntraOpNumThreads(4);
     opts.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
-    Ort::Session session(env, modelPath().toStdString().c_str(), opts);
+#ifdef _WIN32
+    std::wstring wModelPath = modelPath().toStdWString();
+    Ort::Session session(env, wModelPath.c_str(), opts);
+#else
+    std::string sModelPath = modelPath().toStdString();
+    Ort::Session session(env, sModelPath.c_str(), opts);
+#endif
     Ort::AllocatorWithDefaultOptions allocator;
 
     // Input shape: [1, 4, bins, dim_t]

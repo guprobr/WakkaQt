@@ -10,10 +10,13 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
 # Set compiler flags for aggressive optimization
-if(WINDOWS)  
+if(MSVC)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /Ox /fp:fast /fp:except- /Ob2 /arch:AVX2")
-else() 
-    set(CMAKE_CXX_FLAGS "-O3 -ffast-math -fno-strict-aliasing -ftree-vectorize -ftree-loop-vectorize -funroll-loops -march=native -mtune=native")    
+elseif(WIN32)
+    # MinGW on Windows: omit -march=native so the binary runs on any x86-64 CPU
+    set(CMAKE_CXX_FLAGS "-O3 -ffast-math -fno-strict-aliasing -ftree-vectorize -ftree-loop-vectorize -funroll-loops")
+else()
+    set(CMAKE_CXX_FLAGS "-O3 -ffast-math -fno-strict-aliasing -ftree-vectorize -ftree-loop-vectorize -funroll-loops -march=native -mtune=native")
 endif()
 
 # Find the required Qt modules

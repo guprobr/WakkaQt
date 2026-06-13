@@ -11,8 +11,7 @@ static constexpr double kPi = 3.14159265358979323846;
 PitchMonitorWidget::PitchMonitorWidget(int sampleRate, QWidget *parent)
     : QWidget(parent), m_sampleRate(sampleRate)
 {
-    setMinimumSize(320, 80);
-    setMaximumHeight(90);
+    setMinimumSize(320, 48);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     setToolTip("Real-time pitch monitor — shows the note you are currently singing");
 }

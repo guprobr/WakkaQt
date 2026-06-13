@@ -3,6 +3,8 @@
 
 #include <QString>
 #include <functional>
+#include <atomic>
+#include <vector>
 
 namespace FFmpegNative {
 
@@ -11,6 +13,21 @@ double getDuration(const QString &filePath);
 
 /// Returns true when the file contains at least one valid video stream.
 bool hasVideoStream(const QString &filePath);
+
+/// Decode media file to interleaved float32 stereo PCM at 44100 Hz.
+/// Returns an empty vector on error.
+std::vector<float> decodeToFloatStereo(const QString &filePath);
+
+/// Write interleaved float32 stereo at 44100 Hz to a WAV file (pcm_f32le).
+bool writeFloatWav(const std::vector<float> &pcm, const QString &outPath);
+
+/// Transcode audio to another format (output format determined by file extension).
+bool transcodeAudio(const QString &input, const QString &output);
+
+/// Copy video stream from videoSrc and replace its audio track with the
+/// contents of audioSrc. Output format determined by the output file extension.
+bool muxVideoWithAudio(const QString &videoSrc, const QString &audioSrc,
+                       const QString &output);
 
 /// Extracts the audio track from `input`, resamples to 44100 Hz / stereo or
 /// mono / Int16, optionally trims `offsetMs` from the start, and writes a
@@ -32,6 +49,7 @@ bool renderVideo(const QString &audioPath,          ///< enhanced vocal audio (W
                  const QString &resolution,         ///< e.g. "1920x1080"
                  const QString &audioMasterization, ///< libavfilter chain string
                  const QString &rawVocalPath = {},  ///< raw vocal for pitch overlay (optional)
+                 const std::atomic<bool> *cancelled = nullptr, ///< set true to abort
                  std::function<void(double)> progressCb = {});
 
 } // namespace FFmpegNative

@@ -2,6 +2,9 @@
 #include "mainwindow.h"
 #include "complexes.h"
 #include <QThreadPool>
+#include <QPushButton>
+#include <atomic>
+#include <memory>
 #ifdef WAKKAQT_FFMPEG_NATIVE
 #include "ffmpegnative.h"
 #endif
@@ -28,11 +31,28 @@ void MainWindow::renderAgain()
     // Loop until the user picks a valid output path or cancels.
     // (Previously used recursion here which could stack-overflow on repeated
     // bad-extension choices — replaced with a safe while loop.)
+    static const QString kRenderFilter =
+        "MP4 Files (*.mp4);;MKV Files (*.mkv);;WebM Files (*.webm);;AVI Files (*.avi);;"
+        "MP3 Files (*.mp3);;FLAC Files (*.flac);;WAV Files (*.wav);;Opus Files (*.opus)";
     const QStringList allowedExtensions = {"mp4","mkv","webm","avi","mp3","flac","wav","opus"};
     while (true) {
-        outputFilePath = QFileDialog::getSaveFileName(
-            this, "Mix destination (default .MP4)", "",
-            "Video or Audio Files (*.mp4 *.mkv *.webm *.avi *.mp3 *.flac *.wav *.opus)");
+        QFileDialog dlg(this, "Mix destination (default .MP4)", "", kRenderFilter);
+        dlg.setAcceptMode(QFileDialog::AcceptSave);
+        dlg.setOption(QFileDialog::DontUseNativeDialog);
+        QObject::connect(&dlg, &QFileDialog::filterSelected, &dlg,
+            [&dlg](const QString &filter) {
+                int star = filter.lastIndexOf("*.");
+                if (star < 0) return;
+                QString ext = filter.mid(star + 2).section(')', 0, 0).trimmed().toLower();
+                if (ext.isEmpty()) return;
+                QStringList sel = dlg.selectedFiles();
+                if (sel.isEmpty()) return;
+                QFileInfo fi(sel.first());
+                if (fi.completeBaseName().isEmpty()) return;
+                dlg.selectFile(fi.dir().filePath(fi.completeBaseName() + "." + ext));
+            });
+        outputFilePath = (dlg.exec() == QDialog::Accepted)
+                         ? dlg.selectedFiles().value(0) : QString{};
 
         if (outputFilePath.isEmpty()) {
             enable_playback(true);
@@ -104,6 +124,7 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset) {
     singAction->setEnabled(false);
     chooseInputButton->setEnabled(false);
     chooseInputAction->setEnabled(false);
+    backingTrackButton->setVisible(false);
 
     progressBar = new QProgressBar(this);
     progressBar->setMinimumSize(640, 25);
@@ -113,8 +134,13 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset) {
     progressLabel->setAlignment(Qt::AlignCenter);
     progressLabel->setFont(QFont("Arial", 8));
     QVBoxLayout *layout = qobject_cast<QVBoxLayout*>(centralWidget()->layout());
-    layout->insertWidget(0, progressLabel, 0, Qt::AlignCenter);
+
+    auto renderCancelled = std::make_shared<std::atomic<bool>>(false);
+    QPushButton *abortRenderBtn = new QPushButton("⛔ Abort Render", this);
+
+    layout->insertWidget(0, abortRenderBtn, 0, Qt::AlignCenter);
     layout->insertWidget(0, progressBar,   0, Qt::AlignCenter);
+    layout->insertWidget(0, progressLabel, 0, Qt::AlignCenter);
 
     // effectiveAudioOffset and effectiveVideoOffset are intentionally identical.
     //
@@ -135,16 +161,23 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset) {
     const qint64 effectiveAudioOffset = manualOffset;
     const qint64 effectiveVideoOffset = manualOffset;
 
-    auto onFinished = [this, progressLabel](bool success) {
+    auto onFinished = [this, progressLabel, abortRenderBtn, renderCancelled](bool success) {
         delete progressLabel;
         delete this->progressBar;
+        delete abortRenderBtn;
 
         if (!success) {
-            logUI("Render failed.");
             enable_playback(true);
             chooseInputButton->setEnabled(true);
             chooseInputAction->setEnabled(true);
             renderAgainButton->setVisible(true);
+            backingTrackButton->setVisible(true);
+            if (renderCancelled->load()) {
+                logUI("Render aborted.");
+                QFile::remove(outputFilePath);
+                return;
+            }
+            logUI("Render failed.");
             QMessageBox::critical(this, "Render Error", "Rendering failed. Check the logs.");
             return;
         }
@@ -156,6 +189,7 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset) {
             chooseInputButton->setEnabled(true);
             chooseInputAction->setEnabled(true);
             renderAgainButton->setVisible(true);
+            backingTrackButton->setVisible(true);
             QMessageBox::critical(this, "Render Error", "Output file was not created.");
             return;
         }
@@ -170,6 +204,7 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset) {
         chooseInputButton->setEnabled(true);
         chooseInputAction->setEnabled(true);
         renderAgainButton->setVisible(true);
+        backingTrackButton->setVisible(true);
         placeholderLabel->hide();
         videoWidget->show();
 
@@ -184,6 +219,9 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset) {
 #ifdef WAKKAQT_FFMPEG_NATIVE
     // Native render — runs in a background thread; progress bar updated via lambda
     QProgressBar *pb = this->progressBar;
+    connect(abortRenderBtn, &QPushButton::clicked, this, [renderCancelled]() {
+        renderCancelled->store(true);
+    });
     QThreadPool::globalInstance()->start([=]() {
         bool ok = FFmpegNative::renderVideo(
             tunedRecorded,
@@ -196,6 +234,7 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset) {
             setRez,
             _audioMasterization,
             audioRecorded,
+            renderCancelled.get(),
             [pb](double p) {
                 QMetaObject::invokeMethod(pb, [pb, p]() {
                     pb->setValue(int(p * 100));
@@ -237,6 +276,10 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset) {
     int totalDuration = static_cast<int>(getMediaDuration(currentVideoFile));
 
     QProcess *process = new QProcess(this);
+    connect(abortRenderBtn, &QPushButton::clicked, this, [process, renderCancelled]() {
+        renderCancelled->store(true);
+        process->kill();
+    });
     connect(process, &QProcess::readyReadStandardError,
             [process, totalDuration, this]() {
         const QString out = QString::fromUtf8(process->readAllStandardError()).trimmed();
@@ -260,6 +303,7 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset) {
         chooseInputButton->setEnabled(true);
         chooseInputAction->setEnabled(true);
         renderAgainButton->setVisible(true);
+        backingTrackButton->setVisible(true);
         QMessageBox::critical(this, "FFmpeg not found",
             "Failed to start FFmpeg. Verify it is installed and available in PATH.");
         return;

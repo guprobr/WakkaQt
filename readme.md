@@ -6,7 +6,7 @@
 
 No subscriptions. No cloud. No judgment. (Well, maybe a little judgment from the pitch monitor.)
 
-Current version: **2.1.3**
+Current version: **2.2.1**
 
 ---
 
@@ -48,10 +48,10 @@ Output: a 1920×1080 MP4 with the karaoke video on top and your webcam below. Th
 
 Native FFmpeg integration renders entirely in-process with a real-time progress bar. Falls back gracefully to spawning `ffmpeg` via a subprocess if the dev libraries weren't present at build time.
 
-### 6. Generates a Backing Track (NEW in v2.1.3)
+### 6. Generates a Backing Track
 Load any song and click **🎵 Backing Track**. WakkaQt downloads the **UVR-MDX-NET-Inst_HQ_3** ONNX vocal separation model (~80 MB, once) and runs it locally on your machine — no internet required after the first download, no cloud service, no privacy leak, no subscription.
 
-The model separates vocals from the instrumental using MDX-Net deep learning, processed through a full STFT/iSTFT pipeline with FFTW3. The result is exported as WAV or MP3. Perfect for turning any song into a backing track for your next performance.
+The model separates vocals from the instrumental using MDX-Net deep learning, processed through a full STFT/iSTFT pipeline with FFTW3. If the input is a video file, the separated audio is muxed back onto the original video by default — so you keep the visuals. You can still save as audio-only (WAV or MP3) by choosing an audio format in the save dialog. Separation can be aborted mid-way with the Abort button.
 
 ### 7. Keeps a Session Library
 Every recording is saved to `~/.WakkaQt/library/` with a UUID folder, all source files, and JSON metadata. The library dialog lists everything with timestamps. You can rename, delete, or re-render any session — with updated enhancement settings — at any time.
@@ -79,6 +79,8 @@ Every recording is saved to `~/.WakkaQt/library/` with a UUID folder, all source
 | Session library (save/rename/delete/re-render) | ✅ |
 | YouTube download (via yt-dlp) | ✅ |
 | AI vocal separation → backing track (ONNX) | ✅ |
+| Backing track: video-preserving output | ✅ |
+| Abort render / abort separation | ✅ |
 | Cross-platform (Linux / Windows) | ✅ |
 | Subscription required | ❌ |
 | Phone home to a server | ❌ |
@@ -87,6 +89,13 @@ Every recording is saved to `~/.WakkaQt/library/` with a UUID folder, all source
 ---
 
 ## Changelog
+
+### v2.2.1
+- **Abort render / abort separation** — both the video render and the vocal separation now have an Abort button that cancels the operation mid-flight without leaving corrupted output files
+- **Video-preserving backing track output** — when the input to the vocal separator is a video file, the separated instrumental is muxed back onto the original video by default, preserving the visuals. Choosing an audio format (WAV, MP3) in the save dialog still saves audio only
+- **Extension auto-follows filter in all save dialogs** — switching format in any save dialog (render, library export, backing track) now updates the output filename extension automatically. Achieved via `QFileDialog::DontUseNativeDialog` + `filterSelected` signal across all three dialogs
+- **Native FFmpeg for all separator I/O** — `decodeToFloatStereo`, `writeFloatWav`, `transcodeAudio`, and `muxVideoWithAudio` are now implemented natively in-process via libavformat/libavcodec/libswresample. The old `QProcess ffmpeg` / `QProcess ffprobe` calls in the separator remain as `#else` fallbacks behind `#ifdef WAKKAQT_FFMPEG_NATIVE` guards
+- **Pitch monitor height reduced** — `PitchMonitorWidget` maximum height lowered from 48 px to 24 px for a more compact layout
 
 ### v2.1.3
 - **Generate Backing Track** — new feature powered by the UVR-MDX-NET-Inst_HQ_3 ONNX model. Downloads the model on first use (~80 MB), then separates vocals from any loaded track entirely offline. Output can be saved as WAV or MP3. The button appears automatically when a file is loaded and disappears when it isn't needed

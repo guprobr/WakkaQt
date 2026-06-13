@@ -200,7 +200,7 @@ MainWindow::MainWindow(QWidget *parent)
     soundLevelWidget->setToolTip("Sound input visualization widget");
 
     pitchMonitor = new PitchMonitorWidget(44100, this);
-    pitchMonitor->setMaximumHeight(48);
+    pitchMonitor->setMaximumHeight(24);
     connect(soundLevelWidget, &SndWidget::audioChunkReady,
             pitchMonitor,     &PitchMonitorWidget::onAudioChunk);
 
@@ -280,10 +280,10 @@ MainWindow::MainWindow(QWidget *parent)
     transportWidget->setLayout(transportLayout);
     transportWidget->hide();   // shown only once media starts playing
 
+    layout->addWidget(pitchMonitor);
+    layout->addWidget(soundLevelWidget, 1);
     layout->addWidget(progressView);
     layout->addWidget(transportWidget);
-    layout->addWidget(soundLevelWidget, 1);
-    layout->addWidget(pitchMonitor);
     // Row 1 — file / navigation
     QHBoxLayout *fileRow = new QHBoxLayout();
     fileRow->addWidget(chooseVideoButton);

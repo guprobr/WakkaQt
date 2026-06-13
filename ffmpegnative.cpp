@@ -699,6 +699,384 @@ static void paintPitchOverlay(AVFrame *frame, int64_t lookupMs,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// decodeToFloatStereo
+// ─────────────────────────────────────────────────────────────────────────────
+
+std::vector<float> decodeToFloatStereo(const QString &filePath)
+{
+    const QVector<float> q = decodeAudioToFloat(filePath, 0, 1.0);
+    return std::vector<float>(q.constBegin(), q.constEnd());
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// writeFloatWav
+// ─────────────────────────────────────────────────────────────────────────────
+
+bool writeFloatWav(const std::vector<float> &pcm, const QString &outPath)
+{
+    if (pcm.empty() || pcm.size() % 2 != 0) {
+        qWarning() << "FFmpegNative::writeFloatWav: invalid PCM";
+        return false;
+    }
+
+    const AVCodec *enc = avcodec_find_encoder(AV_CODEC_ID_PCM_F32LE);
+    if (!enc) { qWarning() << "FFmpegNative::writeFloatWav: PCM_F32LE not found"; return false; }
+
+    AVFormatContext *outFmt = nullptr;
+    if (avformat_alloc_output_context2(&outFmt, nullptr, "wav",
+                                        outPath.toUtf8().constData()) < 0)
+        return false;
+
+    AVStream *st = avformat_new_stream(outFmt, nullptr);
+    if (!st) { avformat_free_context(outFmt); return false; }
+
+    AVCodecContext *encCtx = avcodec_alloc_context3(enc);
+    encCtx->sample_fmt  = AV_SAMPLE_FMT_FLT;
+    encCtx->sample_rate = 44100;
+    encCtx->bit_rate    = 0;
+    encCtx->time_base   = {1, 44100};
+    av_channel_layout_from_mask(&encCtx->ch_layout, AV_CH_LAYOUT_STEREO);
+
+    if (avcodec_open2(encCtx, enc, nullptr) < 0) {
+        avcodec_free_context(&encCtx); avformat_free_context(outFmt); return false;
+    }
+    avcodec_parameters_from_context(st->codecpar, encCtx);
+    st->time_base = encCtx->time_base;
+
+    if (avio_open(&outFmt->pb, outPath.toUtf8().constData(), AVIO_FLAG_WRITE) < 0) {
+        avcodec_free_context(&encCtx); avformat_free_context(outFmt); return false;
+    }
+    if (avformat_write_header(outFmt, nullptr) < 0) {
+        avio_closep(&outFmt->pb); avcodec_free_context(&encCtx); avformat_free_context(outFmt); return false;
+    }
+
+    AVPacket *pkt = av_packet_alloc();
+    AVFrame  *frm = av_frame_alloc();
+    const int chunkSz    = 4096;
+    const int totalSamps = (int)(pcm.size() / 2);
+    int64_t   pts        = 0;
+
+    auto flushEnc = [&](AVFrame *f) {
+        if (avcodec_send_frame(encCtx, f) < 0) return;
+        while (avcodec_receive_packet(encCtx, pkt) == 0) {
+            av_packet_rescale_ts(pkt, encCtx->time_base, st->time_base);
+            pkt->stream_index = st->index;
+            av_interleaved_write_frame(outFmt, pkt);
+            av_packet_unref(pkt);
+        }
+    };
+
+    for (int off = 0; off < totalSamps; off += chunkSz) {
+        const int n = std::min(chunkSz, totalSamps - off);
+        frm->format      = AV_SAMPLE_FMT_FLT;
+        frm->sample_rate = 44100;
+        frm->nb_samples  = n;
+        frm->pts         = pts;
+        av_channel_layout_from_mask(&frm->ch_layout, AV_CH_LAYOUT_STEREO);
+        av_frame_get_buffer(frm, 0);
+        memcpy(frm->data[0], pcm.data() + off * 2, n * 2 * sizeof(float));
+        flushEnc(frm);
+        av_frame_unref(frm);
+        pts += n;
+    }
+    flushEnc(nullptr);
+
+    av_write_trailer(outFmt);
+    avio_closep(&outFmt->pb);
+    av_frame_free(&frm);
+    av_packet_free(&pkt);
+    avcodec_free_context(&encCtx);
+    avformat_free_context(outFmt);
+    return true;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// transcodeAudio — shared encode pipeline used by transcodeAudio & muxVideoWithAudio
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Encode S16 stereo 44100 Hz PCM into an already-opened output context.
+// outFmt must have its header already written; caller writes trailer and closes.
+static bool encodeS16ToStream(const QVector<int16_t> &s16,
+                               AVFormatContext *outFmt,
+                               AVStream *outSt,
+                               AVCodecContext *encCtx,
+                               SwrContext *encSwr)
+{
+    AVAudioFifo *fifo = av_audio_fifo_alloc(encCtx->sample_fmt, 2,
+                                             std::max(1, encCtx->frame_size));
+    AVPacket *pkt = av_packet_alloc();
+
+    auto flushEnc = [&](AVFrame *f) {
+        if (avcodec_send_frame(encCtx, f) < 0) return;
+        while (avcodec_receive_packet(encCtx, pkt) == 0) {
+            av_packet_rescale_ts(pkt, encCtx->time_base, outSt->time_base);
+            pkt->stream_index = outSt->index;
+            av_interleaved_write_frame(outFmt, pkt);
+            av_packet_unref(pkt);
+        }
+    };
+
+    auto pushToFifo = [&](const int16_t *src, int n) {
+        if (encSwr) {
+            const int maxOut = n + 64;
+            const int planes = av_sample_fmt_is_planar(encCtx->sample_fmt) ? 2 : 1;
+            std::vector<std::vector<uint8_t>> bufs;
+            std::vector<uint8_t *> ptrs;
+            for (int p = 0; p < planes; ++p) {
+                bufs.emplace_back((size_t)maxOut * av_get_bytes_per_sample(encCtx->sample_fmt) + 16);
+                ptrs.push_back(bufs.back().data());
+            }
+            const uint8_t *srcPtr = reinterpret_cast<const uint8_t *>(src);
+            const int got = swr_convert(encSwr, ptrs.data(), maxOut, &srcPtr, n);
+            if (got > 0)
+                av_audio_fifo_write(fifo, reinterpret_cast<void **>(ptrs.data()), got);
+        } else {
+            void *ptr = const_cast<int16_t *>(src);
+            av_audio_fifo_write(fifo, &ptr, n);
+        }
+    };
+
+    const int frameSize      = (encCtx->frame_size > 0) ? encCtx->frame_size : 1024;
+    const int totalSamplesIn = s16.size() / 2;
+    int       samplesWritten = 0;
+    int64_t   audioPts       = 0;
+
+    while (samplesWritten < totalSamplesIn || av_audio_fifo_size(fifo) > 0) {
+        if (samplesWritten < totalSamplesIn) {
+            const int batch = std::min(frameSize * 4, totalSamplesIn - samplesWritten);
+            pushToFifo(s16.constData() + samplesWritten * 2, batch);
+            samplesWritten += batch;
+        }
+        while (av_audio_fifo_size(fifo) >= frameSize ||
+               (samplesWritten >= totalSamplesIn && av_audio_fifo_size(fifo) > 0)) {
+            const int read = std::min(frameSize, av_audio_fifo_size(fifo));
+            if (read <= 0) break;
+            AVFrame *af = av_frame_alloc();
+            af->format      = encCtx->sample_fmt;
+            af->nb_samples  = read;
+            af->sample_rate = 44100;
+            af->pts         = audioPts;
+            av_channel_layout_copy(&af->ch_layout, &encCtx->ch_layout);
+            av_frame_get_buffer(af, 0);
+            av_audio_fifo_read(fifo, reinterpret_cast<void **>(af->data), read);
+            flushEnc(af);
+            av_frame_free(&af);
+            audioPts += read;
+        }
+    }
+    flushEnc(nullptr);
+
+    av_packet_free(&pkt);
+    av_audio_fifo_free(fifo);
+    return true;
+}
+
+// Build audio encoder context for 44100 Hz stereo into outFmt.
+// Caller owns encCtx and encSwr (may be null) and must free them.
+static bool openAudioEncoder(AVCodecID codecId, AVFormatContext *outFmt,
+                              AVStream **outSt, AVCodecContext **encCtx,
+                              SwrContext **encSwr)
+{
+    *encSwr = nullptr;
+    const AVCodec *enc = avcodec_find_encoder(codecId);
+    if (!enc) { qWarning() << "FFmpegNative: audio encoder not found"; return false; }
+
+    *outSt  = avformat_new_stream(outFmt, enc);
+    *encCtx = avcodec_alloc_context3(enc);
+    (*encCtx)->sample_rate = 44100;
+    av_channel_layout_from_mask(&(*encCtx)->ch_layout, AV_CH_LAYOUT_STEREO);
+    {
+        const AVSampleFormat *fmts = nullptr; int nFmts = 0;
+        avcodec_get_supported_config(nullptr, enc, AV_CODEC_CONFIG_SAMPLE_FORMAT, 0,
+                                      reinterpret_cast<const void **>(&fmts), &nFmts);
+        (*encCtx)->sample_fmt = (fmts && nFmts > 0) ? fmts[0] : AV_SAMPLE_FMT_S16;
+    }
+    (*encCtx)->bit_rate  = (codecId == AV_CODEC_ID_PCM_S16LE ||
+                            codecId == AV_CODEC_ID_FLAC) ? 0 : 192000;
+    (*encCtx)->time_base = {1, 44100};
+    if (outFmt->oformat->flags & AVFMT_GLOBALHEADER)
+        (*encCtx)->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
+
+    if (avcodec_open2(*encCtx, enc, nullptr) < 0) {
+        avcodec_free_context(encCtx); return false;
+    }
+    avcodec_parameters_from_context((*outSt)->codecpar, *encCtx);
+    (*outSt)->time_base = (*encCtx)->time_base;
+
+    if ((*encCtx)->sample_fmt != AV_SAMPLE_FMT_S16) {
+        AVChannelLayout stereo;
+        av_channel_layout_from_mask(&stereo, AV_CH_LAYOUT_STEREO);
+        swr_alloc_set_opts2(encSwr, &stereo, (*encCtx)->sample_fmt, 44100,
+                             &stereo, AV_SAMPLE_FMT_S16, 44100, 0, nullptr);
+        swr_init(*encSwr);
+        av_channel_layout_uninit(&stereo);
+    }
+    return true;
+}
+
+static AVCodecID audioCodecForExt(const QString &ext)
+{
+    if (ext == "mp3")  return AV_CODEC_ID_MP3;
+    if (ext == "flac") return AV_CODEC_ID_FLAC;
+    if (ext == "opus") return AV_CODEC_ID_OPUS;
+    if (ext == "wav")  return AV_CODEC_ID_PCM_S16LE;
+    return AV_CODEC_ID_AAC;
+}
+
+bool transcodeAudio(const QString &input, const QString &output)
+{
+    const QVector<float>   floatPcm = decodeAudioToFloat(input, 0, 1.0);
+    if (floatPcm.isEmpty()) {
+        qWarning() << "FFmpegNative::transcodeAudio: decode failed for" << input;
+        return false;
+    }
+    const QVector<int16_t> s16Pcm = applyAudioFilter(floatPcm, {});
+
+    const QString ext = QFileInfo(output).suffix().toLower();
+    AVFormatContext *outFmt = nullptr;
+    avformat_alloc_output_context2(&outFmt, nullptr, nullptr, output.toUtf8().constData());
+    if (!outFmt) return false;
+
+    AVStream      *outSt  = nullptr;
+    AVCodecContext *encCtx = nullptr;
+    SwrContext     *encSwr = nullptr;
+    if (!openAudioEncoder(audioCodecForExt(ext), outFmt, &outSt, &encCtx, &encSwr)) {
+        avformat_free_context(outFmt); return false;
+    }
+
+    if (avio_open(&outFmt->pb, output.toUtf8().constData(), AVIO_FLAG_WRITE) < 0) {
+        if (encSwr) swr_free(&encSwr);
+        avcodec_free_context(&encCtx);
+        avformat_free_context(outFmt);
+        return false;
+    }
+    if (avformat_write_header(outFmt, nullptr) < 0) {
+        avio_closep(&outFmt->pb);
+        if (encSwr) swr_free(&encSwr);
+        avcodec_free_context(&encCtx);
+        avformat_free_context(outFmt);
+        return false;
+    }
+
+    encodeS16ToStream(s16Pcm, outFmt, outSt, encCtx, encSwr);
+
+    av_write_trailer(outFmt);
+    avio_closep(&outFmt->pb);
+    if (encSwr) swr_free(&encSwr);
+    avcodec_free_context(&encCtx);
+    avformat_free_context(outFmt);
+    qDebug() << "FFmpegNative::transcodeAudio: done →" << output;
+    return true;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// muxVideoWithAudio
+// ─────────────────────────────────────────────────────────────────────────────
+
+bool muxVideoWithAudio(const QString &videoSrc, const QString &audioSrc,
+                       const QString &output)
+{
+    // Open video source to copy its video stream
+    AVFormatContext *vidFmt = nullptr;
+    if (avformat_open_input(&vidFmt, videoSrc.toUtf8().constData(), nullptr, nullptr) < 0) {
+        qWarning() << "FFmpegNative::muxVideoWithAudio: cannot open video source";
+        return false;
+    }
+    avformat_find_stream_info(vidFmt, nullptr);
+    const int vidIdx = av_find_best_stream(vidFmt, AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0);
+    if (vidIdx < 0) {
+        qWarning() << "FFmpegNative::muxVideoWithAudio: no video stream in" << videoSrc;
+        avformat_close_input(&vidFmt); return false;
+    }
+
+    // Decode audio source
+    const QVector<float> floatPcm = decodeAudioToFloat(audioSrc, 0, 1.0);
+    if (floatPcm.isEmpty()) {
+        qWarning() << "FFmpegNative::muxVideoWithAudio: cannot decode audio from" << audioSrc;
+        avformat_close_input(&vidFmt); return false;
+    }
+    const QVector<int16_t> s16Pcm = applyAudioFilter(floatPcm, {});
+
+    // Output format
+    AVFormatContext *outFmt = nullptr;
+    avformat_alloc_output_context2(&outFmt, nullptr, nullptr, output.toUtf8().constData());
+    if (!outFmt) { avformat_close_input(&vidFmt); return false; }
+
+    // Video stream — stream copy (no re-encode)
+    AVStream *inVidSt  = vidFmt->streams[vidIdx];
+    AVStream *outVidSt = avformat_new_stream(outFmt, nullptr);
+    avcodec_parameters_copy(outVidSt->codecpar, inVidSt->codecpar);
+    outVidSt->codecpar->codec_tag = 0;
+    outVidSt->time_base = inVidSt->time_base;
+
+    // Audio stream — encode new audio
+    const QString ext = QFileInfo(output).suffix().toLower();
+    AVStream      *outAudSt  = nullptr;
+    AVCodecContext *audioEncCtx = nullptr;
+    SwrContext     *audioEncSwr = nullptr;
+    if (!openAudioEncoder(audioCodecForExt(ext), outFmt, &outAudSt, &audioEncCtx, &audioEncSwr)) {
+        avformat_close_input(&vidFmt); avformat_free_context(outFmt); return false;
+    }
+
+    if (!(outFmt->oformat->flags & AVFMT_NOFILE)) {
+        if (avio_open(&outFmt->pb, output.toUtf8().constData(), AVIO_FLAG_WRITE) < 0) {
+            if (audioEncSwr) swr_free(&audioEncSwr);
+            avcodec_free_context(&audioEncCtx);
+            avformat_close_input(&vidFmt);
+            avformat_free_context(outFmt);
+            return false;
+        }
+    }
+    if (avformat_write_header(outFmt, nullptr) < 0) {
+        if (!(outFmt->oformat->flags & AVFMT_NOFILE)) avio_closep(&outFmt->pb);
+        if (audioEncSwr) swr_free(&audioEncSwr);
+        avcodec_free_context(&audioEncCtx);
+        avformat_close_input(&vidFmt);
+        avformat_free_context(outFmt);
+        return false;
+    }
+
+    // Write audio first (av_interleaved_write_frame handles interleaving by DTS)
+    encodeS16ToStream(s16Pcm, outFmt, outAudSt, audioEncCtx, audioEncSwr);
+
+    // Copy video packets — seek to start in case avformat_find_stream_info advanced it
+    av_seek_frame(vidFmt, vidIdx, 0, AVSEEK_FLAG_BACKWARD);
+
+    AVPacket *pkt = av_packet_alloc();
+    int64_t firstPts = AV_NOPTS_VALUE;
+
+    while (av_read_frame(vidFmt, pkt) >= 0) {
+        if (pkt->stream_index != vidIdx) { av_packet_unref(pkt); continue; }
+
+        // Normalize PTS/DTS to start from 0
+        if (firstPts == AV_NOPTS_VALUE && pkt->pts != AV_NOPTS_VALUE)
+            firstPts = pkt->pts;
+        if (firstPts != AV_NOPTS_VALUE) {
+            if (pkt->pts != AV_NOPTS_VALUE) pkt->pts -= firstPts;
+            if (pkt->dts != AV_NOPTS_VALUE) pkt->dts -= firstPts;
+        }
+
+        av_packet_rescale_ts(pkt, inVidSt->time_base, outVidSt->time_base);
+        pkt->stream_index = outVidSt->index;
+        av_interleaved_write_frame(outFmt, pkt);
+        av_packet_unref(pkt);
+    }
+
+    av_write_trailer(outFmt);
+    if (!(outFmt->oformat->flags & AVFMT_NOFILE))
+        avio_closep(&outFmt->pb);
+
+    av_packet_free(&pkt);
+    if (audioEncSwr) swr_free(&audioEncSwr);
+    avcodec_free_context(&audioEncCtx);
+    avformat_close_input(&vidFmt);
+    avformat_free_context(outFmt);
+
+    qDebug() << "FFmpegNative::muxVideoWithAudio: done →" << output;
+    return true;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // renderVideo
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -712,6 +1090,7 @@ bool renderVideo(const QString &audioPath,
                  const QString &resolution,
                  const QString &audioMasterization,
                  const QString &rawVocalPath,
+                 const std::atomic<bool> *cancelled,
                  std::function<void(double)> progressCb)
 {
     const QString ext = QFileInfo(outputPath).suffix().toLower();
@@ -907,6 +1286,8 @@ bool renderVideo(const QString &audioPath,
         return false;
     }
 
+    bool wasCancelled = false;
+
     // ── Helper: send one AVFrame to encoder and write resulting packets ────────
     auto flushEncoder = [&](AVCodecContext *encCtx, AVStream *st, AVFrame *frame) {
         if (avcodec_send_frame(encCtx, frame) < 0) return;
@@ -952,6 +1333,8 @@ bool renderVideo(const QString &audioPath,
         };
 
         while (samplesWritten < totalSamplesIn || av_audio_fifo_size(fifo) > 0) {
+            if (cancelled && cancelled->load()) { wasCancelled = true; break; }
+
             // Feed audio data into fifo
             if (samplesWritten < totalSamplesIn) {
                 const int batch = std::min(frameSize * 4, totalSamplesIn - samplesWritten);
@@ -1055,6 +1438,7 @@ bool renderVideo(const QString &audioPath,
             int64_t seekCorrectionTb = 0; // set after first frame when videoOffsetMs > 0
 
             while (av_read_frame(webcamFmt, pkt) >= 0) {
+                if (cancelled && cancelled->load()) { wasCancelled = true; av_packet_unref(pkt); break; }
                 if (pkt->stream_index != webcamVidIdx) { av_packet_unref(pkt); continue; }
                 if (avcodec_send_packet(webcamDec, pkt) < 0) { av_packet_unref(pkt); continue; }
                 av_packet_unref(pkt);
@@ -1123,7 +1507,8 @@ bool renderVideo(const QString &audioPath,
     }
 
     // ── Finalize ──────────────────────────────────────────────────────────────
-    av_write_trailer(outFmt);
+    if (!wasCancelled)
+        av_write_trailer(outFmt);
 
     if (!(outFmt->oformat->flags & AVFMT_NOFILE))
         avio_closep(&outFmt->pb);
@@ -1135,6 +1520,10 @@ bool renderVideo(const QString &audioPath,
     if (videoEncFrame) av_frame_free(&videoEncFrame);
     avformat_free_context(outFmt);
 
+    if (wasCancelled) {
+        qDebug() << "FFmpegNative::renderVideo: aborted";
+        return false;
+    }
     if (progressCb) progressCb(1.0);
     qDebug() << "FFmpegNative::renderVideo: done →" << outputPath;
     return true;

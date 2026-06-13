@@ -23,6 +23,9 @@
 #  error "onnxruntime_cxx_api.h not found"
 #endif
 #include <fftw3.h>
+#ifdef WAKKAQT_FFMPEG_NATIVE
+#  include "ffmpegnative.h"
+#endif
 #endif
 
 // UVR-MDX-NET-Inst_HQ_3: official UVR model repo on GitHub Releases — stable URL
@@ -91,8 +94,13 @@ bool VocalSeparator::downloadModel(std::function<void(int)> progressFn, QString 
 #ifdef WAKKAQT_ONNX
 // =========================================================================
 
-// Decode media file → interleaved float32 stereo at 44100 Hz via ffmpeg.
+// Decode media file → interleaved float32 stereo at 44100 Hz.
 static std::vector<float> decodeToFloat(const QString &input, QString &err) {
+#ifdef WAKKAQT_FFMPEG_NATIVE
+    std::vector<float> pcm = FFmpegNative::decodeToFloatStereo(input);
+    if (pcm.empty()) err = "FFmpegNative::decodeToFloatStereo failed for: " + input;
+    return pcm;
+#else
     const QString tmp = QDir::tempPath() + "/wakka_sep_in.f32";
     QProcess p;
     p.start("ffmpeg", {"-y", "-i", input,
@@ -111,11 +119,19 @@ static std::vector<float> decodeToFloat(const QString &input, QString &err) {
     std::vector<float> pcm(bytes.size() / sizeof(float));
     std::memcpy(pcm.data(), bytes.constData(), bytes.size());
     return pcm;
+#endif
 }
 
-// Write interleaved float32 stereo → WAV via ffmpeg.
+// Write interleaved float32 stereo → WAV.
 static bool writeFloatWav(const std::vector<float> &pcm,
                           const QString &outPath, QString &err) {
+#ifdef WAKKAQT_FFMPEG_NATIVE
+    if (!FFmpegNative::writeFloatWav(pcm, outPath)) {
+        err = "FFmpegNative::writeFloatWav failed for: " + outPath;
+        return false;
+    }
+    return true;
+#else
     const QString tmp = QDir::tempPath() + "/wakka_sep_out.f32";
     QFile f(tmp);
     if (!f.open(QIODevice::WriteOnly)) { err = "Cannot write temp PCM"; return false; }
@@ -131,6 +147,7 @@ static bool writeFloatWav(const std::vector<float> &pcm,
         return false;
     }
     return true;
+#endif
 }
 
 // ---- MDX-Net complex spectrogram ----------------------------------------
@@ -254,7 +271,8 @@ static std::vector<float> computeISTFT(const MdxSpec &spec, int n_fft, int hop, 
 
 QString VocalSeparator::separate(const QString &inputFile,
                                  std::function<void(int)> progressFn,
-                                 QString &errorOut) {
+                                 QString &errorOut,
+                                 const std::atomic<bool> *cancelled) {
     if (!modelExists()) {
         errorOut = "Model not found at: " + modelPath();
         return {};
@@ -331,6 +349,11 @@ QString VocalSeparator::separate(const QString &inputFile,
     int chunksDone = 0;
 
     for (int i = 0; i < spec.frames; i += GEN) {
+        if (cancelled && cancelled->load()) {
+            errorOut = "Cancelled";
+            return {};
+        }
+
         // Input window [src_start, src_end) in spectrogram frame indices
         const int src_start = i - TRIM;
         const int src_end   = i + GEN + TRIM; // = i + dim_t - TRIM
@@ -396,7 +419,8 @@ QString VocalSeparator::separate(const QString &inputFile,
 
 QString VocalSeparator::separate(const QString &,
                                  std::function<void(int)>,
-                                 QString &errorOut) {
+                                 QString &errorOut,
+                                 const std::atomic<bool> *) {
     errorOut = "ONNX Runtime not available. "
                "Install libonnxruntime-dev and rebuild WakkaQt.";
     return {};

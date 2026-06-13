@@ -150,11 +150,26 @@ void MainWindow::restoreAndRender(const QString &sessionId)
     chooseInputAction->setEnabled(true);
 
     // ── Output file dialog ────────────────────────────────────────────────
-    const QString restoredOutput = QFileDialog::getSaveFileName(
-        this,
-        "Mix destination (default .MP4)",
-        "",
-        "Video or Audio Files (*.mp4 *.mkv *.webm *.avi *.mp3 *.flac *.wav *.opus)");
+    static const QString kRenderFilter =
+        "MP4 Files (*.mp4);;MKV Files (*.mkv);;WebM Files (*.webm);;AVI Files (*.avi);;"
+        "MP3 Files (*.mp3);;FLAC Files (*.flac);;WAV Files (*.wav);;Opus Files (*.opus)";
+    QFileDialog outDlg(this, "Mix destination (default .MP4)", "", kRenderFilter);
+    outDlg.setAcceptMode(QFileDialog::AcceptSave);
+    outDlg.setOption(QFileDialog::DontUseNativeDialog);
+    QObject::connect(&outDlg, &QFileDialog::filterSelected, &outDlg,
+        [&outDlg](const QString &filter) {
+            int star = filter.lastIndexOf("*.");
+            if (star < 0) return;
+            QString ext = filter.mid(star + 2).section(')', 0, 0).trimmed().toLower();
+            if (ext.isEmpty()) return;
+            QStringList sel = outDlg.selectedFiles();
+            if (sel.isEmpty()) return;
+            QFileInfo fi(sel.first());
+            if (fi.completeBaseName().isEmpty()) return;
+            outDlg.selectFile(fi.dir().filePath(fi.completeBaseName() + "." + ext));
+        });
+    const QString restoredOutput = (outDlg.exec() == QDialog::Accepted)
+                                   ? outDlg.selectedFiles().value(0) : QString{};
 
     if (restoredOutput.isEmpty()) {
         logUI("Library: restore cancelled at output-file step.");

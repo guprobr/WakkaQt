@@ -801,19 +801,25 @@ static bool encodeS16ToStream(const QVector<int16_t> &s16,
                                AVStream *outSt,
                                AVCodecContext *encCtx,
                                SwrContext *encSwr,
-                               std::function<void(int)> progressCb = {})
+                               std::function<void(int)> progressCb = {},
+                               std::vector<AVPacket*> *queueOut = nullptr)
 {
     AVAudioFifo *fifo = av_audio_fifo_alloc(encCtx->sample_fmt, 2,
                                              std::max(1, encCtx->frame_size));
-    AVPacket *pkt = av_packet_alloc();
 
     auto flushEnc = [&](AVFrame *f) {
         if (avcodec_send_frame(encCtx, f) < 0) return;
-        while (avcodec_receive_packet(encCtx, pkt) == 0) {
+        while (true) {
+            AVPacket *pkt = av_packet_alloc();
+            if (avcodec_receive_packet(encCtx, pkt) < 0) { av_packet_free(&pkt); break; }
             av_packet_rescale_ts(pkt, encCtx->time_base, outSt->time_base);
             pkt->stream_index = outSt->index;
-            av_interleaved_write_frame(outFmt, pkt);
-            av_packet_unref(pkt);
+            if (queueOut) {
+                queueOut->push_back(pkt);
+            } else {
+                av_interleaved_write_frame(outFmt, pkt);
+                av_packet_free(&pkt);
+            }
         }
     };
 
@@ -869,7 +875,6 @@ static bool encodeS16ToStream(const QVector<int16_t> &s16,
     }
     flushEnc(nullptr);
 
-    av_packet_free(&pkt);
     av_audio_fifo_free(fifo);
     return true;
 }
@@ -1053,10 +1058,15 @@ bool muxVideoWithAudio(const QString &videoSrc, const QString &audioSrc,
         return false;
     }
 
-    // Write audio first (av_interleaved_write_frame handles interleaving by DTS)
+    // Collect audio into a queue so it can be written interleaved with video.
+    // Writing all audio before any video produces files where players show no
+    // video from the start, or no audio after a seek.
+    std::vector<AVPacket*> audioQueue;
+    size_t audioQueueIdx = 0;
     encodeS16ToStream(s16Pcm, outFmt, outAudSt, audioEncCtx, audioEncSwr,
         progressCb ? [&progressCb](int pct) { progressCb(20 + pct * 20 / 100); }
-                   : std::function<void(int)>{});
+                   : std::function<void(int)>{},
+        &audioQueue);
     if (progressCb) progressCb(40);
 
     // Copy video packets — seek to start in case avformat_find_stream_info advanced it
@@ -1078,13 +1088,35 @@ bool muxVideoWithAudio(const QString &videoSrc, const QString &audioSrc,
 
         av_packet_rescale_ts(pkt, inVidSt->time_base, outVidSt->time_base);
         pkt->stream_index = outVidSt->index;
+
+        // Drain audio packets whose DTS is at or before this video packet's DTS
+        const int64_t videoDtsAV = av_rescale_q(
+            pkt->dts != AV_NOPTS_VALUE ? pkt->dts : pkt->pts,
+            outVidSt->time_base, AV_TIME_BASE_Q);
+        while (audioQueueIdx < audioQueue.size()) {
+            AVPacket *ap = audioQueue[audioQueueIdx];
+            const int64_t audioDtsAV = av_rescale_q(
+                ap->dts != AV_NOPTS_VALUE ? ap->dts : ap->pts,
+                outAudSt->time_base, AV_TIME_BASE_Q);
+            if (audioDtsAV > videoDtsAV) break;
+            av_write_frame(outFmt, ap);
+            av_packet_free(&audioQueue[audioQueueIdx++]);
+        }
+
         if (progressCb && totalDurSec > 0 && pkt->pts != AV_NOPTS_VALUE) {
             const double ptsSec = double(pkt->pts) * av_q2d(outVidSt->time_base);
             progressCb(40 + int(60.0 * std::min(1.0, ptsSec / totalDurSec)));
         }
-        av_interleaved_write_frame(outFmt, pkt);
+        av_write_frame(outFmt, pkt);
         av_packet_unref(pkt);
     }
+
+    // Drain any audio that extends past the end of the video track
+    for (; audioQueueIdx < audioQueue.size(); audioQueueIdx++) {
+        av_write_frame(outFmt, audioQueue[audioQueueIdx]);
+        av_packet_free(&audioQueue[audioQueueIdx]);
+    }
+    audioQueue.clear();
 
     av_write_trailer(outFmt);
     if (!(outFmt->oformat->flags & AVFMT_NOFILE))
@@ -1313,14 +1345,50 @@ bool renderVideo(const QString &audioPath,
 
     bool wasCancelled = false;
 
-    // ── Helper: send one AVFrame to encoder and write resulting packets ────────
-    auto flushEncoder = [&](AVCodecContext *encCtx, AVStream *st, AVFrame *frame) {
-        if (avcodec_send_frame(encCtx, frame) < 0) return;
+    // Audio packets are collected here and written interleaved with video so
+    // that players can seek to any position and find both streams together.
+    // Writing all audio before any video (the naive approach) produces files
+    // where players show no video from the start, or no audio after a seek.
+    std::vector<AVPacket*> audioPacketQueue;
+    size_t audioQueueIdx = 0;
+
+    // Collect one encoded audio frame into audioPacketQueue (no writes yet).
+    auto collectAudioPacket = [&](AVFrame *af) {
+        if (avcodec_send_frame(audioEncCtx, af) < 0) return;
+        while (true) {
+            AVPacket *pkt = av_packet_alloc();
+            if (avcodec_receive_packet(audioEncCtx, pkt) < 0) { av_packet_free(&pkt); break; }
+            av_packet_rescale_ts(pkt, audioEncCtx->time_base, audioOutSt->time_base);
+            pkt->stream_index = audioOutSt->index;
+            audioPacketQueue.push_back(pkt);
+        }
+    };
+
+    // Write buffered audio packets whose DTS is <= untilAV (AV_TIME_BASE units).
+    auto drainAudioUpTo = [&](int64_t untilAV) {
+        while (audioQueueIdx < audioPacketQueue.size()) {
+            AVPacket *ap = audioPacketQueue[audioQueueIdx];
+            const int64_t dtsAV = av_rescale_q(
+                ap->dts != AV_NOPTS_VALUE ? ap->dts : ap->pts,
+                audioOutSt->time_base, AV_TIME_BASE_Q);
+            if (dtsAV > untilAV) break;
+            av_write_frame(outFmt, ap);
+            av_packet_free(&audioPacketQueue[audioQueueIdx++]);
+        }
+    };
+
+    // Encode one video frame, draining buffered audio up to its DTS first.
+    auto flushVideoWithInterleave = [&](AVFrame *vframe) {
+        if (avcodec_send_frame(videoEncCtx, vframe) < 0) return;
         AVPacket *pkt = av_packet_alloc();
-        while (avcodec_receive_packet(encCtx, pkt) >= 0) {
-            av_packet_rescale_ts(pkt, encCtx->time_base, st->time_base);
-            pkt->stream_index = st->index;
-            av_interleaved_write_frame(outFmt, pkt);
+        while (avcodec_receive_packet(videoEncCtx, pkt) >= 0) {
+            av_packet_rescale_ts(pkt, videoEncCtx->time_base, videoOutSt->time_base);
+            pkt->stream_index = videoOutSt->index;
+            const int64_t videoDtsAV = av_rescale_q(
+                pkt->dts != AV_NOPTS_VALUE ? pkt->dts : pkt->pts,
+                videoOutSt->time_base, AV_TIME_BASE_Q);
+            drainAudioUpTo(videoDtsAV);
+            av_write_frame(outFmt, pkt);
             av_packet_unref(pkt);
         }
         av_packet_free(&pkt);
@@ -1382,7 +1450,7 @@ bool renderVideo(const QString &audioPath,
                 av_channel_layout_copy(&af->ch_layout, &audioEncCtx->ch_layout);
                 av_frame_get_buffer(af, 0);
                 av_audio_fifo_read(fifo, reinterpret_cast<void**>(af->data), read);
-                flushEncoder(audioEncCtx, audioOutSt, af);
+                collectAudioPacket(af);
                 av_frame_free(&af);
                 audioPts += read;
 
@@ -1394,9 +1462,16 @@ bool renderVideo(const QString &audioPath,
             }
         }
         // Flush audio encoder
-        flushEncoder(audioEncCtx, audioOutSt, nullptr);
+        collectAudioPacket(nullptr);
     }
     finalAudio.clear(); finalAudio.squeeze();
+
+    // For audio-only output there is no video to interleave with, so write
+    // all buffered audio packets now.
+    if (audioOnlyOut || !videoEncCtx) {
+        drainAudioUpTo(INT64_MAX);
+        audioPacketQueue.clear();
+    }
 
     // ── Step 7: Encode video ──────────────────────────────────────────────────
     if (videoEncCtx && videoOutSt && videoEncFrame) {
@@ -1511,7 +1586,7 @@ bool renderVideo(const QString &audioPath,
                     fallbackPts = videoEncFrame->pts - videoDelayTb - seekCorrectionTb
                                   + av_rescale_q(1, inputTB, videoEncCtx->time_base);
 
-                    flushEncoder(videoEncCtx, videoOutSt, videoEncFrame);
+                    flushVideoWithInterleave(videoEncFrame);
 
                     // Video = 10–100%: progress from normalized frame time / total audio duration
                     if (progressCb && totalDurSec > 0 && relPts != AV_NOPTS_VALUE) {
@@ -1520,7 +1595,7 @@ bool renderVideo(const QString &audioPath,
                     }
                 }
             }
-            flushEncoder(videoEncCtx, videoOutSt, nullptr);
+            flushVideoWithInterleave(nullptr);
 
             av_frame_free(&frm);
             av_packet_free(&pkt);
@@ -1530,6 +1605,10 @@ bool renderVideo(const QString &audioPath,
         if (webcamDec) avcodec_free_context(&webcamDec);
         if (webcamFmt) avformat_close_input(&webcamFmt);
     }
+
+    // Write any audio that extends past the end of the video track.
+    drainAudioUpTo(INT64_MAX);
+    audioPacketQueue.clear();
 
     // ── Finalize ──────────────────────────────────────────────────────────────
     if (!wasCancelled)

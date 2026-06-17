@@ -68,10 +68,28 @@ void MainWindow::renderAgain()
             QMessageBox::warning(this, "Invalid File Extension",
                 "Please choose a file with one of the following extensions:\n"
                 ".mp4, .mkv, .webm, .avi, .mp3, .flac, .wav, .opus");
-            continue; // show the dialog again — no stack growth
+            continue;
         }
 
-        break; // valid extension
+        {
+            const QString outAbs = QFileInfo(outputFilePath).absoluteFilePath();
+            bool collides = false;
+            for (const QString &inp : {audioRecorded, webcamRecorded, currentVideoFile,
+                                       tunedRecorded, extractedTmpPlayback}) {
+                if (!inp.isEmpty() && QFileInfo(inp).absoluteFilePath() == outAbs) {
+                    collides = true;
+                    break;
+                }
+            }
+            if (collides) {
+                QMessageBox::warning(this, "Invalid Output Path",
+                    "The output file cannot overwrite one of the input files.\n"
+                    "Please choose a different name or location.");
+                continue;
+            }
+        }
+
+        break; // valid extension and no collision with inputs
     }
 
     // Save session to library BEFORE asking for resolution

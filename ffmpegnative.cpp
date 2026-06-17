@@ -800,7 +800,8 @@ static bool encodeS16ToStream(const QVector<int16_t> &s16,
                                AVFormatContext *outFmt,
                                AVStream *outSt,
                                AVCodecContext *encCtx,
-                               SwrContext *encSwr)
+                               SwrContext *encSwr,
+                               std::function<void(int)> progressCb = {})
 {
     AVAudioFifo *fifo = av_audio_fifo_alloc(encCtx->sample_fmt, 2,
                                              std::max(1, encCtx->frame_size));
@@ -846,6 +847,8 @@ static bool encodeS16ToStream(const QVector<int16_t> &s16,
             const int batch = std::min(frameSize * 4, totalSamplesIn - samplesWritten);
             pushToFifo(s16.constData() + samplesWritten * 2, batch);
             samplesWritten += batch;
+            if (progressCb && totalSamplesIn > 0)
+                progressCb(samplesWritten * 100 / totalSamplesIn);
         }
         while (av_audio_fifo_size(fifo) >= frameSize ||
                (samplesWritten >= totalSamplesIn && av_audio_fifo_size(fifo) > 0)) {
@@ -923,14 +926,18 @@ static AVCodecID audioCodecForExt(const QString &ext)
     return AV_CODEC_ID_AAC;
 }
 
-bool transcodeAudio(const QString &input, const QString &output)
+bool transcodeAudio(const QString &input, const QString &output,
+                    std::function<void(int)> progressCb)
 {
+    if (progressCb) progressCb(0);
     const QVector<float>   floatPcm = decodeAudioToFloat(input, 0, 1.0);
     if (floatPcm.isEmpty()) {
         qWarning() << "FFmpegNative::transcodeAudio: decode failed for" << input;
         return false;
     }
+    if (progressCb) progressCb(20);
     const QVector<int16_t> s16Pcm = applyAudioFilter(floatPcm, {});
+    if (progressCb) progressCb(35);
 
     const QString ext = QFileInfo(output).suffix().toLower();
     AVFormatContext *outFmt = nullptr;
@@ -958,13 +965,16 @@ bool transcodeAudio(const QString &input, const QString &output)
         return false;
     }
 
-    encodeS16ToStream(s16Pcm, outFmt, outSt, encCtx, encSwr);
+    encodeS16ToStream(s16Pcm, outFmt, outSt, encCtx, encSwr,
+        progressCb ? [&progressCb](int pct) { progressCb(35 + pct * 65 / 100); }
+                   : std::function<void(int)>{});
 
     av_write_trailer(outFmt);
     avio_closep(&outFmt->pb);
     if (encSwr) swr_free(&encSwr);
     avcodec_free_context(&encCtx);
     avformat_free_context(outFmt);
+    if (progressCb) progressCb(100);
     qDebug() << "FFmpegNative::transcodeAudio: done →" << output;
     return true;
 }
@@ -974,8 +984,10 @@ bool transcodeAudio(const QString &input, const QString &output)
 // ─────────────────────────────────────────────────────────────────────────────
 
 bool muxVideoWithAudio(const QString &videoSrc, const QString &audioSrc,
-                       const QString &output)
+                       const QString &output,
+                       std::function<void(int)> progressCb)
 {
+    if (progressCb) progressCb(0);
     // Open video source to copy its video stream
     AVFormatContext *vidFmt = nullptr;
     if (avformat_open_input(&vidFmt, videoSrc.toUtf8().constData(), nullptr, nullptr) < 0) {
@@ -983,6 +995,9 @@ bool muxVideoWithAudio(const QString &videoSrc, const QString &audioSrc,
         return false;
     }
     avformat_find_stream_info(vidFmt, nullptr);
+    double totalDurSec = 0.0;
+    if (vidFmt->duration != AV_NOPTS_VALUE && vidFmt->duration > 0)
+        totalDurSec = double(vidFmt->duration) / AV_TIME_BASE;
     const int vidIdx = av_find_best_stream(vidFmt, AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0);
     if (vidIdx < 0) {
         qWarning() << "FFmpegNative::muxVideoWithAudio: no video stream in" << videoSrc;
@@ -995,7 +1010,9 @@ bool muxVideoWithAudio(const QString &videoSrc, const QString &audioSrc,
         qWarning() << "FFmpegNative::muxVideoWithAudio: cannot decode audio from" << audioSrc;
         avformat_close_input(&vidFmt); return false;
     }
+    if (progressCb) progressCb(10);
     const QVector<int16_t> s16Pcm = applyAudioFilter(floatPcm, {});
+    if (progressCb) progressCb(20);
 
     // Output format
     AVFormatContext *outFmt = nullptr;
@@ -1037,7 +1054,10 @@ bool muxVideoWithAudio(const QString &videoSrc, const QString &audioSrc,
     }
 
     // Write audio first (av_interleaved_write_frame handles interleaving by DTS)
-    encodeS16ToStream(s16Pcm, outFmt, outAudSt, audioEncCtx, audioEncSwr);
+    encodeS16ToStream(s16Pcm, outFmt, outAudSt, audioEncCtx, audioEncSwr,
+        progressCb ? [&progressCb](int pct) { progressCb(20 + pct * 20 / 100); }
+                   : std::function<void(int)>{});
+    if (progressCb) progressCb(40);
 
     // Copy video packets — seek to start in case avformat_find_stream_info advanced it
     av_seek_frame(vidFmt, vidIdx, 0, AVSEEK_FLAG_BACKWARD);
@@ -1058,6 +1078,10 @@ bool muxVideoWithAudio(const QString &videoSrc, const QString &audioSrc,
 
         av_packet_rescale_ts(pkt, inVidSt->time_base, outVidSt->time_base);
         pkt->stream_index = outVidSt->index;
+        if (progressCb && totalDurSec > 0 && pkt->pts != AV_NOPTS_VALUE) {
+            const double ptsSec = double(pkt->pts) * av_q2d(outVidSt->time_base);
+            progressCb(40 + int(60.0 * std::min(1.0, ptsSec / totalDurSec)));
+        }
         av_interleaved_write_frame(outFmt, pkt);
         av_packet_unref(pkt);
     }
@@ -1072,6 +1096,7 @@ bool muxVideoWithAudio(const QString &videoSrc, const QString &audioSrc,
     avformat_close_input(&vidFmt);
     avformat_free_context(outFmt);
 
+    if (progressCb) progressCb(100);
     qDebug() << "FFmpegNative::muxVideoWithAudio: done →" << output;
     return true;
 }

@@ -22,12 +22,16 @@ std::vector<float> decodeToFloatStereo(const QString &filePath);
 bool writeFloatWav(const std::vector<float> &pcm, const QString &outPath);
 
 /// Transcode audio to another format (output format determined by file extension).
-bool transcodeAudio(const QString &input, const QString &output);
+/// progressCb (optional) is called with 0–100 values on the calling thread.
+bool transcodeAudio(const QString &input, const QString &output,
+                    std::function<void(int)> progressCb = {});
 
 /// Copy video stream from videoSrc and replace its audio track with the
 /// contents of audioSrc. Output format determined by the output file extension.
+/// progressCb (optional) is called with 0–100 values on the calling thread.
 bool muxVideoWithAudio(const QString &videoSrc, const QString &audioSrc,
-                       const QString &output);
+                       const QString &output,
+                       std::function<void(int)> progressCb = {});
 
 /// Extracts the audio track from `input`, resamples to 44100 Hz / stereo or
 /// mono / Int16, optionally trims `offsetMs` from the start, and writes a

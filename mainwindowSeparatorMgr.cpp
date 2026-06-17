@@ -156,88 +156,72 @@ void MainWindow::generateBackingTrack() {
         QString saveFilter;
         if (inputHasVideo) {
             // Default to same container as input so video is preserved
-            defaultSavePath = QDir::homePath() + "/" + baseName + "_instrumental." + origExt;
+            defaultSavePath = QDir::homePath() + "/" + baseName + "_instrumental.mp4";
             saveFilter = "MP4 Files (*.mp4);;MKV Files (*.mkv);;WAV Files (*.wav);;MP3 Files (*.mp3)";
         } else {
             defaultSavePath = QDir::homePath() + "/" + baseName + "_instrumental.wav";
             saveFilter = "WAV Files (*.wav);;MP3 Files (*.mp3)";
         }
 
-        QFileDialog saveDlg(this, "Save Backing Track", defaultSavePath, saveFilter);
-        saveDlg.setAcceptMode(QFileDialog::AcceptSave);
-        saveDlg.setOption(QFileDialog::DontUseNativeDialog);
-        QObject::connect(&saveDlg, &QFileDialog::filterSelected, &saveDlg,
-            [&saveDlg](const QString &filter) {
-                int star = filter.lastIndexOf("*.");
-                if (star < 0) return;
-                QString ext = filter.mid(star + 2).section(')', 0, 0).trimmed().toLower();
-                if (ext.isEmpty()) return;
-                QStringList sel = saveDlg.selectedFiles();
-                if (sel.isEmpty()) return;
-                QFileInfo fi(sel.first());
-                if (fi.completeBaseName().isEmpty()) return;
-                saveDlg.selectFile(fi.dir().filePath(fi.completeBaseName() + "." + ext));
-            });
-        if (saveDlg.exec() != QDialog::Accepted) {
-            QFile::remove(tempOut);
-            return;
-        }
-        const QString savePath = saveDlg.selectedFiles().value(0);
-        if (savePath.isEmpty()) {
-            QFile::remove(tempOut);
-            return;
+        const QStringList allowedExts = inputHasVideo
+            ? QStringList{"mp4", "mkv", "wav", "mp3"}
+            : QStringList{"wav", "mp3"};
+
+        QString savePath;
+        while (true) {
+            QFileDialog saveDlg(this, "Save Backing Track", defaultSavePath, saveFilter);
+            saveDlg.setAcceptMode(QFileDialog::AcceptSave);
+            saveDlg.setOption(QFileDialog::DontUseNativeDialog);
+            QObject::connect(&saveDlg, &QFileDialog::filterSelected, &saveDlg,
+                [&saveDlg](const QString &filter) {
+                    int star = filter.lastIndexOf("*.");
+                    if (star < 0) return;
+                    QString ext = filter.mid(star + 2).section(')', 0, 0).trimmed().toLower();
+                    if (ext.isEmpty()) return;
+                    QStringList sel = saveDlg.selectedFiles();
+                    if (sel.isEmpty()) return;
+                    QFileInfo fi(sel.first());
+                    if (fi.completeBaseName().isEmpty()) return;
+                    saveDlg.selectFile(fi.dir().filePath(fi.completeBaseName() + "." + ext));
+                });
+            if (saveDlg.exec() != QDialog::Accepted) {
+                QFile::remove(tempOut);
+                return;
+            }
+            savePath = saveDlg.selectedFiles().value(0);
+            if (savePath.isEmpty()) {
+                QFile::remove(tempOut);
+                return;
+            }
+
+            if (!allowedExts.contains(QFileInfo(savePath).suffix().toLower())) {
+                QMessageBox::warning(this, "Invalid File Extension",
+                    "Please save the backing track with one of these extensions:\n."
+                    + allowedExts.join(", ."));
+                defaultSavePath = savePath;
+                continue;
+            }
+
+            if (QFileInfo(savePath).absoluteFilePath() ==
+                    QFileInfo(inputFile).absoluteFilePath()) {
+                QMessageBox::warning(this, "Invalid Output Path",
+                    "The output file cannot overwrite the input file.\n"
+                    "Please choose a different name or location.");
+                defaultSavePath = savePath;
+                continue;
+            }
+
+            break;
         }
 
         // Determine if user chose a video-capable container
         const bool saveAsVideo = inputHasVideo &&
                                  !savePath.endsWith(".wav", Qt::CaseInsensitive) &&
                                  !savePath.endsWith(".mp3", Qt::CaseInsensitive);
+        const bool saveAsMp3 = savePath.endsWith(".mp3", Qt::CaseInsensitive);
 
-        bool saveOk = true;
-        if (saveAsVideo) {
-#ifdef WAKKAQT_FFMPEG_NATIVE
-            if (!FFmpegNative::muxVideoWithAudio(inputFile, tempOut, savePath)) {
-                QMessageBox::critical(this, "Export Failed",
-                                      "Native video muxing failed. Check log for details.");
-                saveOk = false;
-            }
-            QFile::remove(tempOut);
-#else
-            QProcess mux;
-            mux.start("ffmpeg", {"-y", "-i", inputFile, "-i", tempOut,
-                                  "-c:v", "copy", "-c:a", "aac",
-                                  "-map", "0:v:0", "-map", "1:a:0",
-                                  savePath});
-            mux.waitForFinished(300000);
-            QFile::remove(tempOut);
-            if (mux.exitCode() != 0) {
-                QMessageBox::critical(this, "Export Failed",
-                                      "ffmpeg video muxing failed.\n" +
-                                      QString(mux.readAllStandardError()).left(300));
-                saveOk = false;
-            }
-#endif
-        } else if (savePath.endsWith(".mp3", Qt::CaseInsensitive)) {
-#ifdef WAKKAQT_FFMPEG_NATIVE
-            if (!FFmpegNative::transcodeAudio(tempOut, savePath)) {
-                QMessageBox::critical(this, "Export Failed",
-                                      "Native MP3 encoding failed. Check log for details.");
-                saveOk = false;
-            }
-            QFile::remove(tempOut);
-#else
-            QProcess mp3;
-            mp3.start("ffmpeg", {"-y", "-i", tempOut, "-q:a", "2", savePath});
-            mp3.waitForFinished(120000);
-            QFile::remove(tempOut);
-            if (mp3.exitCode() != 0) {
-                QMessageBox::critical(this, "Export Failed",
-                                      "ffmpeg MP3 encoding failed.\n" +
-                                      QString(mp3.readAllStandardError()).left(300));
-                saveOk = false;
-            }
-#endif
-        } else {
+        // WAV: fast rename/copy — no progress dialog needed
+        if (!saveAsVideo && !saveAsMp3) {
             if (QFile::exists(savePath))
                 QFile::remove(savePath);
             if (!QFile::rename(tempOut, savePath)) {
@@ -247,16 +231,107 @@ void MainWindow::generateBackingTrack() {
                     QMessageBox::critical(this, "Save Failed",
                                           "Could not write to:\n" + savePath +
                                           "\n\nTemp file preserved at:\n" + tempOut);
-                    saveOk = false;
+                    return;
                 }
             }
-        }
-
-        if (saveOk) {
             logUI("Backing track saved: " + savePath);
             QMessageBox::information(this, "Done",
                                      "Backing track saved to:\n" + savePath);
+            return;
         }
+
+        // Video mux or MP3 encode: run in background with progress dialog
+        auto *saveProgDlg = new QDialog(this);
+        saveProgDlg->setWindowTitle("Saving Backing Track");
+        saveProgDlg->setModal(true);
+        saveProgDlg->setMinimumWidth(340);
+
+        auto *saveProgLbl = new QLabel(
+            saveAsVideo ? "Muxing audio into video…" : "Encoding MP3…", saveProgDlg);
+        saveProgLbl->setAlignment(Qt::AlignCenter);
+
+        auto *saveProgBar = new QProgressBar(saveProgDlg);
+#ifdef WAKKAQT_FFMPEG_NATIVE
+        saveProgBar->setRange(0, 100);
+#else
+        saveProgBar->setRange(0, 0); // indeterminate — QProcess gives no sub-step progress
+#endif
+
+        auto *saveLayout = new QVBoxLayout(saveProgDlg);
+        saveLayout->addWidget(saveProgLbl);
+        saveLayout->addWidget(saveProgBar);
+        saveProgDlg->setLayout(saveLayout);
+        saveProgDlg->show();
+
+        auto saveProgress = std::make_shared<std::atomic<int>>(0);
+
+        auto *saveTimer = new QTimer(this);
+        saveTimer->start(200);
+        connect(saveTimer, &QTimer::timeout, this, [saveProgBar, saveProgress]() {
+            saveProgBar->setValue(saveProgress->load());
+        });
+
+        using SaveResult = QPair<bool, QString>;
+        auto *saveWatcher = new QFutureWatcher<SaveResult>(this);
+
+        connect(saveWatcher, &QFutureWatcher<SaveResult>::finished, this, [=]() {
+            saveTimer->stop();
+            saveTimer->deleteLater();
+            const SaveResult res = saveWatcher->result();
+            saveWatcher->deleteLater();
+            saveProgDlg->accept();
+            saveProgDlg->deleteLater();
+
+            if (res.first) {
+                logUI("Backing track saved: " + savePath);
+                QMessageBox::information(this, "Done",
+                                         "Backing track saved to:\n" + savePath);
+            } else {
+                QMessageBox::critical(this, "Export Failed", res.second);
+            }
+        });
+
+        QFuture<SaveResult> saveFuture = QtConcurrent::run([=]() -> SaveResult {
+            if (saveAsVideo) {
+#ifdef WAKKAQT_FFMPEG_NATIVE
+                const bool ok = FFmpegNative::muxVideoWithAudio(inputFile, tempOut, savePath,
+                    [saveProgress](int pct) { saveProgress->store(pct); });
+                QFile::remove(tempOut);
+                return {ok, ok ? QString()
+                              : "Native video muxing failed. Check console debug log for details."};
+#else
+                QProcess mux;
+                mux.start("ffmpeg", {"-y", "-i", inputFile, "-i", tempOut,
+                                      "-c:v", "copy", "-c:a", "aac",
+                                      "-map", "0:v:0", "-map", "1:a:0",
+                                      savePath});
+                mux.waitForFinished(300000);
+                const bool ok = mux.exitCode() == 0;
+                const QString err = ok ? QString()
+                    : "ffmpeg video muxing failed.\n" + QString(mux.readAllStandardError()).left(300);
+                QFile::remove(tempOut);
+                return {ok, err};
+#endif
+            } else {
+#ifdef WAKKAQT_FFMPEG_NATIVE
+                const bool ok = FFmpegNative::transcodeAudio(tempOut, savePath,
+                    [saveProgress](int pct) { saveProgress->store(pct); });
+                QFile::remove(tempOut);
+                return {ok, ok ? QString()
+                              : "Native MP3 encoding failed. Check log for details."};
+#else
+                QProcess mp3;
+                mp3.start("ffmpeg", {"-y", "-i", tempOut, "-q:a", "2", savePath});
+                mp3.waitForFinished(120000);
+                const bool ok = mp3.exitCode() == 0;
+                const QString err = ok ? QString()
+                    : "ffmpeg MP3 encoding failed.\n" + QString(mp3.readAllStandardError()).left(300);
+                QFile::remove(tempOut);
+                return {ok, err};
+#endif
+            }
+        });
+        saveWatcher->setFuture(saveFuture);
     });
 
     QFuture<Result> future = QtConcurrent::run([inputFile, progress, cancelled]() -> Result {

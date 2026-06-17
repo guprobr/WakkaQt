@@ -149,49 +149,67 @@ void MainWindow::restoreAndRender(const QString &sessionId)
     chooseInputButton->setEnabled(true);
     chooseInputAction->setEnabled(true);
 
-    // ── Output file dialog ────────────────────────────────────────────────
+    // ── Output file dialog (loop until valid path or cancelled) ─────────────
     static const QString kRenderFilter =
         "MP4 Files (*.mp4);;MKV Files (*.mkv);;WebM Files (*.webm);;AVI Files (*.avi);;"
         "MP3 Files (*.mp3);;FLAC Files (*.flac);;WAV Files (*.wav);;Opus Files (*.opus)";
-    QFileDialog outDlg(this, "Mix destination (default .MP4)", "", kRenderFilter);
-    outDlg.setAcceptMode(QFileDialog::AcceptSave);
-    outDlg.setOption(QFileDialog::DontUseNativeDialog);
-    QObject::connect(&outDlg, &QFileDialog::filterSelected, &outDlg,
-        [&outDlg](const QString &filter) {
-            int star = filter.lastIndexOf("*.");
-            if (star < 0) return;
-            QString ext = filter.mid(star + 2).section(')', 0, 0).trimmed().toLower();
-            if (ext.isEmpty()) return;
-            QStringList sel = outDlg.selectedFiles();
-            if (sel.isEmpty()) return;
-            QFileInfo fi(sel.first());
-            if (fi.completeBaseName().isEmpty()) return;
-            outDlg.selectFile(fi.dir().filePath(fi.completeBaseName() + "." + ext));
-        });
-    const QString restoredOutput = (outDlg.exec() == QDialog::Accepted)
-                                   ? outDlg.selectedFiles().value(0) : QString{};
+    static const QStringList kAllowedExts =
+        {"mp4", "mkv", "webm", "avi", "mp3", "flac", "wav", "opus"};
 
-    if (restoredOutput.isEmpty()) {
-        logUI("Library: restore cancelled at output-file step.");
-        // Show the render-again button so the user can retry without re-opening library.
-        renderAgainButton->setVisible(true);
-        renderAgainButton->setEnabled(true);
-        enable_playback(true);
-        return;
-    }
+    QString restoredOutput;
+    while (true) {
+        QFileDialog outDlg(this, "Mix destination (default .MP4)", restoredOutput, kRenderFilter);
+        outDlg.setAcceptMode(QFileDialog::AcceptSave);
+        outDlg.setOption(QFileDialog::DontUseNativeDialog);
+        QObject::connect(&outDlg, &QFileDialog::filterSelected, &outDlg,
+            [&outDlg](const QString &filter) {
+                int star = filter.lastIndexOf("*.");
+                if (star < 0) return;
+                QString ext = filter.mid(star + 2).section(')', 0, 0).trimmed().toLower();
+                if (ext.isEmpty()) return;
+                QStringList sel = outDlg.selectedFiles();
+                if (sel.isEmpty()) return;
+                QFileInfo fi(sel.first());
+                if (fi.completeBaseName().isEmpty()) return;
+                outDlg.selectFile(fi.dir().filePath(fi.completeBaseName() + "." + ext));
+            });
+        restoredOutput = (outDlg.exec() == QDialog::Accepted)
+                         ? outDlg.selectedFiles().value(0) : QString{};
 
-    // Validate extension
-    const QStringList allowed =
-        QStringList() << "mp4" << "mkv" << "webm" << "avi"
-                      << "mp3" << "flac" << "wav" << "opus";
-    if (!allowed.contains(QFileInfo(restoredOutput).suffix().toLower())) {
-        QMessageBox::warning(this, "Invalid File Extension",
-            "Please choose a file with one of the following extensions:\n"
-            ".mp4, .mkv, .webm, .avi, .mp3, .flac, .wav, .opus");
-        renderAgainButton->setVisible(true);
-        renderAgainButton->setEnabled(true);
-        enable_playback(true);
-        return;
+        if (restoredOutput.isEmpty()) {
+            logUI("Library: restore cancelled at output-file step.");
+            renderAgainButton->setVisible(true);
+            renderAgainButton->setEnabled(true);
+            enable_playback(true);
+            return;
+        }
+
+        if (!kAllowedExts.contains(QFileInfo(restoredOutput).suffix().toLower())) {
+            QMessageBox::warning(this, "Invalid File Extension",
+                "Please choose a file with one of the following extensions:\n"
+                ".mp4, .mkv, .webm, .avi, .mp3, .flac, .wav, .opus");
+            continue;
+        }
+
+        {
+            const QString outAbs = QFileInfo(restoredOutput).absoluteFilePath();
+            bool collides = false;
+            for (const QString &inp : {audioRecorded, webcamRecorded, currentVideoFile,
+                                       tunedRecorded, extractedTmpPlayback}) {
+                if (!inp.isEmpty() && QFileInfo(inp).absoluteFilePath() == outAbs) {
+                    collides = true;
+                    break;
+                }
+            }
+            if (collides) {
+                QMessageBox::warning(this, "Invalid Output Path",
+                    "The output file cannot overwrite one of the input files.\n"
+                    "Please choose a different name or location.");
+                continue;
+            }
+        }
+
+        break; // valid extension and no collision with inputs
     }
 
     // ── Resolution choice — identical to renderAgain() ────────────────────

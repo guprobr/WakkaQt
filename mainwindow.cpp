@@ -112,13 +112,13 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Create the webcam preview
     webcamScene = new QGraphicsScene(this);
-    webcamScene->setSceneRect(0, 0, 320, 200);
+    webcamScene->setSceneRect(0, 0, 160, 100);
     webcamView = new QGraphicsView(webcamScene, this);
-    webcamView->setFixedSize(320, 200);
+    webcamView->setFixedSize(160, 100);
     webcamView->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     webcamView->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     webcamPreviewItem = new QGraphicsVideoItem();
-    webcamPreviewItem->setSize(QSizeF(320, 200));
+    webcamPreviewItem->setSize(QSizeF(160, 100));
     webcamPreviewItem->setToolTip("Click to open large preview");
     webcamScene->addItem(webcamPreviewItem);
     webcamPreviewLayout = new QHBoxLayout();
@@ -179,7 +179,7 @@ MainWindow::MainWindow(QWidget *parent)
     previewCheckbox = new QCheckBox("Cam Preview");
     previewCheckbox->setFont(QApplication::font());
     previewCheckbox->setToolTip("Toggle camera preview");
-    previewCheckbox->setChecked(true);
+    previewCheckbox->setChecked(false);
     vizCheckbox = new QCheckBox("Audio Visualizer");
     vizCheckbox->setFont(QApplication::font());
     vizCheckbox->setToolTip("Toggle Audio Visualizer");
@@ -325,7 +325,7 @@ MainWindow::MainWindow(QWidget *parent)
     soundLevelWidget->setVisible(true);
     webcamPreviewItem->setVisible(true);
     recordingIndicator->hide();
-    webcamView->show();
+    webcamView->hide();
     singButton->setEnabled(false);
     singAction->setEnabled(false);
     renderAgainButton->setVisible(false);
@@ -581,8 +581,8 @@ void MainWindow::addVideoDisplayWidgetInDialog() {
             // Put back the view in its original place
             layout->removeWidget(webcamView);
             webcamPreviewLayout->addWidget(webcamView);
-            webcamView->setFixedSize(320, 200);  // Set the original size
-            webcamPreviewItem->setSize(QSizeF(320, 200));
+            webcamView->setFixedSize(160, 100);  // Set the original size
+            webcamPreviewItem->setSize(QSizeF(160, 100));
             webcamPreviewItem->setPos(0, 0);  // Reset position to (0, 0)
             webcamView->scene()->setSceneRect(webcamView->rect());
         }

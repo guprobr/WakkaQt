@@ -1294,9 +1294,9 @@ bool renderVideo(const QString &audioPath,
             videoEncCtx->time_base  = {1, 90000}; // fine timebase; actual fps from input PTS
             videoEncCtx->framerate  = {30, 1};     // declared fps for encoder metadata/level calc
             videoEncCtx->gop_size   = 12;
-            videoEncCtx->bit_rate   = 3000000;
+            videoEncCtx->bit_rate   = 5000000;
             if (vidCodecId == AV_CODEC_ID_H264)
-                av_opt_set(videoEncCtx->priv_data, "preset", "fast", 0);
+                av_opt_set(videoEncCtx->priv_data, "preset", "medium", 0);
             if (outFmt->oformat->flags & AVFMT_GLOBALHEADER)
                 videoEncCtx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
 
@@ -1511,7 +1511,7 @@ bool renderVideo(const QString &audioPath,
                                      webcamDec->pix_fmt,
                                      mainW, mainH,
                                      AV_PIX_FMT_YUV420P,
-                                     SWS_BILINEAR, nullptr, nullptr, nullptr);
+                                     SWS_BICUBIC, nullptr, nullptr, nullptr);
 
             // Input timebase — used to convert frame PTS to seconds for progress
             const AVRational inputTB = webcamFmt->streams[webcamVidIdx]->time_base;

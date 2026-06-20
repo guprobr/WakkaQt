@@ -6,7 +6,7 @@
 
 No subscriptions. No cloud. No judgment. (Well, maybe a little judgment from the pitch monitor.)
 
-Current version: **2.2.1**
+Current version: **2.2.3**
 
 ---
 
@@ -90,6 +90,14 @@ Every recording is saved to `~/.WakkaQt/library/` with a UUID folder, all source
 
 ## Changelog
 
+### v2.2.3 — Video recording/render improvements
+- **A/V interleaving fixed** — audio and video packets are now written interleaved by DTS in both the karaoke render and the backing-track mux. Previously all audio was written before any video, causing players to show no video from the start and no audio after seeking
+- **Raw camera input preferred** — the camera format selector now picks raw/uncompressed formats (NV12, YUYV, etc.) over JPEG when available, giving the recording encoder pristine sensor data instead of pre-compressed frames. JPEG remains the fallback
+- **H264 preferred over MotionJPEG for recording** — H264 delivers far better quality at the same bitrate; MotionJPEG dropped to fallback in the codec preference order
+- **H265 moved to last in recording codec preference** — H265 in Matroska is unreliable in Qt multimedia on Linux and caused a hard crash; it remains available as a last resort only
+- **Fixed segfault on recording error** — destroying the `QMediaRecorder` object from inside its own `errorOccurred` signal handler was undefined behaviour. The media reset is now deferred via `QTimer::singleShot` so it runs after the signal unwinds
+- **Higher render quality** — output bitrate raised from 3 Mbps to 5 Mbps, H264 encoder preset changed from `fast` to `medium`, and frame scaling upgraded from bilinear to bicubic
+
 ### v2.2.1
 - **Abort render / abort separation** — both the video render and the vocal separation now have an Abort button that cancels the operation mid-flight without leaving corrupted output files
 - **Video-preserving backing track output** — when the input to the vocal separator is a video file, the separated instrumental is muxed back onto the original video by default, preserving the visuals. Choosing an audio format (WAV, MP3) in the save dialog still saves audio only
@@ -137,6 +145,23 @@ sudo apt install \
     libavutil-dev libswresample-dev libswscale-dev \
     libglib2.0-dev \
     pkg-config
+```
+
+**H264 recording support (strongly recommended)**
+
+The standard `libavcodec` package on Ubuntu/Debian is built without H264 encoding. Install the extra-codecs variant so WakkaQt can record webcam footage in H264 (the preferred codec):
+
+```bash
+sudo apt install libavcodec-extra
+```
+
+This replaces `libavcodec` with a version that has H264 (and other patent-encumbered codecs) compiled in. Without it, WakkaQt falls back to MotionJPEG for recording, which gives lower quality at the same bitrate.
+
+On **Fedora / RHEL**, the `ffmpeg-free` package in the standard repos also lacks H264 encoding. Enable RPM Fusion and swap in the full FFmpeg build:
+
+```bash
+sudo dnf install https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm
+sudo dnf swap ffmpeg-free ffmpeg --allowerasing
 ```
 
 For the **AI backing-track feature**, also install the ONNX Runtime development package.

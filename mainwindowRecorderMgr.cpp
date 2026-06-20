@@ -286,7 +286,11 @@ void MainWindow::handleRecordingError() {
 
     isPlayback = false;
 
-    resetMediaComponents(false);
+    // Defer the full media reset so we are not destroying the mediaRecorder
+    // (the signal sender) while still executing inside its errorOccurred handler.
+    // Destroying the sender during a direct-connection signal call is UB and
+    // causes a segfault when Qt unwinds through the now-freed object.
+    QTimer::singleShot(0, this, [this]() { resetMediaComponents(false); });
 
 }
 

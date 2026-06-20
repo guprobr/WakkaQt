@@ -111,21 +111,42 @@ void MainWindow::configureMediaComponents()
     // Rebind the current camera device explicitly.
     camera->setCameraDevice(selectedCameraDevice);
 
-    // Prefer a JPEG camera input format when available.
+    // Prefer raw/uncompressed camera input formats over JPEG. Raw formats (NV12,
+    // YUYV, BGRA, etc.) give the recording encoder pristine sensor data rather
+    // than frames that have already been lossy-compressed inside the camera.
+    // JPEG is accepted as a fallback so we always get something.
+    //
+    // Format rank: raw (non-JPEG) = 1, JPEG = 0. Within the same rank, pick the
+    // highest resolution that supports 30 fps, then highest max fps.
     QCameraFormat preferredCameraFormat;
     bool foundPreferredCameraFormat = false;
     bool foundPreferredCameraFormatAt30fps = false;
+    bool foundRawFormat = false; // true once we have at least one non-JPEG candidate
     qint64 bestPixels = -1;
     float bestMaxFps = -1.0f;
 
     const auto cameraFormats = selectedCameraDevice.videoFormats();
     for (const QCameraFormat &cameraFormat : cameraFormats) {
-        if (cameraFormat.pixelFormat() != QVideoFrameFormat::Format_Jpeg)
+        const bool isRaw = (cameraFormat.pixelFormat() != QVideoFrameFormat::Format_Jpeg);
+
+        // Skip JPEG formats once we already have a raw candidate
+        if (!isRaw && foundRawFormat)
             continue;
 
         const QSize resolution = cameraFormat.resolution();
         const qint64 pixels = qint64(resolution.width()) * qint64(resolution.height());
         const bool supports30fps = cameraFormat.maxFrameRate() >= 30.0f;
+
+        // Promote raw over JPEG unconditionally
+        if (isRaw && !foundRawFormat) {
+            preferredCameraFormat = cameraFormat;
+            foundPreferredCameraFormat = true;
+            foundPreferredCameraFormatAt30fps = supports30fps;
+            foundRawFormat = true;
+            bestPixels = pixels;
+            bestMaxFps = cameraFormat.maxFrameRate();
+            continue;
+        }
 
         if (!foundPreferredCameraFormat
             || (supports30fps && !foundPreferredCameraFormatAt30fps)
@@ -154,9 +175,10 @@ void MainWindow::configureMediaComponents()
         qDebug() << "Selected camera input format:"
                  << "resolution=" << preferredCameraFormat.resolution()
                  << "fps=" << preferredCameraFormat.minFrameRate() << ".." << preferredCameraFormat.maxFrameRate()
-                 << "pixelFormat=JPEG";
+                 << "pixelFormat=" << preferredCameraFormat.pixelFormat()
+                 << (foundRawFormat ? "(raw)" : "(JPEG fallback)");
     } else {
-        qWarning() << "No JPEG camera format found; keeping backend/default camera format";
+        qWarning() << "No suitable camera format found; keeping backend/default camera format";
     }
 
     // This recorder branch is video-only.
@@ -173,13 +195,13 @@ void MainWindow::configureMediaComponents()
     };
 
     const QList<VC> videoPreference = {
-        VC::MotionJPEG,
         VC::H264,
-        VC::H265,
+        VC::MotionJPEG,
         VC::VP9,
         VC::VP8,
         VC::AV1,
         VC::MPEG4,
+        VC::H265,  // last: unreliable in Qt multimedia Matroska on Linux
         VC::MPEG2,
         VC::MPEG1,
         VC::WMV,

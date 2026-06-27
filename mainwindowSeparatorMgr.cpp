@@ -117,6 +117,10 @@ void MainWindow::generateBackingTrack() {
     connect(cancelBtn, &QPushButton::clicked, this, [cancelled]() {
         cancelled->store(true);
     });
+    // Closing the window (X button) is equivalent to Abort
+    connect(progDlg, &QDialog::rejected, this, [cancelled]() {
+        cancelled->store(true);
+    });
 
     // Poll the atomic from the main thread every 200 ms
     auto *pollTimer = new QTimer(this);
@@ -129,6 +133,12 @@ void MainWindow::generateBackingTrack() {
     using Result = QPair<QString, QString>;
     auto *watcher = new QFutureWatcher<Result>(this);
 
+    // Guard with QPointer: if the user closed the dialog before the watcher
+    // fires, progDlgGuard will still be non-null (dialog is just hidden, not
+    // deleted), but using it explicitly signals our intent and is safe even if
+    // WA_DeleteOnClose were ever added.
+    QPointer<QDialog> progDlgGuard(progDlg);
+
     connect(watcher, &QFutureWatcher<Result>::finished, this, [=]() mutable {
         pollTimer->stop();
         pollTimer->deleteLater();
@@ -136,8 +146,10 @@ void MainWindow::generateBackingTrack() {
         Result res = watcher->result();
         watcher->deleteLater();
 
-        progDlg->accept();
-        progDlg->deleteLater();
+        if (progDlgGuard) {
+            progDlgGuard->accept();
+            progDlgGuard->deleteLater();
+        }
 
         const QString &tempOut = res.first;
         const QString &err     = res.second;
@@ -245,6 +257,9 @@ void MainWindow::generateBackingTrack() {
         saveProgDlg->setWindowTitle("Saving Backing Track");
         saveProgDlg->setModal(true);
         saveProgDlg->setMinimumWidth(340);
+        // No cancellation for mux/encode — disable close button so the user
+        // can't accidentally discard the operation mid-way.
+        saveProgDlg->setWindowFlags(saveProgDlg->windowFlags() & ~Qt::WindowCloseButtonHint);
 
         auto *saveProgLbl = new QLabel(
             saveAsVideo ? "Muxing audio into video…" : "Encoding MP3…", saveProgDlg);
@@ -274,13 +289,16 @@ void MainWindow::generateBackingTrack() {
         using SaveResult = QPair<bool, QString>;
         auto *saveWatcher = new QFutureWatcher<SaveResult>(this);
 
+        QPointer<QDialog> saveProgDlgGuard(saveProgDlg);
         connect(saveWatcher, &QFutureWatcher<SaveResult>::finished, this, [=]() {
             saveTimer->stop();
             saveTimer->deleteLater();
             const SaveResult res = saveWatcher->result();
             saveWatcher->deleteLater();
-            saveProgDlg->accept();
-            saveProgDlg->deleteLater();
+            if (saveProgDlgGuard) {
+                saveProgDlgGuard->accept();
+                saveProgDlgGuard->deleteLater();
+            }
 
             if (res.first) {
                 logUI("Backing track saved: " + savePath);

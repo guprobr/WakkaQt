@@ -35,6 +35,9 @@ public:
     double getPitchCorrectionAmount() const;
     double getNoiseReductionAmount() const;
 
+protected:
+    void closeEvent(QCloseEvent *event) override;
+
 private slots:
     void replayAudioPreview();
     void stopAudioPreview();

@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 #include "DownloadDialog.h"
+#include "youtubesearchdialog.h"
 
 void MainWindow::playVideo(const QString& playbackVideoPath) {
 
@@ -299,4 +300,15 @@ void MainWindow::fetchVideo() {
         }
         fetchButton->setEnabled(true);
     }
+}
+
+void MainWindow::openYoutubeBrowser()
+{
+    YoutubeSearchDialog dlg(this);
+    connect(&dlg, &YoutubeSearchDialog::downloadRequested,
+            this, [this](const QString &url, const QString &) {
+                urlInput->setText(url);
+                fetchVideo();
+            });
+    dlg.exec();
 }

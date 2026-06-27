@@ -69,7 +69,7 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    QString Wakka_versione = "v2.2.1";
+    QString Wakka_versione = "v2.3";
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
@@ -166,9 +166,10 @@ private:
     QCheckBox *vizCheckbox;
 
     // yt-dlp
-    QLineEdit *urlInput;
+    QLineEdit   *urlInput;
     QPushButton *fetchButton;
-    QLabel *downloadStatusLabel;
+    QPushButton *browseYoutubeButton;
+    QLabel      *downloadStatusLabel;
     
     QTextEdit *logTextEdit;
     
@@ -194,6 +195,7 @@ private:
     void handleRecordingError();
 
     void fetchVideo();
+    void openYoutubeBrowser();
 
     QString millisecondsToSecondsString(qint64 milliseconds);
     double getMediaDuration(const QString &filePath);

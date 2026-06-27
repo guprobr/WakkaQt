@@ -6,7 +6,7 @@
 
 No subscriptions. No cloud. No judgment. (Well, maybe a little judgment from the pitch monitor.)
 
-Current version: **2.2.3**
+Current version: **2.3**
 
 ---
 
@@ -78,8 +78,10 @@ Every recording is saved to `~/.WakkaQt/library/` with a UUID folder, all source
 | Pitch overlay on rendered video | ✅ |
 | Session library (save/rename/delete/re-render) | ✅ |
 | YouTube download (via yt-dlp) | ✅ |
+| YouTube karaoke browser (search + preview) | ✅ |
 | AI vocal separation → backing track (ONNX) | ✅ |
 | Backing track: video-preserving output | ✅ |
+| Hardware-accelerated H.264 (VAAPI / NVENC) | ✅ |
 | Abort render / abort separation | ✅ |
 | Cross-platform (Linux / Windows) | ✅ |
 | Subscription required | ❌ |
@@ -89,6 +91,13 @@ Every recording is saved to `~/.WakkaQt/library/` with a UUID folder, all source
 ---
 
 ## Changelog
+
+### v2.3 — YouTube karaoke browser & hardware-accelerated rendering
+
+- **YouTube karaoke browser** — new "🔍 Browse YouTube" button opens a search dialog with two scrollable rows of cards (karaoke results and originals). Thumbnails load asynchronously via QNetworkAccessManager. Clicking a card shows a preview panel with a larger thumbnail, title, channel, and duration; clicking "Download this video" fills the URL field and launches the existing yt-dlp download flow. Powered by `yt-dlp --flat-playlist --dump-json`
+- **Hardware-accelerated H.264 encoding (VAAPI / NVENC)** — `renderVideo` now probes available hardware encoders at render time in order: `h264_nvenc` → `h264_vaapi` → `h264_v4l2m2m`, falling back to software `libx264`. A dummy frame is encoded to confirm the driver actually works before committing (needed because `avcodec_open2` succeeds even when hardware encoding will silently fail). For Intel VAAPI, a fast YUV420P→NV12 conversion is applied per frame so the software pipeline stays in YUV420P while the VAAPI surface gets the NV12 format Intel iHD requires
+- **Dialog close properly cancels background work** — closing the backing-track conversion dialog via the window X button now sets the cancellation flag, aborting the ONNX separation thread. Previously the thread ran to completion invisibly and could show a phantom save dialog. Same fix applied to `DownloadDialog` (yt-dlp processes are now killed on X via `closeEvent`) and `PreviewDialog` (in-flight enhancement futures and ffmpeg processes are cancelled before hiding)
+- **Fixed `-Wstringop-overflow` false positives** in `vocalenhancer.cpp` — GCC's false positive on `QVector(N, 0.0)` silenced with early-exit guards in `applyLPCInverseFilter` and `applyLPCSynthesisFilter`
 
 ### v2.2.3 — Video recording/render improvements
 - **A/V interleaving fixed** — audio and video packets are now written interleaved by DTS in both the karaoke render and the backing-track mux. Previously all audio was written before any video, causing players to show no video from the start and no audio after seeking

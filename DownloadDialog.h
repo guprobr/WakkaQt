@@ -22,6 +22,9 @@ signals:
     void downloadSucceeded(const QString& path);
     void downloadFailed(const QString& reason);
 
+protected:
+    void closeEvent(QCloseEvent *event) override;
+
 private slots:
     void onFilenameStdOut();
     void onFilenameFinished(int exitCode, QProcess::ExitStatus status);

@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 # Project name
-project(WakkaQt VERSION 2.2.3 LANGUAGES CXX)
+project(WakkaQt VERSION 2.3 LANGUAGES CXX)
 
 # Set the C++ standard
 set(CMAKE_CXX_STANDARD 17)
@@ -191,6 +191,7 @@ add_executable(${PROJECT_NAME}
     ffmpegnative.cpp
     vocalseparator.cpp
     mainwindowSeparatorMgr.cpp
+    youtubesearchdialog.cpp
     mainwindow.h
     complexes.h
     sndwidget.h
@@ -206,6 +207,7 @@ add_executable(${PROJECT_NAME}
     librarydialog.h
     ffmpegnative.h
     vocalseparator.h
+    youtubesearchdialog.h
     ${resources}
 )
 

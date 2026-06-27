@@ -1197,6 +1197,7 @@ QVector<double> VocalEnhancer::applyLPCInverseFilter(const QVector<double>& x,
                                                        const QVector<double>& a) const {
     const int N = x.size();
     const int P = a.size();
+    if (N <= 0) return {};
     QVector<double> e(N, 0.0);
     for (int n = 0; n < N; ++n) {
         double sum = 0.0;
@@ -1212,6 +1213,7 @@ QVector<double> VocalEnhancer::applyLPCSynthesisFilter(const QVector<double>& re
                                                          const QVector<double>& a) const {
     const int N = residual.size();
     const int P = a.size();
+    if (N <= 0) return {};
     QVector<double> y(N, 0.0);
     for (int n = 0; n < N; ++n) {
         double sum = 0.0;

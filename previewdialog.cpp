@@ -6,6 +6,7 @@
 #endif
 
 #include <QtConcurrent/QtConcurrentRun>
+#include <QCloseEvent>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QMessageBox>
@@ -284,6 +285,24 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
     previewRebuildTimer->setSingleShot(true);
     connect(previewRebuildTimer, &QTimer::timeout,
             this, &PreviewDialog::startEnhancementJob);
+}
+
+void PreviewDialog::closeEvent(QCloseEvent *event)
+{
+    // Cancel any in-flight enhancement future so its finished() callback
+    // doesn't fire against a hidden dialog and pop up stray QMessageBoxes.
+    if (enhanceWatcher && !enhanceWatcher->isFinished()) {
+        enhanceWatcher->cancel();
+        enhanceWatcher->waitForFinished();
+    }
+    // Children QProcess objects (ffmpegProcess) have this as parent; Qt kills
+    // them on destruction, but if one is running right now its finished()
+    // lambda would call slots on a hidden 'this'. Kill all child processes now.
+    const auto procs = findChildren<QProcess *>();
+    for (QProcess *p : procs)
+        p->kill();
+
+    QDialog::closeEvent(event);
 }
 
 PreviewDialog::~PreviewDialog()

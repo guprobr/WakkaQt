@@ -1,4 +1,5 @@
 #include "DownloadDialog.h"
+#include <QCloseEvent>
 #include <QFileInfo>
 #include <QRegularExpression>
 #include <QDebug>
@@ -160,6 +161,12 @@ void DownloadDialog::onDownloadFinished(int exitCode, QProcess::ExitStatus statu
         emit downloadFailed("Download failed.");
         reject();
     }
+}
+
+void DownloadDialog::closeEvent(QCloseEvent *event)
+{
+    onCancel();
+    event->accept();
 }
 
 void DownloadDialog::onCancel() {

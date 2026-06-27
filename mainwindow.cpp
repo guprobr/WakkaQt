@@ -217,12 +217,16 @@ MainWindow::MainWindow(QWidget *parent)
     fetchButton = new QPushButton("FETCH", this);
     fetchButton->setFont(QApplication::font());
     fetchButton->setToolTip("Click here and download URL to disk");
+    browseYoutubeButton = new QPushButton("🔍 Browse YouTube", this);
+    browseYoutubeButton->setFont(QApplication::font());
+    browseYoutubeButton->setToolTip("Search and browse YouTube karaoke videos");
     downloadStatusLabel = new QLabel("Download media", this);
     downloadStatusLabel->setFont(QApplication::font());
     downloadStatusLabel->setToolTip("Several URL besides YouTube will work");
     QHBoxLayout *fetchLayout = new QHBoxLayout;
     fetchLayout->addWidget(urlInput);
     fetchLayout->addWidget(fetchButton);
+    fetchLayout->addWidget(browseYoutubeButton);
     fetchLayout->addWidget(downloadStatusLabel);
 
     // Log text
@@ -346,7 +350,8 @@ MainWindow::MainWindow(QWidget *parent)
     connect(singButton, &QPushButton::clicked, this, &MainWindow::startRecording);
     connect(abortButton, &QPushButton::clicked, this, &MainWindow::abortRecording);
     connect(singAction, &QAction::triggered, this, &MainWindow::startRecording);
-    connect(fetchButton, &QPushButton::clicked, this, &MainWindow::fetchVideo);
+    connect(fetchButton,         &QPushButton::clicked, this, &MainWindow::fetchVideo);
+    connect(browseYoutubeButton, &QPushButton::clicked, this, &MainWindow::openYoutubeBrowser);
     connect(renderAgainButton, &QPushButton::clicked, this, &MainWindow::renderAgain);
     connect(backingTrackButton, &QPushButton::clicked, this, &MainWindow::generateBackingTrack);
     connect(libraryButton, &QPushButton::clicked, this, &MainWindow::openLibrary);

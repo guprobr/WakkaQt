@@ -1134,6 +1134,77 @@ bool muxVideoWithAudio(const QString &videoSrc, const QString &audioSrc,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// renderVideo helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Verify that a hardware encoder context can actually encode a frame.
+// avcodec_open2 succeeds for some hw encoders even when the driver can't encode
+// (e.g. VAAPI on a GPU that only supports hardware decode). Those encoders
+// silently queue failing frames until an internal FFmpeg assertion fires at 16
+// queued frames. This probe catches the failure early by encoding one dummy
+// frame, then resets the context via avcodec_flush_buffers for real use.
+// Returns true if the encoder is usable.
+static bool probeHWEncoderCtx(AVCodecContext *ctx)
+{
+    // Determine the upload format the hw encoder expects (e.g. NV12 for Intel VAAPI)
+    AVPixelFormat uploadFmt = AV_PIX_FMT_YUV420P;
+    if (ctx->hw_frames_ctx)
+        uploadFmt = reinterpret_cast<AVHWFramesContext*>(ctx->hw_frames_ctx->data)->sw_format;
+
+    AVFrame *swf = av_frame_alloc();
+    swf->format  = uploadFmt;
+    swf->width   = ctx->width;
+    swf->height  = ctx->height;
+    swf->pts     = 0;
+    if (av_frame_get_buffer(swf, 0) < 0) { av_frame_free(&swf); return false; }
+    av_frame_make_writable(swf);
+    // Fill all planes with 128 (valid gray for any planar or semi-planar format)
+    for (int p = 0; p < AV_NUM_DATA_POINTERS && swf->data[p]; ++p)
+        memset(swf->data[p], 128, swf->linesize[p] * (p == 0 ? ctx->height : ctx->height / 2));
+
+    AVFrame *encf = swf;
+    AVFrame *hwf  = nullptr;
+    if (ctx->hw_frames_ctx) {
+        hwf = av_frame_alloc();
+        hwf->pts = 0;
+        if (av_hwframe_get_buffer(ctx->hw_frames_ctx, hwf, 0) < 0
+            || av_hwframe_transfer_data(hwf, swf, 0) < 0) {
+            av_frame_free(&hwf);
+            av_frame_free(&swf);
+            return false;
+        }
+        encf = hwf;
+    }
+
+    bool ok = false;
+    if (avcodec_send_frame(ctx, encf) >= 0) {
+        AVPacket *pkt = av_packet_alloc();
+        const int rc  = avcodec_receive_packet(ctx, pkt);
+        av_packet_free(&pkt);
+        // 0 = packet ready; EAGAIN = encoder buffering (normal for B-frame lookahead)
+        ok = (rc == 0 || rc == AVERROR(EAGAIN));
+    }
+
+    if (hwf) av_frame_free(&hwf);
+    av_frame_free(&swf);
+    if (ok) avcodec_flush_buffers(ctx);
+    return ok;
+}
+
+// Soft-clip a mixed sample to [-1, 1].
+// Linear below ±0.8 (no level change in the normal range), then a tanh-shaped
+// taper above that so peaks compress smoothly instead of chopping off flat.
+static inline float softClip(float x)
+{
+    constexpr float knee  = 0.8f;
+    constexpr float range = 1.0f - knee; // 0.2
+    const float ax = std::abs(x);
+    if (ax <= knee) return x;
+    const float sign = (x > 0.f) ? 1.f : -1.f;
+    return sign * (knee + range * tanhf((ax - knee) / range));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // renderVideo
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1180,11 +1251,12 @@ bool renderVideo(const QString &audioPath,
 
     // ── Step 3: Mix ───────────────────────────────────────────────────────────
     const int mixLen = std::max(vocalPCM.size(), playbackPCM.size());
+    if (mixLen <= 0) return false;
     QVector<float> mixedPCM(mixLen, 0.0f);
     for (int i = 0; i < mixLen; ++i) {
         const float v = (i < vocalPCM.size())    ? vocalPCM[i]    : 0.0f;
         const float p = (i < playbackPCM.size()) ? playbackPCM[i] : 0.0f;
-        mixedPCM[i] = std::clamp(v + p, -1.0f, 1.0f);
+        mixedPCM[i] = softClip(v + p);
     }
     vocalPCM.clear(); vocalPCM.squeeze();
     playbackPCM.clear(); playbackPCM.squeeze();
@@ -1274,46 +1346,144 @@ bool renderVideo(const QString &audioPath,
                                              std::max(1, audioEncCtx->frame_size));
 
     // ── Video encoder (if needed) ─────────────────────────────────────────────
-    AVStream *videoOutSt        = nullptr;
-    AVCodecContext *videoEncCtx = nullptr;
-    SwsContext *swsCtx          = nullptr;
-    AVFrame *videoEncFrame      = nullptr;
+    AVStream       *videoOutSt    = nullptr;
+    AVCodecContext *videoEncCtx   = nullptr;
+    SwsContext     *swsCtx        = nullptr;
+    AVFrame        *videoEncFrame = nullptr;
+    AVBufferRef    *vaapiDevCtx   = nullptr; // non-null when VAAPI hw encoder is active
+    bool            vaapiEnabled  = false;
+    AVPixelFormat   videoSwPixFmt = AV_PIX_FMT_YUV420P; // sw frame format fed to sws/encoder
+    SwsContext     *vaapiConvCtx  = nullptr; // YUV420P→NV12 converter for VAAPI upload
+    AVFrame        *vaapiNV12Frame = nullptr; // NV12 intermediate frame for VAAPI upload
 
     if (!audioOnlyOut) {
-        const AVCodecID vidCodecId = (ext == "webm") ? AV_CODEC_ID_VP9 : AV_CODEC_ID_H264;
-        const AVCodec *videoEnc = avcodec_find_encoder(vidCodecId);
-        if (!videoEnc) {
-            qWarning() << "FFmpegNative::renderVideo: h264 encoder not found";
-            // fall through — produce audio-only output
-        } else {
-            videoOutSt = avformat_new_stream(outFmt, videoEnc);
-            videoEncCtx = avcodec_alloc_context3(videoEnc);
-            videoEncCtx->width      = mainW;
-            videoEncCtx->height     = mainH;
-            videoEncCtx->pix_fmt    = AV_PIX_FMT_YUV420P;
-            videoEncCtx->time_base  = {1, 90000}; // fine timebase; actual fps from input PTS
-            videoEncCtx->framerate  = {30, 1};     // declared fps for encoder metadata/level calc
-            videoEncCtx->gop_size   = 12;
-            videoEncCtx->bit_rate   = 5000000;
-            if (vidCodecId == AV_CODEC_ID_H264)
-                av_opt_set(videoEncCtx->priv_data, "preset", "medium", 0);
-            if (outFmt->oformat->flags & AVFMT_GLOBALHEADER)
-                videoEncCtx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
+        // Try hardware encoders first (NVENC → VAAPI → V4L2 M2M), then fall
+        // back to software H264/VP9.
+        // The sw frame pipeline (sws_scale, paintPitchOverlay, videoEncFrame)
+        // ALWAYS uses YUV420P — paintPitchOverlay assumes 3 separate planes and
+        // would segfault if given NV12 (data[2] is nullptr in 2-plane formats).
+        // VAAPI uses sw_format=YUV420P so av_hwframe_transfer_data converts
+        // YUV420P→VAAPI internally; NVENC and V4L2 M2M accept YUV420P directly.
+        struct HWCandidate { const char *name; AVHWDeviceType hwType; };
+        static const HWCandidate kHW[] = {
+            {"h264_nvenc",   AV_HWDEVICE_TYPE_NONE },
+            {"h264_vaapi",   AV_HWDEVICE_TYPE_VAAPI},
+            {"h264_v4l2m2m", AV_HWDEVICE_TYPE_NONE },
+        };
 
-            if (avcodec_open2(videoEncCtx, videoEnc, nullptr) < 0) {
-                qWarning() << "FFmpegNative::renderVideo: cannot open video encoder";
-                avcodec_free_context(&videoEncCtx);
-                videoOutSt = nullptr;
-            } else {
-                avcodec_parameters_from_context(videoOutSt->codecpar, videoEncCtx);
-                videoOutSt->time_base = videoEncCtx->time_base;
+        const AVCodec *videoEnc = nullptr;
 
-                videoEncFrame = av_frame_alloc();
-                videoEncFrame->format = AV_PIX_FMT_YUV420P;
-                videoEncFrame->width  = mainW;
-                videoEncFrame->height = mainH;
-                av_frame_get_buffer(videoEncFrame, 0);
+        if (ext != "webm") {
+            for (const auto &cand : kHW) {
+                const AVCodec *enc = avcodec_find_encoder_by_name(cand.name);
+                if (!enc) continue;
+
+                AVBufferRef *devCtx = nullptr;
+                if (cand.hwType != AV_HWDEVICE_TYPE_NONE &&
+                    av_hwdevice_ctx_create(&devCtx, cand.hwType, nullptr, nullptr, 0) < 0)
+                    continue;
+
+                AVCodecContext *ctx = avcodec_alloc_context3(enc);
+                ctx->width     = mainW;
+                ctx->height    = mainH;
+                ctx->time_base = {1, 90000};
+                ctx->framerate = {30, 1};
+                ctx->gop_size  = 12;
+                ctx->bit_rate  = 5000000;
+                if (outFmt->oformat->flags & AVFMT_GLOBALHEADER)
+                    ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
+
+                if (devCtx) {
+                    // VAAPI: hw frames pool. Intel iHD (and most VAAPI drivers)
+                    // require NV12 surfaces for H264 encoding; YUV420P (I420)
+                    // surfaces cause "encode issue 24" at runtime.
+                    // The main sw pipeline stays in YUV420P; a separate conversion
+                    // step (vaapiConvCtx) converts to NV12 before each hw upload.
+                    AVBufferRef *framesRef = av_hwframe_ctx_alloc(devCtx);
+                    auto *frCtx = reinterpret_cast<AVHWFramesContext*>(framesRef->data);
+                    frCtx->format            = AV_PIX_FMT_VAAPI;
+                    frCtx->sw_format         = AV_PIX_FMT_NV12;
+                    frCtx->width             = mainW;
+                    frCtx->height            = mainH;
+                    frCtx->initial_pool_size = 20;
+                    if (av_hwframe_ctx_init(framesRef) < 0) {
+                        av_buffer_unref(&framesRef);
+                        av_buffer_unref(&devCtx);
+                        avcodec_free_context(&ctx);
+                        continue;
+                    }
+                    ctx->pix_fmt       = AV_PIX_FMT_VAAPI;
+                    ctx->hw_device_ctx = av_buffer_ref(devCtx);
+                    ctx->hw_frames_ctx = framesRef;
+                } else {
+                    ctx->pix_fmt = AV_PIX_FMT_YUV420P;
+                }
+
+                if (avcodec_open2(ctx, enc, nullptr) >= 0 && probeHWEncoderCtx(ctx)) {
+                    videoEnc    = enc;
+                    videoEncCtx = ctx;
+                    if (devCtx) {
+                        vaapiDevCtx  = devCtx;
+                        vaapiEnabled = true;
+                        // Pre-create the YUV420P→NV12 converter used per frame
+                        vaapiConvCtx = sws_getContext(mainW, mainH, AV_PIX_FMT_YUV420P,
+                                                       mainW, mainH, AV_PIX_FMT_NV12,
+                                                       SWS_FAST_BILINEAR, nullptr, nullptr, nullptr);
+                        vaapiNV12Frame = av_frame_alloc();
+                        vaapiNV12Frame->format = AV_PIX_FMT_NV12;
+                        vaapiNV12Frame->width  = mainW;
+                        vaapiNV12Frame->height = mainH;
+                        av_frame_get_buffer(vaapiNV12Frame, 0);
+                    }
+                    qDebug() << "renderVideo: HW encoder selected:" << cand.name;
+                    break;
+                }
+                qDebug() << "renderVideo: HW encoder probe failed, skipping:" << cand.name;
+                avcodec_free_context(&ctx);
+                if (devCtx) av_buffer_unref(&devCtx);
             }
+        }
+
+        // Software fallback: libx264 for H264 containers, libvpx-vp9 for WebM
+        if (!videoEnc) {
+            const AVCodecID vidCodecId = (ext == "webm") ? AV_CODEC_ID_VP9 : AV_CODEC_ID_H264;
+            const AVCodec *enc = avcodec_find_encoder(vidCodecId);
+            if (!enc) {
+                qWarning() << "FFmpegNative::renderVideo: no video encoder found";
+            } else {
+                AVCodecContext *ctx = avcodec_alloc_context3(enc);
+                ctx->width     = mainW;
+                ctx->height    = mainH;
+                ctx->pix_fmt   = AV_PIX_FMT_YUV420P;
+                ctx->time_base = {1, 90000};
+                ctx->framerate = {30, 1};
+                ctx->gop_size  = 12;
+                ctx->bit_rate  = 5000000;
+                if (vidCodecId == AV_CODEC_ID_H264)
+                    av_opt_set(ctx->priv_data, "preset", "medium", 0);
+                if (outFmt->oformat->flags & AVFMT_GLOBALHEADER)
+                    ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
+                if (avcodec_open2(ctx, enc, nullptr) >= 0) {
+                    videoEnc    = enc;
+                    videoEncCtx = ctx;
+                    qDebug() << "renderVideo: software encoder (libx264/libvpx)";
+                } else {
+                    qWarning() << "FFmpegNative::renderVideo: cannot open video encoder";
+                    avcodec_free_context(&ctx);
+                }
+            }
+        }
+
+        if (videoEnc && videoEncCtx) {
+            videoOutSt = avformat_new_stream(outFmt, videoEnc);
+            avcodec_parameters_from_context(videoOutSt->codecpar, videoEncCtx);
+            videoOutSt->time_base = videoEncCtx->time_base;
+
+            videoEncFrame = av_frame_alloc();
+            videoEncFrame->format = videoSwPixFmt;
+            videoEncFrame->width  = mainW;
+            videoEncFrame->height = mainH;
+            av_frame_get_buffer(videoEncFrame, 0);
         }
     }
 
@@ -1325,8 +1495,11 @@ bool renderVideo(const QString &audioPath,
             av_audio_fifo_free(fifo);
             if (encSwr) swr_free(&encSwr);
             avcodec_free_context(&audioEncCtx);
-            if (videoEncCtx) avcodec_free_context(&videoEncCtx);
-            if (videoEncFrame) av_frame_free(&videoEncFrame);
+            if (videoEncCtx)    avcodec_free_context(&videoEncCtx);
+            if (videoEncFrame)  av_frame_free(&videoEncFrame);
+            if (vaapiNV12Frame) av_frame_free(&vaapiNV12Frame);
+            if (vaapiConvCtx)   sws_freeContext(vaapiConvCtx);
+            if (vaapiDevCtx)    av_buffer_unref(&vaapiDevCtx);
             avformat_free_context(outFmt);
             return false;
         }
@@ -1337,8 +1510,11 @@ bool renderVideo(const QString &audioPath,
         av_audio_fifo_free(fifo);
         if (encSwr) swr_free(&encSwr);
         avcodec_free_context(&audioEncCtx);
-        if (videoEncCtx) avcodec_free_context(&videoEncCtx);
-        if (videoEncFrame) av_frame_free(&videoEncFrame);
+        if (videoEncCtx)    avcodec_free_context(&videoEncCtx);
+        if (videoEncFrame)  av_frame_free(&videoEncFrame);
+        if (vaapiNV12Frame) av_frame_free(&vaapiNV12Frame);
+        if (vaapiConvCtx)   sws_freeContext(vaapiConvCtx);
+        if (vaapiDevCtx)    av_buffer_unref(&vaapiDevCtx);
         avformat_free_context(outFmt);
         return false;
     }
@@ -1378,20 +1554,41 @@ bool renderVideo(const QString &audioPath,
     };
 
     // Encode one video frame, draining buffered audio up to its DTS first.
+    // VAAPI path: convert the YUV420P sw frame to NV12 (what Intel VAAPI needs),
+    // then upload to a VAAPI surface via av_hwframe_transfer_data.
     auto flushVideoWithInterleave = [&](AVFrame *vframe) {
-        if (avcodec_send_frame(videoEncCtx, vframe) < 0) return;
-        AVPacket *pkt = av_packet_alloc();
-        while (avcodec_receive_packet(videoEncCtx, pkt) >= 0) {
-            av_packet_rescale_ts(pkt, videoEncCtx->time_base, videoOutSt->time_base);
-            pkt->stream_index = videoOutSt->index;
-            const int64_t videoDtsAV = av_rescale_q(
-                pkt->dts != AV_NOPTS_VALUE ? pkt->dts : pkt->pts,
-                videoOutSt->time_base, AV_TIME_BASE_Q);
-            drainAudioUpTo(videoDtsAV);
-            av_write_frame(outFmt, pkt);
-            av_packet_unref(pkt);
+        AVFrame *encFrame = vframe;
+        AVFrame *hwFrame  = nullptr;
+        if (vframe && vaapiEnabled && vaapiConvCtx && vaapiNV12Frame) {
+            sws_scale(vaapiConvCtx,
+                      (const uint8_t*const*)vframe->data, vframe->linesize,
+                      0, vframe->height,
+                      vaapiNV12Frame->data, vaapiNV12Frame->linesize);
+            vaapiNV12Frame->pts = vframe->pts;
+            hwFrame = av_frame_alloc();
+            if (av_hwframe_get_buffer(videoEncCtx->hw_frames_ctx, hwFrame, 0) < 0
+                || av_hwframe_transfer_data(hwFrame, vaapiNV12Frame, 0) < 0) {
+                av_frame_free(&hwFrame);
+            } else {
+                hwFrame->pts = vframe->pts;
+                encFrame = hwFrame;
+            }
         }
-        av_packet_free(&pkt);
+        if (avcodec_send_frame(videoEncCtx, encFrame) >= 0) {
+            AVPacket *pkt = av_packet_alloc();
+            while (avcodec_receive_packet(videoEncCtx, pkt) >= 0) {
+                av_packet_rescale_ts(pkt, videoEncCtx->time_base, videoOutSt->time_base);
+                pkt->stream_index = videoOutSt->index;
+                const int64_t videoDtsAV = av_rescale_q(
+                    pkt->dts != AV_NOPTS_VALUE ? pkt->dts : pkt->pts,
+                    videoOutSt->time_base, AV_TIME_BASE_Q);
+                drainAudioUpTo(videoDtsAV);
+                av_write_frame(outFmt, pkt);
+                av_packet_unref(pkt);
+            }
+            av_packet_free(&pkt);
+        }
+        if (hwFrame) av_frame_free(&hwFrame);
     };
 
     // ── Step 6: Encode audio ──────────────────────────────────────────────────
@@ -1506,7 +1703,7 @@ bool renderVideo(const QString &audioPath,
         }
 
         if (webcamDec) {
-            // Create swscale: webcam native format → YUV420p mainW×mainH
+            // Create swscale: webcam native format → YUV420P at mainW×mainH
             swsCtx = sws_getContext(webcamDec->width, webcamDec->height,
                                      webcamDec->pix_fmt,
                                      mainW, mainH,
@@ -1618,10 +1815,13 @@ bool renderVideo(const QString &audioPath,
         avio_closep(&outFmt->pb);
 
     av_audio_fifo_free(fifo);
-    if (encSwr)       swr_free(&encSwr);
+    if (encSwr)         swr_free(&encSwr);
     avcodec_free_context(&audioEncCtx);
-    if (videoEncCtx)  avcodec_free_context(&videoEncCtx);
-    if (videoEncFrame) av_frame_free(&videoEncFrame);
+    if (videoEncCtx)    avcodec_free_context(&videoEncCtx);
+    if (videoEncFrame)  av_frame_free(&videoEncFrame);
+    if (vaapiNV12Frame) av_frame_free(&vaapiNV12Frame);
+    if (vaapiConvCtx)   sws_freeContext(vaapiConvCtx);
+    if (vaapiDevCtx)    av_buffer_unref(&vaapiDevCtx);
     avformat_free_context(outFmt);
 
     if (wasCancelled) {

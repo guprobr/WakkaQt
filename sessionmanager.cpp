@@ -253,6 +253,13 @@ bool SessionManager::restoreSession(const QString &id,
             sysOffset        = off["sysOffset"].toString().toLongLong();
             currentVideoFile = off["playbackFile"].toString();
             currentVideoName = off["playbackName"].toString();
+
+            // The render only needs audio from the playback file; always use
+            // the guaranteed local copy saved inside the session folder so
+            // re-renders work regardless of whether the original file still exists.
+            const QString localCopy = sessionDir + "/playback.wav";
+            if (QFile::exists(localCopy))
+                currentVideoFile = localCopy;
         }
     }
 

@@ -58,13 +58,17 @@ private slots:
     void onSearch();
     void onKaraokeDataReady();
     void onOriginalsDataReady();
+    void onKaraokeMoreReady();
+    void onOriginalsMoreReady();
     void onCardClicked(VideoCardWidget *card);
     void onDownload();
 
 private:
-    void parseResults(const QByteArray &data, QHBoxLayout *layout, bool isKaraoke);
-    void fetchThumbnail(VideoCardWidget *card);
-    void setPreviewVisible(bool visible);
+    void        parseResults(const QByteArray &data, QHBoxLayout *layout, bool isKaraoke);
+    void        fetchThumbnail(VideoCardWidget *card);
+    void        setPreviewVisible(bool visible);
+    void        loadMore(bool isKaraoke);
+    QPushButton *makeMoreButton(bool isKaraoke);
     static QString formatDuration(int secs);
 
     // Top bar
@@ -89,10 +93,18 @@ private:
     QPushButton *m_downloadBtn     = nullptr;
 
     // State
-    QProcess   *m_karaokeProc   = nullptr;
-    QProcess   *m_originalsProc = nullptr;
-    QNetworkAccessManager *m_nam = nullptr;
+    QProcess   *m_karaokeProc        = nullptr;
+    QProcess   *m_originalsProc      = nullptr;
+    QProcess   *m_karaokeMoreProc    = nullptr;
+    QProcess   *m_originalsMoreProc  = nullptr;
+    QNetworkAccessManager *m_nam     = nullptr;
 
-    YtVideoInfo m_selectedInfo;
-    int m_pendingSearches = 0;
+    QPushButton *m_karaokeMoreBtn    = nullptr;
+    QPushButton *m_originalsMoreBtn  = nullptr;
+
+    QString      m_currentQuery;
+    int          m_karaokeOffset     = 0;
+    int          m_originalsOffset   = 0;
+    YtVideoInfo  m_selectedInfo;
+    int          m_pendingSearches   = 0;
 };

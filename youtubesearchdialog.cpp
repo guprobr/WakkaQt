@@ -18,6 +18,7 @@ static constexpr int kCardW      = 186;
 static constexpr int kCardH      = 172;
 static constexpr int kThumbW     = 180;
 static constexpr int kThumbH     = 101; // 16:9
+static constexpr int kPageSize   = 8;
 
 // ── VideoCardWidget ───────────────────────────────────────────────────────────
 VideoCardWidget::VideoCardWidget(const YtVideoInfo &info, QWidget *parent)
@@ -218,8 +219,10 @@ YoutubeSearchDialog::YoutubeSearchDialog(QWidget *parent)
 
 YoutubeSearchDialog::~YoutubeSearchDialog()
 {
-    if (m_karaokeProc)   { m_karaokeProc->kill();   m_karaokeProc->deleteLater(); }
-    if (m_originalsProc) { m_originalsProc->kill();  m_originalsProc->deleteLater(); }
+    if (m_karaokeProc)      { m_karaokeProc->kill();      m_karaokeProc->deleteLater(); }
+    if (m_originalsProc)    { m_originalsProc->kill();    m_originalsProc->deleteLater(); }
+    if (m_karaokeMoreProc)  { m_karaokeMoreProc->kill();  m_karaokeMoreProc->deleteLater(); }
+    if (m_originalsMoreProc){ m_originalsMoreProc->kill(); m_originalsMoreProc->deleteLater(); }
 }
 
 // ── Private helpers ───────────────────────────────────────────────────────────
@@ -266,11 +269,19 @@ void YoutubeSearchDialog::onSearch()
 
     // Clear previous results
     clearLayout(m_karaokeLayout);
+    m_karaokeMoreBtn   = nullptr; // deleted by clearLayout
     clearLayout(m_originalsLayout);
+    m_originalsMoreBtn = nullptr;
     setPreviewVisible(false);
 
-    if (m_karaokeProc)   { m_karaokeProc->kill();   m_karaokeProc->deleteLater(); m_karaokeProc = nullptr; }
-    if (m_originalsProc) { m_originalsProc->kill();  m_originalsProc->deleteLater(); m_originalsProc = nullptr; }
+    m_currentQuery    = q;
+    m_karaokeOffset   = 0;
+    m_originalsOffset = 0;
+
+    if (m_karaokeProc)      { m_karaokeProc->kill();      m_karaokeProc->deleteLater();      m_karaokeProc      = nullptr; }
+    if (m_originalsProc)    { m_originalsProc->kill();    m_originalsProc->deleteLater();    m_originalsProc    = nullptr; }
+    if (m_karaokeMoreProc)  { m_karaokeMoreProc->kill();  m_karaokeMoreProc->deleteLater();  m_karaokeMoreProc  = nullptr; }
+    if (m_originalsMoreProc){ m_originalsMoreProc->kill(); m_originalsMoreProc->deleteLater(); m_originalsMoreProc = nullptr; }
 
     m_searchButton->setEnabled(false);
     m_pendingSearches = 2;
@@ -283,18 +294,28 @@ void YoutubeSearchDialog::onSearch()
                                   "--no-warnings", "--quiet"};
 
     m_karaokeProc = new QProcess(this);
-    m_karaokeProc->start("yt-dlp", QStringList() << QString("ytsearch8:%1 karaoke").arg(q) << baseArgs);
+    m_karaokeProc->start("yt-dlp", QStringList() << QString("ytsearch%1:%2 karaoke").arg(kPageSize).arg(q) << baseArgs);
     connect(m_karaokeProc, &QProcess::finished, this, &YoutubeSearchDialog::onKaraokeDataReady);
 
     m_originalsProc = new QProcess(this);
-    m_originalsProc->start("yt-dlp", QStringList() << QString("ytsearch5:%1").arg(q) << baseArgs);
+    m_originalsProc->start("yt-dlp", QStringList() << QString("ytsearch%1:%2").arg(kPageSize).arg(q) << baseArgs);
     connect(m_originalsProc, &QProcess::finished, this, &YoutubeSearchDialog::onOriginalsDataReady);
 }
 
 // ── Result parsing ────────────────────────────────────────────────────────────
 void YoutubeSearchDialog::parseResults(const QByteArray &data, QHBoxLayout *layout, bool isKaraoke)
 {
-    int count = 0;
+    // Remove existing "Load more" button before appending new cards
+    QPushButton *&moreBtn = isKaraoke ? m_karaokeMoreBtn : m_originalsMoreBtn;
+    if (moreBtn) {
+        layout->removeWidget(moreBtn);
+        moreBtn->deleteLater();
+        moreBtn = nullptr;
+    }
+
+    int &offset   = isKaraoke ? m_karaokeOffset : m_originalsOffset;
+    int  newCards = 0;
+
     for (const QByteArray &line : data.split('\n')) {
         const QByteArray trimmed = line.trimmed();
         if (trimmed.isEmpty()) continue;
@@ -316,26 +337,76 @@ void YoutubeSearchDialog::parseResults(const QByteArray &data, QHBoxLayout *layo
         if (info.id.isEmpty() || info.title.isEmpty()) continue;
 
         auto *card = new VideoCardWidget(info, nullptr);
-        // insert before the trailing stretch
-        layout->insertWidget(layout->count() - 1, card);
+        layout->insertWidget(layout->count() - 1, card); // before trailing stretch
         connect(card, &VideoCardWidget::cardClicked, this, &YoutubeSearchDialog::onCardClicked);
         fetchThumbnail(card);
-        ++count;
+        ++newCards;
     }
 
-    if (isKaraoke)
-        m_karaokeLabel->setText(QString("🎤  Karaoke  (%1)").arg(count));
-    else
-        m_originalsLabel->setText(QString("🎵  Originals  (%1)").arg(count));
+    offset += newCards;
 
-    // Resize the container: set the width to fit all cards, then adjustSize so
-    // Qt recalculates from the layout (height is already guaranteed by
-    // the minimumHeight set in the constructor, so adjustSize won't shrink it).
+    if (isKaraoke)
+        m_karaokeLabel->setText(QString("🎤  Karaoke  (%1)").arg(offset));
+    else
+        m_originalsLabel->setText(QString("🎵  Originals  (%1)").arg(offset));
+
     QWidget *container = isKaraoke
         ? m_karaokeScroll->widget()
         : m_originalsScroll->widget();
-    container->setMinimumWidth(std::max(1, count) * (kCardW + 8) + 16);
+    // +1 slot reserved for the "Load more" button
+    container->setMinimumWidth(std::max(1, offset + 1) * (kCardW + 8) + 16);
     container->adjustSize();
+
+    if (newCards > 0) {
+        moreBtn = makeMoreButton(isKaraoke);
+        layout->insertWidget(layout->count() - 1, moreBtn); // before stretch
+    }
+}
+
+QPushButton *YoutubeSearchDialog::makeMoreButton(bool isKaraoke)
+{
+    auto *btn = new QPushButton("Load more  ▶", nullptr);
+    btn->setFixedSize(kCardW, kCardH);
+    btn->setStyleSheet(
+        "QPushButton { background: #1a1a3a; color: #8888cc; border: 1px dashed #444466;"
+        "              border-radius: 6px; font-size: 12px; }"
+        "QPushButton:hover { background: #222255; color: #aaaaee; border-color: #6666cc; }"
+        "QPushButton:disabled { color: #444466; border-color: #222244; }");
+    connect(btn, &QPushButton::clicked, this, [this, isKaraoke]() { loadMore(isKaraoke); });
+    return btn;
+}
+
+void YoutubeSearchDialog::loadMore(bool isKaraoke)
+{
+    QProcess   *&moreProc = isKaraoke ? m_karaokeMoreProc : m_originalsMoreProc;
+    QPushButton *&moreBtn = isKaraoke ? m_karaokeMoreBtn  : m_originalsMoreBtn;
+
+    if (moreProc) return; // already loading
+
+    moreBtn->setEnabled(false);
+    moreBtn->setText("Loading…");
+
+    const int offset = isKaraoke ? m_karaokeOffset : m_originalsOffset;
+    const int end    = offset + kPageSize;
+
+    const QString searchArg = isKaraoke
+        ? QString("ytsearch%1:%2 karaoke").arg(end).arg(m_currentQuery)
+        : QString("ytsearch%1:%2").arg(end).arg(m_currentQuery);
+
+    const QStringList args = {
+        searchArg,
+        "--flat-playlist", "--dump-json", "--no-download", "--no-warnings", "--quiet",
+        "--playlist-start", QString::number(offset + 1),
+        "--playlist-end",   QString::number(end)
+    };
+
+    moreProc = new QProcess(this);
+    moreProc->start("yt-dlp", args);
+
+    if (isKaraoke)
+        connect(moreProc, &QProcess::finished, this, &YoutubeSearchDialog::onKaraokeMoreReady);
+    else
+        connect(moreProc, &QProcess::finished, this, &YoutubeSearchDialog::onOriginalsMoreReady);
 }
 
 void YoutubeSearchDialog::onKaraokeDataReady()
@@ -354,6 +425,20 @@ void YoutubeSearchDialog::onOriginalsDataReady()
         m_statusLabel->hide();
         m_searchButton->setEnabled(true);
     }
+}
+
+void YoutubeSearchDialog::onKaraokeMoreReady()
+{
+    parseResults(m_karaokeMoreProc->readAllStandardOutput(), m_karaokeLayout, true);
+    m_karaokeMoreProc->deleteLater();
+    m_karaokeMoreProc = nullptr;
+}
+
+void YoutubeSearchDialog::onOriginalsMoreReady()
+{
+    parseResults(m_originalsMoreProc->readAllStandardOutput(), m_originalsLayout, false);
+    m_originalsMoreProc->deleteLater();
+    m_originalsMoreProc = nullptr;
 }
 
 // ── Card selection & preview ──────────────────────────────────────────────────

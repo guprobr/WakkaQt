@@ -1249,20 +1249,34 @@ bool renderVideo(const QString &audioPath,
     // ── Step 2: Load playback audio ───────────────────────────────────────────
     QVector<float> playbackPCM = decodeAudioToFloat(playbackPath, 0, 1.0);
 
-    // ── Step 3: Mix ───────────────────────────────────────────────────────────
-    const int mixLen = std::max(vocalPCM.size(), playbackPCM.size());
+    // ── Step 3: Apply audio masterization to vocals only ───────────────────────
+    // Mastering filters (deesser, speechnorm, EQ, etc.) are meant to shape the
+    // singer's voice, not the original backing track. Apply them to vocalPCM
+    // before mixing so playback reaches the output unaltered.
+    QVector<int16_t> vocalFiltered16 = applyAudioFilter(vocalPCM, audioMasterization);
+    vocalPCM.clear(); vocalPCM.squeeze();
+
+    QVector<float> vocalFiltered(vocalFiltered16.size());
+    for (int i = 0; i < vocalFiltered16.size(); ++i)
+        vocalFiltered[i] = vocalFiltered16[i] / 32768.0f;
+    vocalFiltered16.clear(); vocalFiltered16.squeeze();
+
+    // ── Step 4: Mix filtered vocals with untouched playback ────────────────────
+    const int mixLen = std::max(vocalFiltered.size(), playbackPCM.size());
     if (mixLen <= 0) return false;
     QVector<float> mixedPCM(mixLen, 0.0f);
     for (int i = 0; i < mixLen; ++i) {
-        const float v = (i < vocalPCM.size())    ? vocalPCM[i]    : 0.0f;
-        const float p = (i < playbackPCM.size()) ? playbackPCM[i] : 0.0f;
+        const float v = (i < vocalFiltered.size()) ? vocalFiltered[i] : 0.0f;
+        const float p = (i < playbackPCM.size())   ? playbackPCM[i]   : 0.0f;
         mixedPCM[i] = softClip(v + p);
     }
-    vocalPCM.clear(); vocalPCM.squeeze();
+    vocalFiltered.clear(); vocalFiltered.squeeze();
     playbackPCM.clear(); playbackPCM.squeeze();
 
-    // ── Step 4: Apply audio masterization ─────────────────────────────────────
-    QVector<int16_t> finalAudio = applyAudioFilter(mixedPCM, audioMasterization);
+    // ── Step 5: Convert final mix to S16 (no further filtering) ────────────────
+    QVector<int16_t> finalAudio(mixedPCM.size());
+    for (int i = 0; i < mixedPCM.size(); ++i)
+        finalAudio[i] = int16_t(std::clamp(mixedPCM[i] * 32767.f, -32768.f, 32767.f));
     mixedPCM.clear(); mixedPCM.squeeze();
 
     if (finalAudio.isEmpty()) {

@@ -364,6 +364,16 @@ void PreviewDialog::setAudioFile(const QString &filePath)
             }
         }
 
+#ifdef WAKKAQT_FFMPEG_NATIVE
+        // Apply audio masterization to the raw vocal extract BEFORE VocalEnhancer
+        // runs, so the mastering filters and the enhancer don't compound — the
+        // enhancer now edits an already-mastered signal, and render time no
+        // longer re-applies masterization (see mixAndRender()).
+        previewInputAudioData = FFmpegNative::applyFilterChainS16(
+            previewInputAudioData, format.sampleRate(), format.channelCount(),
+            _audioMasterization);
+#endif
+
         startEnhancementJob();
     };
 
@@ -390,8 +400,10 @@ void PreviewDialog::setAudioFile(const QString &filePath)
               << "-i" << audioFilePath
               << "-vn"
               << "-filter_complex"
-              << QString("%1 atrim=%2ms,asetpts=PTS-STARTPTS;")
-                     .arg(_audioEnhance).arg(trimOffset)
+              // Apply audio masterization here, before VocalEnhancer runs on the
+              // extracted vocals, so the two stages don't compound.
+              << QString("%1%2,atrim=%3ms,asetpts=PTS-STARTPTS;")
+                     .arg(_audioEnhance).arg(_audioMasterization).arg(trimOffset)
               << "-ac" << "2"
               << "-acodec" << "pcm_s16le"
               << "-async" << "1"

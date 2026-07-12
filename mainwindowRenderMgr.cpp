@@ -250,7 +250,6 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset) {
             effectiveAudioOffset,
             effectiveVideoOffset,
             setRez,
-            _audioMasterization,
             audioRecorded,
             renderCancelled.get(),
             [pb](double p) {
@@ -282,10 +281,11 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset) {
               << "-i" << webcamRecorded
               << "-i" << currentVideoFile
               << "-filter_complex"
-              << QString("[0:a]%1,volume=%2,%3[vocals];"
-                         "[2:a][vocals]amix=inputs=2:normalize=0,aresample=async=1[wakkamix];%4")
-                     .arg(offsetFilter).arg(vocalVolume)
-                     .arg(_audioMasterization).arg(videorama)
+              // tunedRecorded already went through the audio-masterization filter
+              // chain upstream (before VocalEnhancer), so this only applies volume/offset.
+              << QString("[0:a]%1,volume=%2[vocals];"
+                         "[2:a][vocals]amix=inputs=2:normalize=0,aresample=async=1[wakkamix];%3")
+                     .arg(offsetFilter).arg(vocalVolume).arg(videorama)
               << "-map" << "[wakkamix]";
     if (!videorama.isEmpty())
         arguments << "-map" << "[videorama]";

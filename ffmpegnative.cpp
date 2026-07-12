@@ -377,6 +377,103 @@ static QVector<int16_t> applyAudioFilter(const QVector<float> &input,
     return out;
 }
 
+// Applies a libavfilter chain to interleaved Int16 PCM at an arbitrary sample
+// rate/channel count, returning filtered PCM in the same layout. Used to run
+// audio masterization (deesser, speechnorm, etc.) on freshly extracted vocals
+// before VocalEnhancer processes them, so the two stages don't compound.
+QByteArray applyFilterChainS16(const QByteArray &pcmS16, int sampleRate, int channels,
+                               const QString &filterChain)
+{
+    if (pcmS16.isEmpty() || filterChain.isEmpty() || sampleRate <= 0 ||
+        (channels != 1 && channels != 2))
+        return pcmS16;
+
+    AVFilterGraph *graph = avfilter_graph_alloc();
+    AVFilterContext *srcCtx = nullptr, *sinkCtx = nullptr;
+
+    const uint64_t layoutMask = (channels == 1) ? AV_CH_LAYOUT_MONO : AV_CH_LAYOUT_STEREO;
+    const char *layoutName = (channels == 1) ? "mono" : "stereo";
+
+    const QByteArray srcParams = QString("sample_rate=%1:sample_fmt=s16:channel_layout=%2:time_base=1/%1")
+                                      .arg(sampleRate).arg(layoutName).toUtf8();
+
+    bool ok = (avfilter_graph_create_filter(&srcCtx,
+                   avfilter_get_by_name("abuffer"), "in",
+                   srcParams.constData(), nullptr, graph) >= 0)
+           && (avfilter_graph_create_filter(&sinkCtx,
+                   avfilter_get_by_name("abuffersink"), "out",
+                   nullptr, nullptr, graph) >= 0);
+
+    QByteArray out;
+    if (ok) {
+        const QString fullChain = filterChain + QStringLiteral(",aformat=sample_fmts=s16");
+
+        const char *prevLocale = setlocale(LC_NUMERIC, "C");
+
+        AVFilterInOut *ins = nullptr, *outs = nullptr;
+        ok = (avfilter_graph_parse2(graph, fullChain.toUtf8().constData(), &ins, &outs) >= 0);
+        if (ok && ins)
+            ok = (avfilter_link(srcCtx, 0, ins->filter_ctx, ins->pad_idx) >= 0);
+        if (ok && outs)
+            ok = (avfilter_link(outs->filter_ctx, outs->pad_idx, sinkCtx, 0) >= 0);
+        avfilter_inout_free(&ins);
+        avfilter_inout_free(&outs);
+        ok = ok && (avfilter_graph_config(graph, nullptr) >= 0);
+
+        if (prevLocale) setlocale(LC_NUMERIC, prevLocale);
+    }
+
+    if (ok) {
+        const int bytesPerFrame = channels * (int)sizeof(int16_t);
+        const int chunkSamples = 4096;
+        AVFrame *inF  = av_frame_alloc();
+        AVFrame *outF = av_frame_alloc();
+        int64_t pts = 0;
+        const int total = pcmS16.size() / bytesPerFrame;
+        int offset = 0;
+
+        while (offset <= total) {
+            if (offset < total) {
+                const int n = std::min(chunkSamples, total - offset);
+                inF->sample_rate = sampleRate;
+                inF->format      = AV_SAMPLE_FMT_S16;
+                inF->nb_samples  = n;
+                inF->pts         = pts;
+                av_channel_layout_from_mask(&inF->ch_layout, layoutMask);
+                av_frame_get_buffer(inF, 0);
+                memcpy(inF->data[0], pcmS16.constData() + offset * bytesPerFrame,
+                       n * bytesPerFrame);
+                if (av_buffersrc_add_frame(srcCtx, inF) < 0) {
+                    av_frame_unref(inF);
+                    break;
+                }
+                av_frame_unref(inF);
+                offset += n;
+                pts    += n;
+            } else {
+                [[maybe_unused]] int flushRet = av_buffersrc_add_frame(srcCtx, nullptr);
+                ++offset;
+            }
+
+            while (av_buffersink_get_frame(sinkCtx, outF) >= 0) {
+                const int bytes = outF->nb_samples * bytesPerFrame;
+                out.append(reinterpret_cast<const char*>(outF->data[0]), bytes);
+                av_frame_unref(outF);
+            }
+        }
+
+        av_frame_free(&inF);
+        av_frame_free(&outF);
+    } else {
+        qWarning() << "FFmpegNative::applyFilterChainS16: filter graph failed, "
+                       "returning input unchanged";
+        out = pcmS16;
+    }
+
+    avfilter_graph_free(&graph);
+    return out;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Pitch overlay helpers
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1216,7 +1313,6 @@ bool renderVideo(const QString &audioPath,
                  qint64 audioOffsetMs,
                  qint64 videoOffsetMs,
                  const QString &resolution,
-                 const QString &audioMasterization,
                  const QString &rawVocalPath,
                  const std::atomic<bool> *cancelled,
                  std::function<void(double)> progressCb)
@@ -1249,31 +1345,22 @@ bool renderVideo(const QString &audioPath,
     // ── Step 2: Load playback audio ───────────────────────────────────────────
     QVector<float> playbackPCM = decodeAudioToFloat(playbackPath, 0, 1.0);
 
-    // ── Step 3: Apply audio masterization to vocals only ───────────────────────
-    // Mastering filters (deesser, speechnorm, EQ, etc.) are meant to shape the
-    // singer's voice, not the original backing track. Apply them to vocalPCM
-    // before mixing so playback reaches the output unaltered.
-    QVector<int16_t> vocalFiltered16 = applyAudioFilter(vocalPCM, audioMasterization);
-    vocalPCM.clear(); vocalPCM.squeeze();
-
-    QVector<float> vocalFiltered(vocalFiltered16.size());
-    for (int i = 0; i < vocalFiltered16.size(); ++i)
-        vocalFiltered[i] = vocalFiltered16[i] / 32768.0f;
-    vocalFiltered16.clear(); vocalFiltered16.squeeze();
-
-    // ── Step 4: Mix filtered vocals with untouched playback ────────────────────
-    const int mixLen = std::max(vocalFiltered.size(), playbackPCM.size());
+    // ── Step 3: Mix vocals with untouched playback ──────────────────────────────
+    // audioPath (tunedRecorded) already went through the audio-masterization
+    // filter chain upstream, before VocalEnhancer ran on it, so no filtering
+    // happens here — just mixing with the original, unaltered playback.
+    const int mixLen = std::max(vocalPCM.size(), playbackPCM.size());
     if (mixLen <= 0) return false;
     QVector<float> mixedPCM(mixLen, 0.0f);
     for (int i = 0; i < mixLen; ++i) {
-        const float v = (i < vocalFiltered.size()) ? vocalFiltered[i] : 0.0f;
-        const float p = (i < playbackPCM.size())   ? playbackPCM[i]   : 0.0f;
+        const float v = (i < vocalPCM.size())    ? vocalPCM[i]    : 0.0f;
+        const float p = (i < playbackPCM.size()) ? playbackPCM[i] : 0.0f;
         mixedPCM[i] = softClip(v + p);
     }
-    vocalFiltered.clear(); vocalFiltered.squeeze();
+    vocalPCM.clear(); vocalPCM.squeeze();
     playbackPCM.clear(); playbackPCM.squeeze();
 
-    // ── Step 5: Convert final mix to S16 (no further filtering) ────────────────
+    // ── Step 4: Convert final mix to S16 ────────────────────────────────────────
     QVector<int16_t> finalAudio(mixedPCM.size());
     for (int i = 0; i < mixedPCM.size(); ++i)
         finalAudio[i] = int16_t(std::clamp(mixedPCM[i] * 32767.f, -32768.f, 32767.f));

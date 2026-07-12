@@ -2,6 +2,7 @@
 #ifdef WAKKAQT_FFMPEG_NATIVE
 
 #include <QString>
+#include <QByteArray>
 #include <functional>
 #include <atomic>
 #include <vector>
@@ -41,9 +42,16 @@ bool extractAudio(const QString &input, const QString &output,
                   qint64 offsetMs = 0,
                   const QString &filterStr = {});
 
+/// Applies a libavfilter audio chain (e.g. "deesser,speechnorm,...") to
+/// interleaved Int16 PCM at the given sample rate/channel count, returning
+/// filtered PCM in the same layout. Falls back to returning `pcmS16`
+/// unchanged if the filter graph fails to build.
+QByteArray applyFilterChainS16(const QByteArray &pcmS16, int sampleRate, int channels,
+                               const QString &filterChain);
+
 /// Full render: vocal audio + webcam video + playback media → final mix.
 /// progressCb is invoked with 0.0–1.0 progress values on the calling thread.
-bool renderVideo(const QString &audioPath,          ///< enhanced vocal audio (WAV)
+bool renderVideo(const QString &audioPath,          ///< enhanced+mastered vocal audio (WAV)
                  const QString &webcamPath,         ///< webcam recording
                  const QString &playbackPath,       ///< original karaoke playback
                  const QString &outputPath,         ///< render destination
@@ -51,7 +59,6 @@ bool renderVideo(const QString &audioPath,          ///< enhanced vocal audio (W
                  qint64         audioOffsetMs,      ///< vocal timing adjustment (ms)
                  qint64         videoOffsetMs,      ///< webcam timing adjustment (ms)
                  const QString &resolution,         ///< e.g. "1920x1080"
-                 const QString &audioMasterization, ///< libavfilter chain string
                  const QString &rawVocalPath = {},  ///< raw vocal for pitch overlay (optional)
                  const std::atomic<bool> *cancelled = nullptr, ///< set true to abort
                  std::function<void(double)> progressCb = {});

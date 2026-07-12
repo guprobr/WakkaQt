@@ -1,4 +1,5 @@
 #include "mainwindow.h"
+#include "Logger.h"
 
 #include <QApplication>
 #include <QDir>
@@ -8,6 +9,11 @@
 #include <QPalette>
 #include <QStyleFactory>
 #include <QStyleHints>
+
+// Message handler
+void messageHandler(QtMsgType, const QMessageLogContext &, const QString &msg) {
+    Logger::instance().logMessage(msg);
+}
 
 int main(int argc, char *argv[]) {
 
@@ -35,8 +41,15 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    qInstallMessageHandler(messageHandler);
+
     MainWindow w;
+    // Connect logger to UI log method
+    QObject::connect(&Logger::instance(), &Logger::newMessage,
+                     &w, &MainWindow::logUI);
+
     w.show();
     return WakkaQt.exec();
 }
+
 

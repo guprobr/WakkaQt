@@ -74,6 +74,7 @@ public:
     ~MainWindow();
 
     void addVideoDisplayWidgetInDialog(); // Method to add a VideoDisplayWidget in a dialog
+    void logUI(const QString &msg);
 
 private slots:
     void onRecorderDurationChanged(qint64 currentDuration);
@@ -219,7 +220,6 @@ private:
     void resizeEvent(QResizeEvent* event) override;
     void closeEvent(QCloseEvent *event) override;
 
-    void logUI(const QString &msg);
     void toggleLogVisibility();
     void setBanner(const QString &msg);
     bool eventFilter(QObject *object, QEvent *event) override;

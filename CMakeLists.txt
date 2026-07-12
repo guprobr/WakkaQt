@@ -209,6 +209,7 @@ add_executable(${PROJECT_NAME}
     ffmpegnative.h
     vocalseparator.h
     youtubesearchdialog.h
+    Logger.h
     ${resources}
 )
 
@@ -250,10 +251,10 @@ endif()
 
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DQT_NO_DEBUG_OUTPUT")
-    if(WIN32)
+endif()
+if(WIN32)
     # Add the WIN32 flag to remove the console window in Windows
-        set_target_properties(${PROJECT_NAME} PROPERTIES WIN32_EXECUTABLE TRUE)
-    endif()
+    set_target_properties(${PROJECT_NAME} PROPERTIES WIN32_EXECUTABLE TRUE)
 endif()
 message (STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 

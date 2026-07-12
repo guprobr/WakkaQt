@@ -6,6 +6,7 @@ MainWindow::MainWindow(QWidget *parent)
     , isRecording(false)
     , webcamDialog(nullptr)
 {
+
     QString Wakka_welcome = "Welcome to WakkaQt " + Wakka_versione;
 
     // acquire app palette
@@ -373,7 +374,7 @@ MainWindow::MainWindow(QWidget *parent)
         vizPlayer->seek(newPos, true);
     });
 
-      // Cover most clickable widgets at once:
+    // Cover most clickable widgets at once:
     setDefaultFontForClass("QAbstractButton", 10); // QPushButton/QToolButton/etc inherit this
     // Labels / general widgets:
     setDefaultFontForClass("QLabel", 10);

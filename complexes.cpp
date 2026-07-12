@@ -6,7 +6,7 @@
 // FFMpeg filter_complexes
     const QString _audioEnhance = "aformat=channel_layouts=mono,";
     const QString _filterEcho = "aecho=0.8:0.7:32|64:0.21|0.13,";
-    const QString _audioMasterization = "deesser,speechnorm,acompressor=threshold=0.5:ratio=4,highpass=f=200,treble=g=8";
+    const QString _audioMasterization = "deesser,speechnorm,acompressor=threshold=0.5:ratio=4,highpass=f=200";
 
 // fixed tmp file paths
     QString webcamRecorded = QDir::temp().filePath("WakkaQt_tmp_recording.mkv");

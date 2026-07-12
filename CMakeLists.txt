@@ -249,6 +249,10 @@ if(ONNXRUNTIME_FOUND)
     target_include_directories(${PROJECT_NAME} PRIVATE ${ONNXRUNTIME_INCLUDE_DIR})
 endif()
 
+# Keep qDebug/qWarning/etc. file+line context available even in Release
+# builds, so the UI log handler can tag messages by source file.
+target_compile_definitions(${PROJECT_NAME} PRIVATE QT_MESSAGELOGCONTEXT)
+
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DQT_NO_DEBUG_OUTPUT")
 endif()

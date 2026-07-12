@@ -33,7 +33,6 @@ void MainWindow::openLibrary()
     singAction->setEnabled(false);
     chooseInputButton->setEnabled(false);
     chooseInputAction->setEnabled(false);
-    renderAgainButton->setEnabled(false);
 
     LibraryDialog dlg(this);
 
@@ -52,8 +51,6 @@ void MainWindow::openLibrary()
     chooseInputButton->setEnabled(true);
     chooseInputAction->setEnabled(true);
     // singButton stays disabled unless a video is already loaded
-    // (renderAgainButton visibility is unchanged — leave it as-is)
-    renderAgainButton->setEnabled(renderAgainButton->isVisible());
 
     // ── Resume playback if it was running when the dialog was opened ───────
     if (wasPlaying) {
@@ -122,7 +119,6 @@ void MainWindow::restoreAndRender(const QString &sessionId)
         enable_playback(true);
         chooseInputButton->setEnabled(true);
         chooseInputAction->setEnabled(true);
-        renderAgainButton->setEnabled(renderAgainButton->isVisible());
         return;
     }
 
@@ -138,8 +134,6 @@ void MainWindow::restoreAndRender(const QString &sessionId)
     // Mirrors the state MainWindow is in just before renderAgain() runs.
     videoWidget->hide();
     placeholderLabel->show();
-    renderAgainButton->setVisible(false);
-    renderAgainButton->setEnabled(false);
     singButton->setEnabled(false);
     singAction->setEnabled(false);
 
@@ -178,8 +172,6 @@ void MainWindow::restoreAndRender(const QString &sessionId)
 
         if (restoredOutput.isEmpty()) {
             logUI("Library: restore cancelled at output-file step.");
-            renderAgainButton->setVisible(true);
-            renderAgainButton->setEnabled(true);
             enable_playback(true);
             return;
         }
@@ -242,10 +234,8 @@ void MainWindow::restoreAndRender(const QString &sessionId)
         chooseInputAction->setEnabled(true);
         singButton->setEnabled(false);
         singAction->setEnabled(false);
-        renderAgainButton->setVisible(true);
-        renderAgainButton->setEnabled(true);
         QMessageBox::warning(this, "Restore Cancelled",
             "Session restore cancelled during volume adjustment.\n"
-            "You can press RENDER AGAIN to try once more.");
+            "Open the Library again to try once more.");
     }
 }

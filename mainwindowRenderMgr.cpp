@@ -22,7 +22,6 @@ void MainWindow::renderAgain()
 
     isPlayback = false; // to avoid seeking while rendering
 
-    renderAgainButton->setVisible(false);
     enable_playback(false);
     if (progressSongFull)
         progressSongFull->setToolTip("Nothing to seek");
@@ -188,7 +187,6 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset) {
             enable_playback(true);
             chooseInputButton->setEnabled(true);
             chooseInputAction->setEnabled(true);
-            renderAgainButton->setVisible(true);
             backingTrackButton->setVisible(true);
             if (renderCancelled->load()) {
                 logUI("Render aborted.");
@@ -206,22 +204,19 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset) {
             enable_playback(true);
             chooseInputButton->setEnabled(true);
             chooseInputAction->setEnabled(true);
-            renderAgainButton->setVisible(true);
             backingTrackButton->setVisible(true);
             QMessageBox::critical(this, "Render Error", "Output file was not created.");
             return;
         }
 
         QMessageBox::information(this, "Rendering Done!",
-            "Prepare to preview performance. You can press Render Again to adjust volume "
-            "or select a different filename / format / resolution.");
+            "Prepare to preview performance.");
         logUI("Rendering finished.");
 
         isRecording = false;
         enable_playback(true);
         chooseInputButton->setEnabled(true);
         chooseInputAction->setEnabled(true);
-        renderAgainButton->setVisible(true);
         backingTrackButton->setVisible(true);
         placeholderLabel->hide();
         videoWidget->show();
@@ -320,7 +315,6 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset) {
         enable_playback(true);
         chooseInputButton->setEnabled(true);
         chooseInputAction->setEnabled(true);
-        renderAgainButton->setVisible(true);
         backingTrackButton->setVisible(true);
         QMessageBox::critical(this, "FFmpeg not found",
             "Failed to start FFmpeg. Verify it is installed and available in PATH.");

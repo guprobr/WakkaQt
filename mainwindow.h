@@ -146,7 +146,6 @@ private:
     QPushButton *abortButton;
     QPushButton *chooseVideoButton;
     QPushButton *chooseInputButton;
-    QPushButton *renderAgainButton;
     QPushButton *chooseLastButton;
     QPushButton *libraryButton;
     QPushButton *backingTrackButton;

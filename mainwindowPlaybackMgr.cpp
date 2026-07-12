@@ -130,7 +130,6 @@ void MainWindow::chooseLast()
 
             singButton->setEnabled(true);
             singAction->setEnabled(true);
-            renderAgainButton->setVisible(false);
             chooseLastButton->setVisible(true);
             placeholderLabel->hide();
             videoWidget->show();
@@ -181,7 +180,6 @@ void MainWindow::chooseVideo()
 
             singButton->setEnabled(true);
             singAction->setEnabled(true);
-            renderAgainButton->setVisible(false);
             chooseLastButton->setVisible(true);
             placeholderLabel->hide();
             videoWidget->show();

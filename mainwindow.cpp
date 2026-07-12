@@ -164,8 +164,6 @@ MainWindow::MainWindow(QWidget *parent)
     abortButton->setToolTip("TRASH recording");
     chooseInputButton = new QPushButton("🎛️ Input Devices", this);
     chooseInputButton->setToolTip("Choose microphone and camera");
-    renderAgainButton = new QPushButton("🎬 Render Again", this);
-    renderAgainButton->setToolTip("Repeat render and adjustments without singing again");
     libraryButton = new QPushButton("📚 Library", this);
     libraryButton->setToolTip("Open Session Library — restore or manage previous recordings");
     backingTrackButton = new QPushButton("🎵 Backing Track", this);
@@ -305,7 +303,6 @@ MainWindow::MainWindow(QWidget *parent)
     // Row 3 — post-processing tools
     QHBoxLayout *postRow = new QHBoxLayout();
     postRow->addWidget(backingTrackButton);
-    postRow->addWidget(renderAgainButton);
     layout->addLayout(postRow);
 
     // Row 4 — system / rarely visible
@@ -332,7 +329,6 @@ MainWindow::MainWindow(QWidget *parent)
     webcamView->hide();
     singButton->setEnabled(false);
     singAction->setEnabled(false);
-    renderAgainButton->setVisible(false);
     backingTrackButton->setVisible(false);
     exitButton->setVisible(false);
     deviceLabel->setVisible(true);
@@ -352,7 +348,6 @@ MainWindow::MainWindow(QWidget *parent)
     connect(singAction, &QAction::triggered, this, &MainWindow::startRecording);
     connect(fetchButton,         &QPushButton::clicked, this, &MainWindow::fetchVideo);
     connect(browseYoutubeButton, &QPushButton::clicked, this, &MainWindow::openYoutubeBrowser);
-    connect(renderAgainButton, &QPushButton::clicked, this, &MainWindow::renderAgain);
     connect(backingTrackButton, &QPushButton::clicked, this, &MainWindow::generateBackingTrack);
     connect(libraryButton, &QPushButton::clicked, this, &MainWindow::openLibrary);
     connect(libraryAction, &QAction::triggered, this, &MainWindow::openLibrary);

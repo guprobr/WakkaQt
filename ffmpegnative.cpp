@@ -891,6 +891,28 @@ bool writeFloatWav(const std::vector<float> &pcm, const QString &outPath)
 // transcodeAudio — shared encode pipeline used by transcodeAudio & muxVideoWithAudio
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Return `preferred` if the encoder accepts it, otherwise the closest rate it
+// does support (e.g. libopus only supports 8/12/16/24/48 kHz, so 44100 gets
+// mapped to 48000). Encoders with no restriction list report nullptr/0 and
+// `preferred` is returned unchanged.
+static int pickSupportedSampleRate(const AVCodec *enc, int preferred)
+{
+    const int *rates = nullptr;
+    int numRates = 0;
+    avcodec_get_supported_config(nullptr, enc, AV_CODEC_CONFIG_SAMPLE_RATE, 0,
+                                  reinterpret_cast<const void **>(&rates), &numRates);
+    if (!rates || numRates <= 0)
+        return preferred;
+
+    int best = rates[0];
+    int bestDiff = std::abs(rates[0] - preferred);
+    for (int i = 1; i < numRates; ++i) {
+        const int diff = std::abs(rates[i] - preferred);
+        if (diff < bestDiff) { bestDiff = diff; best = rates[i]; }
+    }
+    return best;
+}
+
 // Encode S16 stereo 44100 Hz PCM into an already-opened output context.
 // outFmt must have its header already written; caller writes trailer and closes.
 static bool encodeS16ToStream(const QVector<int16_t> &s16,
@@ -922,12 +944,16 @@ static bool encodeS16ToStream(const QVector<int16_t> &s16,
 
     auto pushToFifo = [&](const int16_t *src, int n) {
         if (encSwr) {
-            const int maxOut = n + 64;
-            const int planes = av_sample_fmt_is_planar(encCtx->sample_fmt) ? 2 : 1;
+            const int maxOut = (int)swr_get_out_samples(encSwr, n);
+            const bool planar = av_sample_fmt_is_planar(encCtx->sample_fmt);
+            const int planes = planar ? 2 : 1;
+            // Packed (non-planar) formats interleave both channels into the
+            // single plane, so that buffer needs 2x the per-channel size.
+            const int samplesPerPlane = planar ? 1 : 2;
             std::vector<std::vector<uint8_t>> bufs;
             std::vector<uint8_t *> ptrs;
             for (int p = 0; p < planes; ++p) {
-                bufs.emplace_back((size_t)maxOut * av_get_bytes_per_sample(encCtx->sample_fmt) + 16);
+                bufs.emplace_back((size_t)maxOut * samplesPerPlane * av_get_bytes_per_sample(encCtx->sample_fmt) + 16);
                 ptrs.push_back(bufs.back().data());
             }
             const uint8_t *srcPtr = reinterpret_cast<const uint8_t *>(src);
@@ -960,7 +986,7 @@ static bool encodeS16ToStream(const QVector<int16_t> &s16,
             AVFrame *af = av_frame_alloc();
             af->format      = encCtx->sample_fmt;
             af->nb_samples  = read;
-            af->sample_rate = 44100;
+            af->sample_rate = encCtx->sample_rate;
             af->pts         = audioPts;
             av_channel_layout_copy(&af->ch_layout, &encCtx->ch_layout);
             av_frame_get_buffer(af, 0);
@@ -988,7 +1014,7 @@ static bool openAudioEncoder(AVCodecID codecId, AVFormatContext *outFmt,
 
     *outSt  = avformat_new_stream(outFmt, enc);
     *encCtx = avcodec_alloc_context3(enc);
-    (*encCtx)->sample_rate = 44100;
+    (*encCtx)->sample_rate = pickSupportedSampleRate(enc, 44100);
     av_channel_layout_from_mask(&(*encCtx)->ch_layout, AV_CH_LAYOUT_STEREO);
     {
         const AVSampleFormat *fmts = nullptr; int nFmts = 0;
@@ -998,7 +1024,7 @@ static bool openAudioEncoder(AVCodecID codecId, AVFormatContext *outFmt,
     }
     (*encCtx)->bit_rate  = (codecId == AV_CODEC_ID_PCM_S16LE ||
                             codecId == AV_CODEC_ID_FLAC) ? 0 : 192000;
-    (*encCtx)->time_base = {1, 44100};
+    (*encCtx)->time_base = {1, (*encCtx)->sample_rate};
     if (outFmt->oformat->flags & AVFMT_GLOBALHEADER)
         (*encCtx)->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
 
@@ -1008,10 +1034,10 @@ static bool openAudioEncoder(AVCodecID codecId, AVFormatContext *outFmt,
     avcodec_parameters_from_context((*outSt)->codecpar, *encCtx);
     (*outSt)->time_base = (*encCtx)->time_base;
 
-    if ((*encCtx)->sample_fmt != AV_SAMPLE_FMT_S16) {
+    if ((*encCtx)->sample_fmt != AV_SAMPLE_FMT_S16 || (*encCtx)->sample_rate != 44100) {
         AVChannelLayout stereo;
         av_channel_layout_from_mask(&stereo, AV_CH_LAYOUT_STEREO);
-        swr_alloc_set_opts2(encSwr, &stereo, (*encCtx)->sample_fmt, 44100,
+        swr_alloc_set_opts2(encSwr, &stereo, (*encCtx)->sample_fmt, (*encCtx)->sample_rate,
                              &stereo, AV_SAMPLE_FMT_S16, 44100, 0, nullptr);
         swr_init(*encSwr);
         av_channel_layout_uninit(&stereo);
@@ -1401,7 +1427,10 @@ bool renderVideo(const QString &audioPath,
 
     AVStream *audioOutSt = avformat_new_stream(outFmt, audioEnc);
     AVCodecContext *audioEncCtx = avcodec_alloc_context3(audioEnc);
-    audioEncCtx->sample_rate = 44100;
+    // libopus (and some other encoders) only accept a fixed set of sample
+    // rates — 44100 isn't one of them, so pick the closest one it supports
+    // (e.g. 48000) rather than failing avcodec_open2 below.
+    audioEncCtx->sample_rate = pickSupportedSampleRate(audioEnc, 44100);
     av_channel_layout_from_mask(&audioEncCtx->ch_layout, AV_CH_LAYOUT_STEREO);
     {
         // avcodec_get_supported_config() replaces the deprecated sample_fmts field
@@ -1416,7 +1445,7 @@ bool renderVideo(const QString &audioPath,
     }
     audioEncCtx->bit_rate    = (audioCodecId == AV_CODEC_ID_PCM_S16LE ||
                                 audioCodecId == AV_CODEC_ID_FLAC) ? 0 : 192000;
-    audioEncCtx->time_base   = {1, 44100};
+    audioEncCtx->time_base   = {1, audioEncCtx->sample_rate};
     if (outFmt->oformat->flags & AVFMT_GLOBALHEADER)
         audioEncCtx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
 
@@ -1429,13 +1458,13 @@ bool renderVideo(const QString &audioPath,
     avcodec_parameters_from_context(audioOutSt->codecpar, audioEncCtx);
     audioOutSt->time_base = audioEncCtx->time_base;
 
-    // Resampler: S16 stereo → encoder's required sample format
+    // Resampler: S16 44100 Hz stereo (source PCM) → encoder's required sample format/rate
     SwrContext *encSwr = nullptr;
-    if (audioEncCtx->sample_fmt != AV_SAMPLE_FMT_S16) {
+    if (audioEncCtx->sample_fmt != AV_SAMPLE_FMT_S16 || audioEncCtx->sample_rate != 44100) {
         AVChannelLayout stereo;
         av_channel_layout_from_mask(&stereo, AV_CH_LAYOUT_STEREO);
         swr_alloc_set_opts2(&encSwr,
-                             &stereo, audioEncCtx->sample_fmt, 44100,
+                             &stereo, audioEncCtx->sample_fmt, audioEncCtx->sample_rate,
                              &stereo, AV_SAMPLE_FMT_S16, 44100,
                              0, nullptr);
         swr_init(encSwr);
@@ -1702,14 +1731,17 @@ bool renderVideo(const QString &audioPath,
         // Helper: push N samples of S16 into the fifo, converting format if needed
         auto pushToFifo = [&](const int16_t *src, int n) {
             if (encSwr) {
-                // Convert S16 → encoder format
-                const int maxOut = n + 64;
-                int planeSamples = av_get_bytes_per_sample(audioEncCtx->sample_fmt) * n;
+                // Convert S16 → encoder format/rate
+                const int maxOut = (int)swr_get_out_samples(encSwr, n);
                 std::vector<std::vector<uint8_t>> planeBufs;
                 std::vector<uint8_t*> ptrs;
-                const int planes = av_sample_fmt_is_planar(audioEncCtx->sample_fmt) ? 2 : 1;
+                const bool planar = av_sample_fmt_is_planar(audioEncCtx->sample_fmt);
+                const int planes = planar ? 2 : 1;
+                // Packed (non-planar) formats interleave both channels into the
+                // single plane, so that buffer needs 2x the per-channel size.
+                const int samplesPerPlane = planar ? 1 : 2;
                 for (int p = 0; p < planes; ++p) {
-                    planeBufs.emplace_back(maxOut * av_get_bytes_per_sample(audioEncCtx->sample_fmt) + 16);
+                    planeBufs.emplace_back((size_t)maxOut * samplesPerPlane * av_get_bytes_per_sample(audioEncCtx->sample_fmt) + 16);
                     ptrs.push_back(planeBufs.back().data());
                 }
                 const uint8_t *srcPtr = reinterpret_cast<const uint8_t*>(src);
@@ -1743,7 +1775,7 @@ bool renderVideo(const QString &audioPath,
                 AVFrame *af = av_frame_alloc();
                 af->format      = audioEncCtx->sample_fmt;
                 af->nb_samples  = read;
-                af->sample_rate = 44100;
+                af->sample_rate = audioEncCtx->sample_rate;
                 af->pts         = audioPts;
                 av_channel_layout_copy(&af->ch_layout, &audioEncCtx->ch_layout);
                 av_frame_get_buffer(af, 0);
@@ -1754,7 +1786,7 @@ bool renderVideo(const QString &audioPath,
 
                 // Audio phase: 0–10% if video follows, 0–100% for audio-only output
                 if (progressCb && totalDurSec > 0) {
-                    const double frac = std::min(1.0, double(audioPts) / 44100.0 / totalDurSec);
+                    const double frac = std::min(1.0, double(audioPts) / audioEncCtx->sample_rate / totalDurSec);
                     progressCb(audioOnlyOut ? frac : 0.1 * frac);
                 }
             }

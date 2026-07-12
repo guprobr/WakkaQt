@@ -6,7 +6,7 @@
 
 No subscriptions. No cloud. No judgment. (Well, maybe a little judgment from the pitch monitor.)
 
-Current version: **2.3**
+Current version: **2.5**
 
 ---
 
@@ -91,6 +91,19 @@ Every recording is saved to `~/.WakkaQt/library/` with a UUID folder, all source
 ---
 
 ## Changelog
+
+### v2.5 — Opus render fix, masterization pipeline rework, faster visualizer
+
+- **Fixed Opus render failure** — `renderVideo` (and the `transcodeAudio`/`muxVideoWithAudio` helpers) hardcoded a 44100 Hz encoder sample rate, which `libopus` rejects outright (it only accepts 8/12/16/24/48 kHz), aborting every `.opus` render with "cannot open audio encoder". The encoder now queries its actually-supported sample rates and picks the closest match (48000 Hz for Opus), with the resampler, frame timing, and progress reporting all updated to follow the encoder's real rate instead of an assumed constant
+- **Fixed a related heap overflow in the same resampling path** — packed (non-planar) sample formats like Opus's `FLT` interleave both channels into a single buffer, but the conversion buffer was sized for one channel only. This was invisible before because every previously-exercised codec (MP3, FLAC, AAC) uses a planar format; it only surfaced once Opus rendering was reachable, and manifested as an intermittent crash after render
+- **Audio masterization moved earlier in the pipeline** — the deesser/speechnorm/compressor/highpass chain now runs on the raw vocal extract immediately after recording, before `VocalEnhancer` (pitch correction, formant preservation, reverb, etc.) processes it, instead of being applied to the final vocal+playback mix. The two stages no longer compound, and the preview dialog reflects the same signal path used at render time
+- **Removed the treble boost from vocal masterization** — `treble=g=8` was pushing sibilance back in after the deesser; dropped from the default filter chain
+- **Fixed vocals/playback filter separation** — mastering filters are scoped to the vocal track only; the backing track reaches the output unfiltered instead of being run through vocal-shaping filters during the mix stage
+- **Removed the "🎬 Render Again" button** — its job (re-render without re-singing) is still available through the Session Library ("Restore" on any saved session), so the dedicated button and its scattered enable/disable bookkeeping across the render/library/playback managers were removed in favor of that single, more discoverable path
+- **Faster audio visualizer** — the waveform visualizer's update interval and frame-position sampling were tightened from 100 ms to 50 ms, giving smoother, more responsive rendering during playback
+- **YouTube browser pagination** — the "🔍 Browse YouTube" search dialog now supports a "Load More" control to fetch additional pages of results instead of being capped at the first batch
+- **Session restore reliability fix** — restoring a session from the Library now always points at the session's own locally-saved `playback.wav` copy when present, instead of the original external file path, so restores keep working even if the original source file has since moved or been deleted
+- **`compile_commands.json` export enabled** — `CMAKE_EXPORT_COMPILE_COMMANDS` turned on for better IDE/IntelliSense support during development
 
 ### v2.3 — YouTube karaoke browser & hardware-accelerated rendering
 

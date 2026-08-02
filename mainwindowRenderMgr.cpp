@@ -38,17 +38,16 @@ void MainWindow::renderAgain()
         QFileDialog dlg(this, "Mix destination (default .MP4)", "", kRenderFilter);
         dlg.setAcceptMode(QFileDialog::AcceptSave);
         dlg.setOption(QFileDialog::DontUseNativeDialog);
+        // Only used when the user types a filename with no extension at all —
+        // an extension the user does type (in any filter) is always kept as-is.
+        dlg.setDefaultSuffix(allowedExtensions.first());
         QObject::connect(&dlg, &QFileDialog::filterSelected, &dlg,
             [&dlg](const QString &filter) {
-                int star = filter.lastIndexOf("*.");
+                const int star = filter.lastIndexOf("*.");
                 if (star < 0) return;
-                QString ext = filter.mid(star + 2).section(')', 0, 0).trimmed().toLower();
-                if (ext.isEmpty()) return;
-                QStringList sel = dlg.selectedFiles();
-                if (sel.isEmpty()) return;
-                QFileInfo fi(sel.first());
-                if (fi.completeBaseName().isEmpty()) return;
-                dlg.selectFile(fi.dir().filePath(fi.completeBaseName() + "." + ext));
+                const QString ext = filter.mid(star + 2).section(')', 0, 0).trimmed().toLower();
+                if (!ext.isEmpty())
+                    dlg.setDefaultSuffix(ext);
             });
         outputFilePath = (dlg.exec() == QDialog::Accepted)
                          ? dlg.selectedFiles().value(0) : QString{};
@@ -107,12 +106,14 @@ void MainWindow::renderAgain()
     // Show the preview dialog
     previewDialog.reset(new PreviewDialog(audioOffset, this));
     previewDialog->setAudioFile(audioRecorded);
+    previewDialog->setVideoFile(webcamRecorded, videoOffset);
     if (previewDialog->exec() == QDialog::Accepted)
     {
         double vocalVolume = previewDialog->getVolume();
         qint64 manualOffset = previewDialog->getOffset();
+        QString videoEffectChain = previewDialog->getVideoEffectChain();
         previewDialog.reset();
-        mixAndRender(vocalVolume, manualOffset);
+        mixAndRender(vocalVolume, manualOffset, videoEffectChain);
     } else {
         enable_playback(true);
         chooseInputButton->setEnabled(true);
@@ -124,7 +125,7 @@ void MainWindow::renderAgain()
     }
 }
 
-void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset) {
+void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset, const QString &videoEffectChain) {
 
     videoWidget->hide();
     placeholderLabel->show();
@@ -251,7 +252,8 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset) {
                 QMetaObject::invokeMethod(pb, [pb, p]() {
                     pb->setValue(int(p * 100));
                 }, Qt::QueuedConnection);
-            });
+            },
+            videoEffectChain);
         QMetaObject::invokeMethod(qApp, [=]() { onFinished(ok); }, Qt::QueuedConnection);
     });
 #else
@@ -401,5 +403,9 @@ void MainWindow::updatePlaybackDuration() {
                                 .arg(totalTime);
         
         durationTextItem->setPlainText(durationText);
-    }       
+    }
+
+    // Self-healing safety net: re-derive placeholder/video visibility every
+    // second regardless of which signal path got us here.
+    updateVideoVisibility();
 }

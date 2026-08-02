@@ -155,17 +155,16 @@ void MainWindow::restoreAndRender(const QString &sessionId)
         QFileDialog outDlg(this, "Mix destination (default .MP4)", restoredOutput, kRenderFilter);
         outDlg.setAcceptMode(QFileDialog::AcceptSave);
         outDlg.setOption(QFileDialog::DontUseNativeDialog);
+        // Only used when the user types a filename with no extension at all —
+        // an extension the user does type (in any filter) is always kept as-is.
+        outDlg.setDefaultSuffix(kAllowedExts.first());
         QObject::connect(&outDlg, &QFileDialog::filterSelected, &outDlg,
             [&outDlg](const QString &filter) {
-                int star = filter.lastIndexOf("*.");
+                const int star = filter.lastIndexOf("*.");
                 if (star < 0) return;
-                QString ext = filter.mid(star + 2).section(')', 0, 0).trimmed().toLower();
-                if (ext.isEmpty()) return;
-                QStringList sel = outDlg.selectedFiles();
-                if (sel.isEmpty()) return;
-                QFileInfo fi(sel.first());
-                if (fi.completeBaseName().isEmpty()) return;
-                outDlg.selectFile(fi.dir().filePath(fi.completeBaseName() + "." + ext));
+                const QString ext = filter.mid(star + 2).section(')', 0, 0).trimmed().toLower();
+                if (!ext.isEmpty())
+                    outDlg.setDefaultSuffix(ext);
             });
         restoredOutput = (outDlg.exec() == QDialog::Accepted)
                          ? outDlg.selectedFiles().value(0) : QString{};
@@ -220,12 +219,14 @@ void MainWindow::restoreAndRender(const QString &sessionId)
 
     previewDialog.reset(new PreviewDialog(audioOffset, this));
     previewDialog->setAudioFile(audioRecorded);
+    previewDialog->setVideoFile(webcamRecorded, videoOffset);
 
     if (previewDialog->exec() == QDialog::Accepted) {
         const double vocalVolume  = previewDialog->getVolume();
         const qint64 manualOffset = previewDialog->getOffset();
+        const QString videoEffectChain = previewDialog->getVideoEffectChain();
         previewDialog.reset();
-        mixAndRender(vocalVolume, manualOffset);
+        mixAndRender(vocalVolume, manualOffset, videoEffectChain);
     } else {
         previewDialog.reset();
         logUI("Library: restore cancelled during preview/adjustment.");

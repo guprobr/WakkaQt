@@ -8,8 +8,7 @@ void MainWindow::playVideo(const QString& playbackVideoPath) {
 
         isPlayback = false; // disable seeking while decoding/loading new media
 
-        videoWidget->hide();
-        placeholderLabel->show();
+        updateVideoVisibility();
         transportWidget->hide();  // re-shown when PlayingState fires
 
         vizPlayer->stop();
@@ -35,6 +34,21 @@ void MainWindow::playVideo(const QString& playbackVideoPath) {
 
  }
 
+// Single source of truth for whether videoWidget or placeholderLabel is
+// shown. Call this instead of toggling the two widgets by hand — several
+// call sites used to guess at the right visibility ahead of the player
+// actually reaching that state, which could leave the placeholder logo
+// stuck on top of a video that was, in fact, still playing.
+void MainWindow::updateVideoVisibility() {
+    const bool showVideo = player && isPlayback
+        && !isAudioOnlyFile(currentPlayback)
+        && (player->playbackState() == QMediaPlayer::PlayingState
+            || player->playbackState() == QMediaPlayer::PausedState);
+
+    videoWidget->setVisible(showVideo);
+    placeholderLabel->setVisible(!showVideo);
+}
+
   void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status) {
 
     if ( QMediaPlayer::MediaStatus::LoadingMedia == status || \
@@ -46,13 +60,6 @@ void MainWindow::playVideo(const QString& playbackVideoPath) {
         if ( !playbackTimer->isActive())
             playbackTimer->start(1000);
 
-        if (!isAudioOnlyFile(currentPlayback)) {
-            placeholderLabel->hide();
-            videoWidget->show();
-        } else {
-            videoWidget->hide();
-            placeholderLabel->show();
-        }
         vizPlayer->play();
         backingTrackButton->setVisible(true);
 
@@ -62,12 +69,16 @@ void MainWindow::playVideo(const QString& playbackVideoPath) {
 
         if ( isRecording && mediaRecorder->duration() )
             stopRecording();
-        
-        videoWidget->hide();
-        placeholderLabel->show();
 
     }
 
+    // Single source of truth for the placeholder/video toggle: driven by the
+    // player's actual state rather than assumptions made at each call site
+    // above. EndOfMedia in particular can fire as a transient status without
+    // playbackState ever leaving PlayingState (e.g. around a seek), which
+    // used to leave the placeholder stuck on top of an actively-playing
+    // video — this re-derives visibility from ground truth every time.
+    updateVideoVisibility();
 }
 
 void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
@@ -83,12 +94,6 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
 
         isPlayback = true; // enable seeking now
 
-        // Restore video visibility in case playback resumed after EndOfMedia
-        if (!isAudioOnlyFile(currentPlayback)) {
-            placeholderLabel->hide();
-            videoWidget->show();
-        }
-
         transportWidget->show();
         playPauseButton->setText("⏸");
     }
@@ -97,6 +102,7 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
         playPauseButton->setText("▶");
     }
 
+    updateVideoVisibility();
 }
 
 void MainWindow::onPlayPauseClicked() {
@@ -131,8 +137,6 @@ void MainWindow::chooseLast()
             singButton->setEnabled(true);
             singAction->setEnabled(true);
             chooseLastButton->setVisible(true);
-            placeholderLabel->hide();
-            videoWidget->show();
 
             currentVideoFile = currentPlayback;
             playVideo(currentVideoFile);
@@ -142,19 +146,16 @@ void MainWindow::chooseLast()
         if ( isPlayback )
             QTimer::singleShot(500, this, [this, lastPos]() {
 
-                
+
                 vizPlayer->seek(lastPos, true);
                 #if QT_VERSION < QT_VERSION_CHECK(6, 6, 2)
                 #ifdef __linux__
-                    player->setAudioOutput(nullptr); // first, detach the audio output 
+                    player->setAudioOutput(nullptr); // first, detach the audio output
                     player->setAudioOutput(audioOutput.data()); // now gimme back my sound mon
                 #endif
                 #endif
-                if (!isAudioOnlyFile(currentPlayback)) {
-                    placeholderLabel->hide();
-                    videoWidget->show();
-                }
                 vizPlayer->play();
+                updateVideoVisibility();
             }); // resume play
 }
 
@@ -181,8 +182,6 @@ void MainWindow::chooseVideo()
             singButton->setEnabled(true);
             singAction->setEnabled(true);
             chooseLastButton->setVisible(true);
-            placeholderLabel->hide();
-            videoWidget->show();
 
             currentVideoFile = loadVideoFile;
             playVideo(currentVideoFile);
@@ -195,15 +194,12 @@ void MainWindow::chooseVideo()
                 vizPlayer->seek(lastPos, true);
                 #if QT_VERSION < QT_VERSION_CHECK(6, 6, 2)
                 #ifdef __linux__
-                    player->setAudioOutput(nullptr); // first, detach the audio output 
+                    player->setAudioOutput(nullptr); // first, detach the audio output
                     player->setAudioOutput(audioOutput.data()); // now gimme back my sound mon
                 #endif
                 #endif
-                if (!isAudioOnlyFile(currentPlayback)) {
-                    placeholderLabel->hide();
-                    videoWidget->show();
-                }
                 vizPlayer->play();
+                updateVideoVisibility();
             }); // resume play
 
     delete fileDialog;
@@ -242,11 +238,8 @@ void MainWindow::fetchVideo() {
                     player->setAudioOutput(audioOutput.data());
                 #endif
                 #endif
-                if (!isAudioOnlyFile(currentPlayback)) {
-                    placeholderLabel->hide();
-                    videoWidget->show();
-                }
                 vizPlayer->play();
+                updateVideoVisibility();
             });
         }
         return;
@@ -264,14 +257,10 @@ void MainWindow::fetchVideo() {
 
         if (QFile::exists(this->downloadedVideoPath)) {
             resetMediaComponents(false);
-            placeholderLabel->hide();
-            videoWidget->show();
 
             currentVideoFile = this->downloadedVideoPath;
             if (player && vizPlayer) {
                 vizPlayer->stop();
-                videoWidget->hide();
-                placeholderLabel->show();
                 playbackTimer->stop();
 
                 playVideo(currentVideoFile);
@@ -289,11 +278,8 @@ void MainWindow::fetchVideo() {
         if (isPlayback) {
             QTimer::singleShot(500, this, [this, lastPos]() {
                 vizPlayer->seek(lastPos, true);
-                if (!isAudioOnlyFile(currentPlayback)) {
-                    placeholderLabel->hide();
-                    videoWidget->show();
-                }
                 vizPlayer->play();
+                updateVideoVisibility();
             });
         }
         fetchButton->setEnabled(true);

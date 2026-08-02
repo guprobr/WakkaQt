@@ -1328,6 +1328,152 @@ static inline float softClip(float x)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Video effects (VideoEffectProcessor) — shared by live preview and render
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Builds a "buffer → <filterChain> → format=<pixFmt> → buffersink" graph.
+// Mirrors applyAudioFilter()'s pattern (see above) for video frames instead
+// of PCM. Returns false (with *graph left null) if the chain can't be built —
+// e.g. a frei0r plugin the chain references isn't installed on this machine.
+static bool buildVideoFilterGraph(AVFilterGraph **graph, AVFilterContext **srcCtx,
+                                   AVFilterContext **sinkCtx, const QString &filterChain,
+                                   int width, int height, AVPixelFormat pixFmt)
+{
+    *graph = avfilter_graph_alloc();
+    if (!*graph)
+        return false;
+
+    const QByteArray srcParams = QStringLiteral(
+        "video_size=%1x%2:pix_fmt=%3:time_base=1/25:pixel_aspect=1/1")
+        .arg(width).arg(height).arg(int(pixFmt)).toUtf8();
+
+    bool ok = (avfilter_graph_create_filter(srcCtx, avfilter_get_by_name("buffer"),
+                   "in", srcParams.constData(), nullptr, *graph) >= 0)
+           && (avfilter_graph_create_filter(sinkCtx, avfilter_get_by_name("buffersink"),
+                   "out", nullptr, nullptr, *graph) >= 0);
+
+    if (ok) {
+        const QString fullChain = filterChain.isEmpty()
+            ? QStringLiteral("format=pix_fmts=%1").arg(int(pixFmt))
+            : filterChain + QStringLiteral(",format=pix_fmts=%1").arg(int(pixFmt));
+
+        // Force "C" locale so avfilter parses decimal points correctly regardless
+        // of the system locale (e.g. "0.5" would fail on German/French locales).
+        const char *prevLocale = setlocale(LC_NUMERIC, "C");
+
+        AVFilterInOut *ins = nullptr, *outs = nullptr;
+        ok = (avfilter_graph_parse2(*graph, fullChain.toUtf8().constData(), &ins, &outs) >= 0);
+        if (ok && ins)
+            ok = (avfilter_link(*srcCtx, 0, ins->filter_ctx, ins->pad_idx) >= 0);
+        if (ok && outs)
+            ok = (avfilter_link(outs->filter_ctx, outs->pad_idx, *sinkCtx, 0) >= 0);
+        avfilter_inout_free(&ins);
+        avfilter_inout_free(&outs);
+        ok = ok && (avfilter_graph_config(*graph, nullptr) >= 0);
+
+        if (prevLocale) setlocale(LC_NUMERIC, prevLocale);
+    }
+
+    if (!ok) {
+        avfilter_graph_free(graph);
+        *srcCtx = *sinkCtx = nullptr;
+    }
+    return ok;
+}
+
+bool VideoEffectProcessor::isChainAvailable(const QString &filterChain)
+{
+    if (filterChain.isEmpty())
+        return true;
+    AVFilterGraph *graph = nullptr;
+    AVFilterContext *srcCtx = nullptr, *sinkCtx = nullptr;
+    const bool ok = buildVideoFilterGraph(&graph, &srcCtx, &sinkCtx, filterChain, 16, 16, AV_PIX_FMT_BGRA);
+    if (graph) avfilter_graph_free(&graph);
+    return ok;
+}
+
+struct VideoEffectProcessor::Impl {
+    AVFilterGraph *graph = nullptr;
+    AVFilterContext *srcCtx = nullptr;
+    AVFilterContext *sinkCtx = nullptr;
+    AVFrame *inFrame = nullptr;
+    AVFrame *outFrame = nullptr;
+    QString chain;
+    int width = 0;
+    int height = 0;
+    int64_t pts = 0;
+    bool chainBroken = false; // avoid retrying/re-warning every single frame
+
+    ~Impl() { teardown(); }
+
+    void teardown() {
+        if (inFrame)  av_frame_free(&inFrame);
+        if (outFrame) av_frame_free(&outFrame);
+        if (graph)    avfilter_graph_free(&graph);
+        srcCtx = sinkCtx = nullptr;
+    }
+};
+
+VideoEffectProcessor::VideoEffectProcessor() : d(new Impl) {}
+VideoEffectProcessor::~VideoEffectProcessor() = default;
+
+QImage VideoEffectProcessor::process(const QImage &frame, const QString &filterChain)
+{
+    if (filterChain.isEmpty())
+        return frame;
+
+    const QImage src = frame.convertToFormat(QImage::Format_ARGB32);
+    if (src.isNull())
+        return frame;
+
+    const bool needsRebuild = (filterChain != d->chain)
+                            || (src.width() != d->width) || (src.height() != d->height);
+    if (needsRebuild) {
+        d->teardown();
+        d->chain  = filterChain;
+        d->width  = src.width();
+        d->height = src.height();
+        d->pts    = 0;
+        d->chainBroken = !buildVideoFilterGraph(&d->graph, &d->srcCtx, &d->sinkCtx,
+                                                 filterChain, d->width, d->height, AV_PIX_FMT_BGRA);
+        if (d->chainBroken)
+            qWarning() << "FFmpegNative: video effect chain failed to build, passing through:" << filterChain;
+        else {
+            d->inFrame  = av_frame_alloc();
+            d->outFrame = av_frame_alloc();
+        }
+    }
+
+    if (d->chainBroken)
+        return frame;
+
+    d->inFrame->format = AV_PIX_FMT_BGRA;
+    d->inFrame->width  = d->width;
+    d->inFrame->height = d->height;
+    d->inFrame->pts    = d->pts++;
+    if (av_frame_get_buffer(d->inFrame, 0) < 0) {
+        av_frame_unref(d->inFrame);
+        return frame;
+    }
+    av_image_copy_plane(d->inFrame->data[0], d->inFrame->linesize[0],
+                         src.bits(), int(src.bytesPerLine()), d->width * 4, d->height);
+
+    if (av_buffersrc_add_frame(d->srcCtx, d->inFrame) < 0) {
+        av_frame_unref(d->inFrame);
+        return frame;
+    }
+    av_frame_unref(d->inFrame);
+
+    QImage result = frame;
+    if (av_buffersink_get_frame(d->sinkCtx, d->outFrame) >= 0) {
+        result = QImage(d->outFrame->data[0], d->width, d->height,
+                         d->outFrame->linesize[0], QImage::Format_ARGB32).copy();
+        av_frame_unref(d->outFrame);
+    }
+    return result;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // renderVideo
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1341,7 +1487,8 @@ bool renderVideo(const QString &audioPath,
                  const QString &resolution,
                  const QString &rawVocalPath,
                  const std::atomic<bool> *cancelled,
-                 std::function<void(double)> progressCb)
+                 std::function<void(double)> progressCb,
+                 const QString &videoEffectChain)
 {
     const QString ext = QFileInfo(outputPath).suffix().toLower();
     const bool audioOnlyOut = (ext == "mp3" || ext == "wav" ||
@@ -1867,6 +2014,25 @@ bool renderVideo(const QString &audioPath,
             // This is computed once the first decoded frame reveals firstSrcPts.
             int64_t seekCorrectionTb = 0; // set after first frame when videoOffsetMs > 0
 
+            // Optional video effect (Vertigo, Technicolor, ...) — the graph is
+            // built once here and reused for every frame; see
+            // buildVideoFilterGraph() near the top of this file. Falls back to
+            // rendering without the effect if the chain can't be built (e.g. a
+            // frei0r plugin referenced by it isn't installed on this machine).
+            AVFilterGraph *effectGraph = nullptr;
+            AVFilterContext *effectSrcCtx = nullptr, *effectSinkCtx = nullptr;
+            AVFrame *effectSrcFrame = nullptr, *effectOutFrame = nullptr;
+            if (!videoEffectChain.isEmpty()) {
+                if (buildVideoFilterGraph(&effectGraph, &effectSrcCtx, &effectSinkCtx,
+                                           videoEffectChain, mainW, mainH, AV_PIX_FMT_YUV420P)) {
+                    effectSrcFrame = av_frame_alloc();
+                    effectOutFrame = av_frame_alloc();
+                } else {
+                    qWarning() << "FFmpegNative: video effect chain failed to build, rendering without it:"
+                               << videoEffectChain;
+                }
+            }
+
             while (av_read_frame(webcamFmt, pkt) >= 0) {
                 if (cancelled && cancelled->load()) { wasCancelled = true; av_packet_unref(pkt); break; }
                 if (pkt->stream_index != webcamVidIdx) { av_packet_unref(pkt); continue; }
@@ -1904,6 +2070,17 @@ bool renderVideo(const QString &audioPath,
                               videoEncFrame->data, videoEncFrame->linesize);
                     av_frame_unref(frm);
 
+                    if (effectGraph) {
+                        av_frame_ref(effectSrcFrame, videoEncFrame);
+                        effectSrcFrame->pts = fallbackPts; // graph only needs a monotonic pts
+                        if (av_buffersrc_add_frame(effectSrcCtx, effectSrcFrame) >= 0
+                            && av_buffersink_get_frame(effectSinkCtx, effectOutFrame) >= 0) {
+                            av_frame_copy(videoEncFrame, effectOutFrame);
+                            av_frame_unref(effectOutFrame);
+                        }
+                        av_frame_unref(effectSrcFrame);
+                    }
+
                     if (!pitchData.isEmpty() && relPts != AV_NOPTS_VALUE) {
                         const int64_t frameMs = (int64_t)(av_q2d(inputTB) * double(relPts) * 1000.0);
                         const int64_t lookupMs = std::max<int64_t>(0, frameMs + audioOffsetMs);
@@ -1926,6 +2103,10 @@ bool renderVideo(const QString &audioPath,
                 }
             }
             flushVideoWithInterleave(nullptr);
+
+            if (effectSrcFrame) av_frame_free(&effectSrcFrame);
+            if (effectOutFrame) av_frame_free(&effectOutFrame);
+            if (effectGraph)    avfilter_graph_free(&effectGraph);
 
             av_frame_free(&frm);
             av_packet_free(&pkt);

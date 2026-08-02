@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 # Project name
-project(WakkaQt VERSION 2.5 LANGUAGES CXX)
+project(WakkaQt VERSION 2.6.9 LANGUAGES CXX)
 
 # Set the C++ standard
 set(CMAKE_CXX_STANDARD 17)
@@ -181,6 +181,7 @@ add_executable(${PROJECT_NAME}
     sndwidget.cpp
     pitchmonitorwidget.cpp
     previewdialog.cpp
+    previewvideowidget.cpp
     audioamplifier.cpp
     audiorecorder.cpp
     audiovizmediaplayer.cpp
@@ -198,6 +199,7 @@ add_executable(${PROJECT_NAME}
     sndwidget.h
     pitchmonitorwidget.h
     previewdialog.h
+    previewvideowidget.h
     audioamplifier.h
     audiorecorder.h
     audiovizmediaplayer.h

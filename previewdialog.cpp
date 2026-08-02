@@ -12,6 +12,10 @@
 #include <QMessageBox>
 #include <QFont>
 #include <QDebug>
+#include <QFileInfo>
+#include <QUrl>
+#include <QFrame>
+#include <QScrollArea>
 
 PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
     : QDialog(parent),
@@ -21,11 +25,11 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
       volume(1.0),
       pendingVolumeValue(100)
 {
-    setWindowTitle("Audio Preview with Amplification");
+    setWindowTitle("Karaoke Studio");
 
     QVBoxLayout *layout = new QVBoxLayout(this);
     QHBoxLayout *controls = new QHBoxLayout();
-
+    
     volumeDial = new QDial(this);
     volumeDial->setRange(0, 500);
     volumeDial->setValue(100);
@@ -34,8 +38,8 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
     volumeDial->setFixedSize(200, 100);
 
     QLabel *volumeBanner = new QLabel(
-        "This is a low-quality preview.\n"
-        "note vocals will be slightly louder in final mastering output.",
+        "Here you can preview the performance and tweak the recording with effects.\n"
+        "You must press APPLY ENHANCEMENTS before rendering to take effect",
         this);
     volumeBanner->setToolTip("You can adjust the final volume for the render output.");
     volumeBanner->setFont(QFont("", 11));
@@ -161,27 +165,72 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
     playbackMute_option->setFont(QFont("", 8));
 
     vocalVisualizer = new AudioVisualizerWidget(this);
-    vocalVisualizer->setToolTip("Vocal Visuailizer");
-    vocalVisualizer->setMinimumHeight(110);
+    vocalVisualizer->setToolTip("Vocal Visualizer");
+    vocalVisualizer->setMinimumHeight(90);
+
+    // Video is muted at the QMediaPlayer level — audio playback is driven
+    // entirely by AudioAmplifier's raw PCM sinks (vocals + backing track).
+    // mediaPlayer only decodes/renders frames; syncVideoToAudio() keeps its
+    // position locked to the amplifier's playback clock.
+    // Height is capped so it can't push the rest of the tab's controls down.
+    //
+    // videoRama is a plain QWidget (not QVideoWidget) painted from onVideoFrame()
+    // instead of being handed to mediaPlayer directly, so a selected video effect
+    // (see the Effects tab) can be applied to each decoded frame before display.
+    // (A prior version routed mediaPlayer through an extra hidden/stacked
+    // QVideoWidget "anchor", theorizing a bare QVideoSink wasn't getting
+    // scheduled on a real desktop. That turned out to be chasing a ghost —
+    // the real bug was mediaPlayer->play() never being called at all, see
+    // syncVideoToAudio() — and the anchor/stacking only added a second
+    // widget that could obscure this one. Back to a single, unambiguous
+    // widget.)
+    videoRama = new PreviewVideoWidget(this);
+    videoRama->setToolTip("Recorded performance video");
+    videoRama->setMinimumHeight(160);
+    videoRama->setMaximumHeight(240);
+    videoRama->hide();
+
+    mediaPlayer = new QMediaPlayer(this);
+    videoSink = new QVideoSink(this);
+    mediaPlayer->setVideoSink(videoSink);
+    connect(videoSink, &QVideoSink::videoFrameChanged, this, &PreviewDialog::onVideoFrame);
 
     controls->addWidget(seekBackwardButton);
     controls->addWidget(volumeDial);
     controls->addWidget(seekForwardButton);
 
+    // Status chrome, video preview and vocal visualizer all live above the
+    // tabs so they stay visible no matter which tab is open; Render Mix
+    // lives below for the same reason.
     layout->addWidget(volumeBanner);
     layout->addWidget(bannerLabel);
     layout->addWidget(progressBar);
+    layout->addWidget(videoRama);
     layout->addWidget(vocalVisualizer);
-    layout->addWidget(volumeLabel);
-    layout->addWidget(startButton);
-    layout->addWidget(playbackMute_option);
-    layout->addLayout(controls);
-    layout->addWidget(offsetLabel);
-    layout->addWidget(offsetSlider);
-    layout->addWidget(pitchCorrectionLabel);
-    layout->addWidget(pitchCorrectionSlider);
-    layout->addWidget(noiseReductionLabel);
-    layout->addWidget(noiseReductionSlider);
+
+    tabWidget = new QTabWidget(this);
+
+    // ── "Preview && Sync" tab — the controls a casual user actually needs:
+    // watch the take, adjust volume/sync, hit Render Mix. ──────────────────
+    QWidget *previewTab = new QWidget(this);
+    QVBoxLayout *previewLayout = new QVBoxLayout(previewTab);
+    previewLayout->addWidget(volumeLabel);
+    previewLayout->addWidget(startButton);
+    previewLayout->addWidget(playbackMute_option);
+    previewLayout->addLayout(controls);
+    previewLayout->addWidget(offsetLabel);
+    previewLayout->addWidget(offsetSlider);
+    previewLayout->addStretch();
+    tabWidget->addTab(previewTab, "🎬 Preview && Sync");
+
+    // ── "Vocal Tuning" tab — power-user autotune/noise/reverb controls,
+    // tucked out of the way by default. ────────────────────────────────────
+    QWidget *tuneTab = new QWidget(this);
+    QVBoxLayout *tuneLayout = new QVBoxLayout(tuneTab);
+    tuneLayout->addWidget(pitchCorrectionLabel);
+    tuneLayout->addWidget(pitchCorrectionSlider);
+    tuneLayout->addWidget(noiseReductionLabel);
+    tuneLayout->addWidget(noiseReductionSlider);
 
     // Autotune controls row
     QHBoxLayout *tuneRow = new QHBoxLayout();
@@ -190,11 +239,11 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
     tuneRow->addSpacing(12);
     tuneRow->addWidget(new QLabel("Scale:", this));
     tuneRow->addWidget(scaleCombo);
-    layout->addLayout(tuneRow);
-    layout->addWidget(retuneSpeedLabel);
-    layout->addWidget(retuneSpeedSlider);
-    layout->addWidget(formantCheckBox);
-    layout->addWidget(reverbLabel);
+    tuneLayout->addLayout(tuneRow);
+    tuneLayout->addWidget(retuneSpeedLabel);
+    tuneLayout->addWidget(retuneSpeedSlider);
+    tuneLayout->addWidget(formantCheckBox);
+    tuneLayout->addWidget(reverbLabel);
 
     QHBoxLayout *reverbRow = new QHBoxLayout();
     reverbRow->addWidget(new QLabel("Room:", this));
@@ -205,14 +254,43 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
     reverbRow->addSpacing(8);
     reverbRow->addWidget(new QLabel("Mix:", this));
     reverbRow->addWidget(reverbMixSlider);
-    layout->addLayout(reverbRow);
+    tuneLayout->addLayout(reverbRow);
 
-    layout->addWidget(applyButton);
+    tuneLayout->addWidget(applyButton);
+    tuneLayout->addStretch();
+    tabWidget->addTab(tuneTab, "🎚️ Vocal Tuning");
 
+    // ── "Effects" tab — visual filters applied to the webcam video, live in
+    // the preview above and identically in the final render. Any number of
+    // effects can be enabled at once, each with its own tunable parameters.
+    // Rows are collapsed by default (click a name to expand its sliders) and
+    // scrollable, since a dozen effects' worth of controls don't fit at once. ──
+    QWidget *effectsTab = new QWidget(this);
+    QVBoxLayout *effectsLayout = new QVBoxLayout(effectsTab);
+    QLabel *effectsHelp = new QLabel(
+        "Check any effects you'd like to combine, click a name to adjust its "
+        "parameters. The preview above updates live, and the same effects are "
+        "applied to the final Render Mix.", this);
+    effectsHelp->setWordWrap(true);
+    effectsLayout->addWidget(effectsHelp);
+
+    QScrollArea *effectsScroll = new QScrollArea(effectsTab);
+    effectsScroll->setWidgetResizable(true);
+    effectsScroll->setFrameShape(QFrame::NoFrame);
+    QWidget *effectsScrollContent = new QWidget(effectsScroll);
+    QVBoxLayout *effectsScrollLayout = new QVBoxLayout(effectsScrollContent);
+    buildEffectsUi(effectsScrollLayout);
+    effectsScrollLayout->addStretch();
+    effectsScroll->setWidget(effectsScrollContent);
+    effectsLayout->addWidget(effectsScroll);
+
+    tabWidget->addTab(effectsTab, "✨ Effects");
+
+    layout->addWidget(tabWidget);
     layout->addWidget(stopButton);
     layout->setAlignment(Qt::AlignHCenter);
     setMinimumSize(680, 620);
-    resize(800, 880);
+    resize(1024, 768);
 
     updateEnhancementLabels();
 
@@ -222,6 +300,9 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
 
     amplifier.reset(new AudioAmplifier(format, this));
     vocalEnhancer.reset(new VocalEnhancer(format, this));
+#ifdef WAKKAQT_FFMPEG_NATIVE
+    videoEffectProcessor.reset(new FFmpegNative::VideoEffectProcessor());
+#endif
 
     connect(amplifier.data(), &AudioAmplifier::vocalPreviewChunk,
             vocalVisualizer, &AudioVisualizerWidget::updateVisualization);
@@ -295,6 +376,8 @@ void PreviewDialog::closeEvent(QCloseEvent *event)
         enhanceWatcher->cancel();
         enhanceWatcher->waitForFinished();
     }
+    if (mediaPlayer)
+        mediaPlayer->stop();
     // Children QProcess objects (ffmpegProcess) have this as parent; Qt kills
     // them on destruction, but if one is running right now its finished()
     // lambda would call slots on a hidden 'this'. Kill all child processes now.
@@ -430,6 +513,262 @@ void PreviewDialog::setAudioFile(const QString &filePath)
 #endif
 }
 
+void PreviewDialog::setVideoFile(const QString &filePath, qint64 videoOffsetMs)
+{
+    m_mediaPlayerOffset = videoOffsetMs;
+
+    const QFileInfo info(filePath);
+    if (!info.exists() || info.size() <= 0) {
+        qDebug() << "PreviewDialog: no webcam video available, hiding video preview.";
+        m_hasVideo = false;
+        videoRama->hide();
+        return;
+    }
+
+    m_hasVideo = true;
+    videoRama->show();
+    mediaPlayer->setSource(QUrl::fromLocalFile(filePath));
+    mediaPlayer->pause();
+}
+
+// Keeps mediaPlayer's frame locked to AudioAmplifier's playback clock (the
+// backing track's timeline, where byte/position 0 == start of the song).
+// webcamRecorded may have its own pre-roll/lag relative to that timeline,
+// captured in m_mediaPlayerOffset (== MainWindow::videoOffset) the same way
+// audioOffset captures it for the vocal recording.
+void PreviewDialog::syncVideoToAudio()
+{
+    if (!m_hasVideo || !mediaPlayer || !amplifier)
+        return;
+
+    const qint64 posBytes = amplifier->getPosition();
+    const qint64 songPosMs = format.durationForBytes(posBytes) / 1000;
+    const qint64 targetMs  = songPosMs + m_mediaPlayerOffset;
+
+    // Detect genuine playback by watching the position actually advance
+    // between calls, instead of trusting AudioAmplifier::isPlaying()
+    // (QAudioSink::state() == ActiveState): confirmed unreliable on at
+    // least one real audio backend, where it never reports ActiveState
+    // despite audio audibly playing and the position genuinely advancing —
+    // which permanently starved mediaPlayer of any play() call.
+    const bool audioAdvancing = (m_lastSyncPosBytes >= 0) && (posBytes != m_lastSyncPosBytes);
+    m_lastSyncPosBytes = posBytes;
+
+    if (targetMs < 0) {
+        // Webcam hadn't started recording yet at this point in the song.
+        if (mediaPlayer->playbackState() != QMediaPlayer::PausedState)
+            mediaPlayer->pause();
+        if (mediaPlayer->position() != 0)
+            mediaPlayer->setPosition(0);
+        return;
+    }
+
+    const bool alreadyPlaying = (mediaPlayer->playbackState() == QMediaPlayer::PlayingState);
+    const qint64 drift = qAbs(targetMs - mediaPlayer->position());
+    // While already playing, let the stream run freely instead of correcting
+    // on every 250ms tick: re-seeking for small drift never lets a single
+    // seek finish settling (decode + present a frame) before the next tick
+    // interrupts it with another seek, which looks exactly like a frozen
+    // frame. Snap immediately when (re)starting/paused so playback begins at
+    // the right spot; once actually playing, only correct real drift.
+    if (!alreadyPlaying || drift > 1000)
+        mediaPlayer->setPosition(targetMs);
+
+    if (audioAdvancing) {
+        if (!alreadyPlaying)
+            mediaPlayer->play();
+    } else if (alreadyPlaying) {
+        mediaPlayer->pause();
+    }
+}
+
+// Builds one collapsible row per entry in complexes.h's videoEffectPresets —
+// a checkbox (enables the effect) plus a clickable header (expands/collapses
+// its parameter sliders, collapsed by default) — silently dropping any
+// preset whose filter chain can't actually be built on this machine at its
+// default parameter values (e.g. Vertigo needs frei0r-plugins installed —
+// see main.cpp's FREI0R_PATH setup). Any number of rows can be checked at
+// once; updateVideoEffectChain() joins all enabled ones into m_videoEffectChain.
+// Rows are collapsed rather than shown in full so a dozen effects' worth of
+// sliders don't all fight for space at once — see also the QScrollArea this
+// gets added to in the constructor.
+void PreviewDialog::buildEffectsUi(QVBoxLayout *effectsLayout)
+{
+    m_effectRows.clear();
+
+#ifdef WAKKAQT_FFMPEG_NATIVE
+    for (int presetIdx = 0; presetIdx < videoEffectPresets.size(); ++presetIdx) {
+        const VideoEffectPreset &preset = videoEffectPresets[presetIdx];
+
+        QVector<double> defaults;
+        for (const VideoEffectParam &param : preset.params)
+            defaults << param.defaultValue;
+
+        if (!FFmpegNative::VideoEffectProcessor::isChainAvailable(preset.buildFilterChain(defaults))) {
+            qDebug() << "PreviewDialog: video effect unavailable on this machine, hiding:" << preset.id;
+            continue;
+        }
+
+        EffectRow row;
+        row.presetIndex = presetIdx;
+
+        QWidget *rowWidget = new QWidget(this);
+        QVBoxLayout *rowLayout = new QVBoxLayout(rowWidget);
+        rowLayout->setContentsMargins(0, 4, 0, 4);
+
+        QWidget *header = new QWidget(rowWidget);
+        QHBoxLayout *headerLayout = new QHBoxLayout(header);
+        headerLayout->setContentsMargins(0, 0, 0, 0);
+
+        QCheckBox *enableCheck = new QCheckBox(header);
+        enableCheck->setToolTip("Enable this effect");
+
+        QToolButton *expandButton = new QToolButton(header);
+        expandButton->setText(preset.label);
+        expandButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        expandButton->setStyleSheet("QToolButton { border: none; font-weight: bold; }");
+        expandButton->setCheckable(true);
+        expandButton->setArrowType(Qt::RightArrow);
+        expandButton->setChecked(false);
+        expandButton->setVisible(!preset.params.isEmpty()); // nothing to expand into
+
+        headerLayout->addWidget(enableCheck);
+        headerLayout->addWidget(expandButton);
+        if (preset.params.isEmpty())
+            headerLayout->addWidget(new QLabel(preset.label, header));
+        headerLayout->addStretch();
+        rowLayout->addWidget(header);
+
+        QWidget *body = new QWidget(rowWidget);
+        QVBoxLayout *bodyLayout = new QVBoxLayout(body);
+        body->setVisible(false);
+
+        for (const VideoEffectParam &param : preset.params) {
+            QHBoxLayout *paramRow = new QHBoxLayout();
+            QLabel *nameLabel = new QLabel(param.label + ":", body);
+            nameLabel->setMinimumWidth(80);
+
+            QSlider *slider = new QSlider(Qt::Horizontal, body);
+            slider->setRange(0, 1000);
+            slider->setValue(qRound((param.defaultValue - param.minValue)
+                                     / (param.maxValue - param.minValue) * 1000.0));
+
+            QLabel *valueLabel = new QLabel(QString::number(param.defaultValue, 'f', param.decimals), body);
+            valueLabel->setMinimumWidth(50);
+
+            paramRow->addWidget(nameLabel);
+            paramRow->addWidget(slider);
+            paramRow->addWidget(valueLabel);
+            bodyLayout->addLayout(paramRow);
+
+            row.sliders.append(slider);
+            row.valueLabels.append(valueLabel);
+
+            const double minV = param.minValue, maxV = param.maxValue;
+            const int decimals = param.decimals;
+            connect(slider, &QSlider::valueChanged, this, [this, valueLabel, minV, maxV, decimals](int sliderPos) {
+                const double value = minV + (sliderPos / 1000.0) * (maxV - minV);
+                valueLabel->setText(QString::number(value, 'f', decimals));
+                updateVideoEffectChain();
+            });
+        }
+
+        rowLayout->addWidget(body);
+
+        connect(expandButton, &QToolButton::toggled, body, [expandButton, body](bool expanded) {
+            expandButton->setArrowType(expanded ? Qt::DownArrow : Qt::RightArrow);
+            body->setVisible(expanded);
+        });
+
+        row.enabledCheck = enableCheck;
+        connect(enableCheck, &QCheckBox::toggled, this, [this, expandButton](bool checked) {
+            // Checking a box also reveals its sliders, so the effect the
+            // user just turned on is immediately tunable without a second click.
+            if (checked && expandButton->isVisible())
+                expandButton->setChecked(true);
+            updateVideoEffectChain();
+        });
+
+        effectsLayout->addWidget(rowWidget);
+
+        QFrame *separator = new QFrame(this);
+        separator->setFrameShape(QFrame::HLine);
+        separator->setFrameShadow(QFrame::Sunken);
+        effectsLayout->addWidget(separator);
+
+        m_effectRows.append(row);
+    }
+
+    if (m_effectRows.isEmpty()) {
+        QLabel *noneLabel = new QLabel("No video effects are available on this machine.", this);
+        noneLabel->setWordWrap(true);
+        effectsLayout->addWidget(noneLabel);
+    }
+#else
+    QLabel *unavailable = new QLabel(
+        "Video effects require the native FFmpeg build (WAKKAQT_FFMPEG_NATIVE).", this);
+    unavailable->setWordWrap(true);
+    effectsLayout->addWidget(unavailable);
+#endif
+}
+
+// Rebuilds m_videoEffectChain from every currently-checked effect box, in
+// row order, using each slider's live value — called whenever a checkbox is
+// toggled or any slider moves.
+void PreviewDialog::updateVideoEffectChain()
+{
+    QStringList enabledChains;
+    for (const EffectRow &row : m_effectRows) {
+        if (!row.enabledCheck || !row.enabledCheck->isChecked())
+            continue;
+        const VideoEffectPreset &preset = videoEffectPresets[row.presetIndex];
+        QVector<double> values;
+        for (int i = 0; i < row.sliders.size(); ++i) {
+            const VideoEffectParam &param = preset.params[i];
+            const double v = param.minValue
+                + (row.sliders[i]->value() / 1000.0) * (param.maxValue - param.minValue);
+            values.append(v);
+        }
+        enabledChains << preset.buildFilterChain(values);
+    }
+    m_videoEffectChain = enabledChains.join(",");
+}
+
+// Every decoded webcam frame passes through here (via QVideoSink, instead of
+// handing mediaPlayer straight to a QVideoWidget) so the selected effect can
+// be applied before the frame reaches the screen — same filter chain used
+// for the final render, so preview and output match.
+void PreviewDialog::onVideoFrame(const QVideoFrame &frame)
+{
+    if (!frame.isValid())
+        return;
+
+    QImage image = frame.toImage();
+    if (image.isNull())
+        return;
+
+    // Downscale before filtering (never before the final render, which
+    // stays at full resolution via ffmpegnative.cpp's own separate pass).
+    // Effect filter cost scales with pixel count, and the preview widget is
+    // a fraction of a typical 1080p webcam frame's size, so there's no
+    // visible quality loss here and a large real reduction in per-frame CPU
+    // work — the main cause of the software-render stutter. FastTransformation
+    // (nearest-neighbor) instead of smooth scaling since this frame is about
+    // to be filtered and re-scaled again at paint time anyway.
+    constexpr int kMaxPreviewDim = 720;
+    if (image.width() > kMaxPreviewDim || image.height() > kMaxPreviewDim) {
+        image = image.scaled(kMaxPreviewDim, kMaxPreviewDim,
+                              Qt::KeepAspectRatio, Qt::FastTransformation);
+    }
+
+#ifdef WAKKAQT_FFMPEG_NATIVE
+    if (!m_videoEffectChain.isEmpty() && videoEffectProcessor)
+        image = videoEffectProcessor->process(image, m_videoEffectChain);
+#endif
+
+    videoRama->setImage(image);
+}
+
 void PreviewDialog::startEnhancementJob()
 {
     if (previewInputAudioData.isEmpty())
@@ -489,6 +828,7 @@ void PreviewDialog::startEnhancementJob()
         // Resume from where the user was listening instead of rewinding to the start
         amplifier->seekTo(m_savedPlaybackPos);
         amplifier->setPlaybackVol(!playbackMute_option->isChecked());
+        syncVideoToAudio();
 
         progressTimer->stop();
         progressBar->setValue(100);
@@ -541,6 +881,7 @@ void PreviewDialog::onOffsetSliderChanged(int value)
     offsetLabel->setText(QString("Manual Sync Offset: %1 ms").arg(newOffset));
     if (amplifier)
         amplifier->setAudioOffset(newOffset);
+
 }
 
 void PreviewDialog::onPitchCorrectionChanged(int value)
@@ -612,6 +953,7 @@ void PreviewDialog::replayAudioPreview()
 {
     amplifier->rewind();
     amplifier->setPlaybackVol(!playbackMute_option->isChecked());
+    syncVideoToAudio();
 }
 
 void PreviewDialog::stopAudioPreview()
@@ -624,12 +966,14 @@ void PreviewDialog::seekForward()
 {
     amplifier->seekForward();
     amplifier->setPlaybackVol(!playbackMute_option->isChecked());
+    syncVideoToAudio();
 }
 
 void PreviewDialog::seekBackward()
 {
     amplifier->seekBackward();
     amplifier->setPlaybackVol(!playbackMute_option->isChecked());
+    syncVideoToAudio();
 }
 
 void PreviewDialog::onDialValueChanged(int value)
@@ -655,4 +999,5 @@ void PreviewDialog::updateChronos()
     volumeLabel->setText(QString("Current Volume: %1% Elapsed Time: %2")
                          .arg(pendingVolumeValue)
                          .arg(chronos));
+    syncVideoToAudio();
 }

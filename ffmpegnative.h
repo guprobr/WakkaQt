@@ -3,6 +3,8 @@
 
 #include <QString>
 #include <QByteArray>
+#include <QImage>
+#include <QScopedPointer>
 #include <functional>
 #include <atomic>
 #include <vector>
@@ -49,6 +51,35 @@ bool extractAudio(const QString &input, const QString &output,
 QByteArray applyFilterChainS16(const QByteArray &pcmS16, int sampleRate, int channels,
                                const QString &filterChain);
 
+/// Live, stateful video-effect filter (frei0r/curves/etc. via libavfilter),
+/// meant for real-time preview. The underlying filter graph is rebuilt only
+/// when the chain or frame size actually changes — rebuilding per frame is
+/// too slow for real-time playback, especially for frei0r-backed effects
+/// that reload and reinitialize the plugin from scratch on every build.
+class VideoEffectProcessor {
+public:
+    VideoEffectProcessor();
+    ~VideoEffectProcessor();
+
+    /// Filters one video frame (converted internally to 32-bit BGRA) through
+    /// `filterChain` — pass an empty chain for passthrough (returns `frame`
+    /// unchanged, no graph work at all). Rebuilds the internal graph
+    /// automatically when the chain or frame size changes since the last
+    /// call. If the chain can't be built (e.g. a frei0r plugin isn't
+    /// installed on this machine), warns once and passes frames through
+    /// unmodified until reconfigured with a working chain.
+    QImage process(const QImage &frame, const QString &filterChain);
+
+    /// Quick availability probe: tries to build (and immediately tear down) a
+    /// throwaway graph for `filterChain`. Used to decide whether an effect
+    /// should be offered in the UI at all on this machine.
+    static bool isChainAvailable(const QString &filterChain);
+
+private:
+    struct Impl;
+    QScopedPointer<Impl> d;
+};
+
 /// Full render: vocal audio + webcam video + playback media → final mix.
 /// progressCb is invoked with 0.0–1.0 progress values on the calling thread.
 bool renderVideo(const QString &audioPath,          ///< enhanced+mastered vocal audio (WAV)
@@ -61,7 +92,8 @@ bool renderVideo(const QString &audioPath,          ///< enhanced+mastered vocal
                  const QString &resolution,         ///< e.g. "1920x1080"
                  const QString &rawVocalPath = {},  ///< raw vocal for pitch overlay (optional)
                  const std::atomic<bool> *cancelled = nullptr, ///< set true to abort
-                 std::function<void(double)> progressCb = {});
+                 std::function<void(double)> progressCb = {},
+                 const QString &videoEffectChain = {}); ///< libavfilter chain applied to webcam frames (empty = none)
 
 } // namespace FFmpegNative
 

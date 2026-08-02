@@ -498,11 +498,8 @@ bool MainWindow::eventFilter(QObject *object, QEvent *event) {
                         player->setAudioOutput(audioOutput.data()); // now gimme back my sound mon
 #endif
 #endif
-                        if (!isAudioOnlyFile(currentPlayback)) {
-                            placeholderLabel->hide();
-                            videoWidget->show();
-                        }
                         vizPlayer->play();
+                        updateVideoVisibility();
 
                         return true;  // Event handled
                     }
@@ -588,11 +585,7 @@ void MainWindow::addVideoDisplayWidgetInDialog() {
             webcamView->scene()->setSceneRect(webcamView->rect());
         }
         
-        if ( isPlayback ) 
-            if (!isAudioOnlyFile(currentPlayback)) {
-                    placeholderLabel->hide();
-                    videoWidget->show();
-                }
+        updateVideoVisibility();
     });
 
     // Show the dialog

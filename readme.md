@@ -6,7 +6,7 @@
 
 No subscriptions. No cloud. No judgment. (Well, maybe a little judgment from the pitch monitor.)
 
-Current version: **2.5**
+Current version: **2.6.9**
 
 ---
 
@@ -76,6 +76,8 @@ Every recording is saved to `~/.WakkaQt/library/` with a UUID folder, all source
 | Preview dialog with live tweak | ✅ |
 | Native FFmpeg rendering (in-process) | ✅ |
 | Pitch overlay on rendered video | ✅ |
+| Live webcam video preview (synced) | ✅ |
+| Video effects (Vertigo, Technicolor, ...) | ✅ |
 | Session library (save/rename/delete/re-render) | ✅ |
 | YouTube download (via yt-dlp) | ✅ |
 | YouTube karaoke browser (search + preview) | ✅ |
@@ -91,6 +93,18 @@ Every recording is saved to `~/.WakkaQt/library/` with a UUID folder, all source
 ---
 
 ## Changelog
+
+### v2.6.9 — Webcam video preview, multi-effect video filters, UI cleanup
+
+- **Live webcam video preview in PreviewDialog** — the recorded webcam feed now plays back alongside the vocals, kept in sync with the amplifier's playback clock (rewind/seek/offset changes all resync the video immediately, with a self-healing check every 250 ms in case of drift). The video preview and vocal visualizer are always visible above the tabs, regardless of which tab is open
+- **12 combinable video effects** — new "✨ Effects" tab: 🌀 Vertigo, 🎞️ Technicolor, 🟤 Sepia, ⚡ High Contrast, ⚫ Black & White, 🔦 Vignette, 🌓 Negative, 🪞 Mirror, 🌊 Wave, 👻 Trails, 📼 VHS/Old Film, and ✏️ Edge Detect. Any number can be enabled at once (chained together in order), each with friendly sliders for its tunable parameters (Strength, Amount, Speed, etc.) instead of raw filter syntax. Same `libavfilter` chain drives both the live preview and the final render, so what you see is exactly what gets rendered. Rows are collapsed by default (click a name to expand its sliders) in a scrollable list, and any effect unavailable on the current machine (e.g. Vertigo without frei0r-plugins installed) is automatically hidden instead of erroring
+- **frei0r plugin discovery** — `FREI0R_PATH` is now auto-detected across Linux, Windows, and macOS at startup (checked against common per-distro/per-OS install locations, plus a `frei0r-1` folder bundled next to the executable and a Shotcut install as fallbacks), since ffmpeg's frei0r loader doesn't discover most of these on its own
+- **Effect preview performance** — frames are downscaled before being run through the effect filter graph (capped at 720px on the long side), cutting per-frame filtering/copy cost by roughly 7× for a typical 1080p webcam source with no visible quality loss at preview size; the final render is unaffected and stays full-resolution
+- **Fixed video preview freezing on the first frame** — playback gating trusted `QAudioSink::state()==ActiveState` to decide when to start the video, which never reported active on at least one real audio backend despite audio playing normally; now derived from the amplifier's position actually advancing between checks, the same signal the elapsed-time display already relies on
+- **PreviewDialog decluttered** — reorganized into three tabs (Preview & Sync / Vocal Tuning / Effects) instead of one long scroll of ~20 stacked controls
+- **Fixed placeholder/video widget getting stuck** — the karaoke video area could get stuck showing the placeholder logo over an actively-playing video (root cause: `EndOfMedia` could fire as a transient status without a real `PlaybackStateChanged`, and around a dozen call sites were independently guessing visibility instead of reading it from the player). Replaced with a single `updateVideoVisibility()` driven purely by actual player state, plus a periodic self-healing check
+- **Fixed save-dialog extensions** — typing a filename with no extension at all (leaving the default filter selected) used to fail with "Invalid File Extension" instead of falling back to the selected filter's extension; now uses `QFileDialog::setDefaultSuffix()`, which also stops the dialog from silently overwriting an extension you did type
+- **Fixed MJPEG 4:4:4 webcam decode spam** — Qt Multimedia's FFmpeg backend tried (and failed) to hardware-decode the baseline MJPEG/4:4:4-chroma webcam recordings, spamming decode errors and leaving the preview blank; hardware decode is now disabled for the FFmpeg backend at startup
 
 ### v2.5 — Opus render fix, masterization pipeline rework, faster visualizer
 
@@ -284,6 +298,31 @@ Installs to `/usr/bin/WakkaQt`, with an icon at `/usr/share/icons/hicolor/256x25
 | `yt-dlp` | In-app video download from YouTube and other sites |
 
 Both must be on `$PATH` at runtime. The ONNX model (~80 MB) is downloaded automatically on first use of the backing-track feature and cached in `~/.WakkaQt/models/`.
+
+### Video Effects (optional — frei0r plugins)
+
+Most effects on the PreviewDialog's "✨ Effects" tab are plain `libavfilter` chains and always work. A few (currently 🌀 Vertigo) are backed by [frei0r](https://frei0r.dev/) plugins instead, which ffmpeg loads dynamically at runtime — **not** a build-time dependency, and entirely optional: if a frei0r plugin isn't found, WakkaQt just hides that effect from the list instead of erroring.
+
+WakkaQt looks for the plugins in a few common locations automatically (see `main.cpp`'s `FREI0R_PATH` setup), in this order:
+
+**Linux:**
+```bash
+sudo apt install frei0r-plugins   # Debian/Ubuntu
+sudo dnf install frei0r-plugins   # Fedora/RHEL
+```
+Auto-detected from the standard per-distro paths (`/usr/lib/x86_64-linux-gnu/frei0r-1`, `/usr/lib64/frei0r-1`, `/usr/lib/frei0r-1`, `/usr/local/lib/frei0r-1`) — no extra setup needed once the package is installed.
+
+**Windows:**
+There's no single official frei0r installer. Pick one:
+1. **Bundle it with the app (recommended for distributing a prebuilt binary)** — drop a `frei0r-1` folder containing the plugin DLLs next to `WakkaQt.exe`. This is the first location WakkaQt checks.
+2. **Install via [MSYS2](https://www.msys2.org/)**: `pacman -S mingw-w64-x86_64-frei0r-plugins`, then copy `mingw64/lib/frei0r-1` to `Program Files\frei0r-1` or `Program Files (x86)\frei0r-1`.
+3. **Reuse an existing [Shotcut](https://shotcut.org/) install** — Shotcut bundles frei0r plugins, and WakkaQt will find them at `Program Files\Shotcut\lib\frei0r-1` if that's present.
+
+**macOS:**
+```bash
+brew install frei0r
+```
+Auto-detected from Homebrew's install path (`/opt/homebrew/lib/frei0r-1` on Apple Silicon, `/usr/local/lib/frei0r-1` on Intel), a bundled `frei0r-1` folder next to the app binary, or an existing Shotcut.app install.
 
 ---
 

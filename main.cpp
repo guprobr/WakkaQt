@@ -9,6 +9,7 @@
 #include <QLockFile>
 #include <QMessageBox>
 #include <QPalette>
+#include <QStringList>
 #include <QStyleFactory>
 #include <QStyleHints>
 #include <QTime>
@@ -86,7 +87,68 @@ int main(int argc, char *argv[]) {
     qputenv("QT_MEDIA_BACKEND", "ffmpeg");
 #endif
 
+    // Webcam recordings are baseline MJPEG in 4:4:4 chroma (yuvj444p), a
+    // combination VAAPI/CUDA hwaccel decoders on this FFmpeg backend can't
+    // initialize ("Failed to upload decode parameters: invalid parameter"),
+    // which spams errors and leaves the video preview blank. Must be set
+    // before QApplication/the FFmpeg plugin initializes — setting it later
+    // (e.g. right before QMediaPlayer::setSource) has no effect, it's read
+    // once at plugin load.
+    qputenv("QT_FFMPEG_DECODING_HW_DEVICE_TYPES", "");
+
     QApplication WakkaQt(argc, argv);
+
+    // frei0r-backed video effects (Vertigo, ...) need FREI0R_PATH pointing at
+    // the plugin directory — ffmpeg's frei0r wrapper does not auto-discover
+    // per-distro/per-OS install locations, only a handful of hardcoded ones.
+    // Only set it if the user/environment hasn't already, and only to a
+    // directory that actually exists, so this is a no-op on machines without
+    // frei0r-plugins installed (those effects are just hidden from the UI —
+    // see VideoEffectProcessor::isChainAvailable). Needs QApplication to
+    // already exist (applicationDirPath() requires it), so this can't run
+    // any earlier than here; it's still well before the first QMediaPlayer
+    // is constructed in MainWindow, which is what actually matters.
+    if (qEnvironmentVariableIsEmpty("FREI0R_PATH")) {
+#if defined(Q_OS_WIN)
+        // Prebuilt Windows binaries are "no setup required" — the expected
+        // path is a "frei0r-1" folder bundled next to WakkaQt.exe. The
+        // Program Files locations cover a standalone frei0r-plugins install
+        // (e.g. via MSYS2's mingw-w64-x86_64-frei0r-plugins package copied
+        // there manually), and the Shotcut path reuses that app's bundled
+        // copy if the user happens to have it installed already.
+        const QStringList candidates = {
+            QCoreApplication::applicationDirPath() + "/frei0r-1",
+            qEnvironmentVariable("ProgramFiles(x86)") + "/frei0r-1",
+            qEnvironmentVariable("ProgramFiles") + "/frei0r-1",
+            qEnvironmentVariable("ProgramFiles") + "/Shotcut/lib/frei0r-1",
+        };
+#elif defined(Q_OS_MACOS)
+        const QStringList candidates = {
+            QCoreApplication::applicationDirPath() + "/frei0r-1",
+            "/opt/homebrew/lib/frei0r-1",
+            "/usr/local/lib/frei0r-1",
+            "/Applications/Shotcut.app/Contents/lib/frei0r-1",
+        };
+#else
+        const QStringList candidates = {
+            "/usr/lib/x86_64-linux-gnu/frei0r-1",
+            "/usr/lib/aarch64-linux-gnu/frei0r-1",
+            "/usr/lib64/frei0r-1",
+            "/usr/lib/frei0r-1",
+            "/usr/local/lib/frei0r-1",
+        };
+#endif
+        // A single directory, not a joined list: ffmpeg's frei0r loader
+        // splits FREI0R_PATH on ':', which would misparse a Windows drive
+        // letter (e.g. "C:\...") if we joined multiple candidates. One
+        // match is all we need.
+        for (const QString &dir : candidates) {
+            if (QDir(dir).exists()) {
+                qputenv("FREI0R_PATH", dir.toUtf8());
+                break;
+            }
+        }
+    }
 
     WakkaQt.setWindowIcon(QIcon(":/images/icon.png"));
 

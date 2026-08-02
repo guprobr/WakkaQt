@@ -4,9 +4,17 @@
 #include "vocalenhancer.h"
 #include "complexes.h"
 #include "audiovisualizerwidget.h"
+#include "previewvideowidget.h"
+#ifdef WAKKAQT_FFMPEG_NATIVE
+#include "ffmpegnative.h"
+#endif
 
 #include <QProgressBar>
 #include <QDialog>
+#include <QTabWidget>
+#include <QVideoSink>
+#include <QVideoFrame>
+#include <QMediaPlayer>
 #include <QAudioFormat>
 #include <QFile>
 #include <QDial>
@@ -14,6 +22,7 @@
 #include <QCheckBox>
 #include <QSlider>
 #include <QComboBox>
+#include <QToolButton>
 #include <QLabel>
 #include <QProcess>
 #include <QTimer>
@@ -30,10 +39,12 @@ public:
     ~PreviewDialog();
 
     void setAudioFile(const QString &filePath);
+    void setVideoFile(const QString &filePath, qint64 videoOffsetMs);
     double getVolume() const;
     qint64 getOffset() const;
     double getPitchCorrectionAmount() const;
     double getNoiseReductionAmount() const;
+    QString getVideoEffectChain() const { return m_videoEffectChain; }
 
 protected:
     void closeEvent(QCloseEvent *event) override;
@@ -51,6 +62,8 @@ private slots:
     void onRetuneSpeedChanged(int value);
     void onFormantPreservationChanged(bool checked);
     void startEnhancementJob();
+    void onVideoFrame(const QVideoFrame &frame);
+    void updateVideoEffectChain();
 
 private:
     void updateChronos();
@@ -58,10 +71,34 @@ private:
     void seekBackward();
     void setPreviewControlsEnabled(bool enabled);
     void updateEnhancementLabels();
+    void syncVideoToAudio();
+    void buildEffectsUi(class QVBoxLayout *effectsLayout);
 
     QAudioFormat format;
     QScopedPointer<AudioAmplifier> amplifier;
     QScopedPointer<VocalEnhancer> vocalEnhancer;
+
+    PreviewVideoWidget *videoRama = nullptr;
+    QVideoSink *videoSink = nullptr;
+    QMediaPlayer *mediaPlayer = nullptr;
+    QTabWidget *tabWidget = nullptr;
+#ifdef WAKKAQT_FFMPEG_NATIVE
+    QScopedPointer<FFmpegNative::VideoEffectProcessor> videoEffectProcessor;
+#endif
+    // One row per available effect (only ones whose chain actually builds on
+    // this machine — see buildEffectsUi()/isChainAvailable). Row i controls
+    // videoEffectPresets[m_effectRows[i].presetIndex]; enabled effects are
+    // joined (in row order) into m_videoEffectChain by updateVideoEffectChain().
+    // Sliders live in a collapsible body, hidden until the row is expanded,
+    // so a dozen effects don't all fight for space at once.
+    struct EffectRow {
+        int presetIndex = -1;
+        QCheckBox *enabledCheck = nullptr; // checked == effect enabled
+        QVector<QSlider*> sliders;
+        QVector<QLabel*> valueLabels;
+    };
+    QVector<EffectRow> m_effectRows;
+    QString m_videoEffectChain; // all currently-enabled effects joined with commas, empty = none
 
     QLabel *volumeLabel = nullptr;
     QLabel *bannerLabel = nullptr;
@@ -111,6 +148,14 @@ private:
     bool   m_formantPreservation = true;
     bool   pendingPreviewRebuild = false;
     qint64 m_savedPlaybackPos    = 0;
+    qint64 m_mediaPlayerOffset   = 0;
+    bool   m_hasVideo            = false;
+    // Last amplifier byte position seen by syncVideoToAudio(), used to
+    // detect genuine playback by watching the position actually move —
+    // AudioAmplifier::isPlaying() (QAudioSink::state()==ActiveState) proved
+    // unreliable on at least one real audio backend, staying non-Active
+    // forever despite audio audibly playing and elapsed time advancing.
+    qint64 m_lastSyncPosBytes    = -1;
     double m_reverbRoomSize      = 0.5;
     double m_reverbDecay         = 0.5;
     double m_reverbMix           = 0.0;

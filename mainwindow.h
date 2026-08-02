@@ -69,7 +69,7 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    QString Wakka_versione = "v2.5";
+    QString Wakka_versione = "v2.6.9";
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
@@ -187,6 +187,7 @@ private:
     void chooseVideo();
     void chooseLast();
     void updatePlaybackDuration();
+    void updateVideoVisibility();
 
     void startRecording();
     void stopRecording();
@@ -202,7 +203,7 @@ private:
     void addProgressSong(QGraphicsScene *scene, qint64 duration);
     void updateProgress(const QString& output, QProgressBar* progressBar, int totalDuration);
     
-    void mixAndRender(double vocalVolume, qint64 manualOffset);
+    void mixAndRender(double vocalVolume, qint64 manualOffset, const QString &videoEffectChain = {});
     void renderAgain();
 
     void openLibrary();

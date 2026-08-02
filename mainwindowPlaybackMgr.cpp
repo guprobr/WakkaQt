@@ -72,7 +72,11 @@ void MainWindow::updateVideoVisibility() {
         // EndOfMedia status — but mediaRecorder never attaches to anything
         // when there's no camera, so its duration stays 0 forever; skip that
         // guard in audio-only mode instead of never auto-stopping.
-        if ( isRecording && (!hasCamera || mediaRecorder->duration()) )
+        // recordingHasWebcam (fixed at startRecording() time), not hasCamera
+        // (live device state), is the right check here — it's specifically
+        // about whether mediaRecorder was ever attached for the recording
+        // currently in progress.
+        if ( isRecording && (!recordingHasWebcam || mediaRecorder->duration()) )
             stopRecording();
 
     }

@@ -383,6 +383,14 @@ void PreviewDialog::closeEvent(QCloseEvent *event)
         enhanceWatcher->cancel();
         enhanceWatcher->waitForFinished();
     }
+    // extractAudio() has no cancellation token (it's a single fast decode+
+    // resample, not a long DSP pipeline), so there's nothing to flag —
+    // just block until it's done, exactly as enhanceWatcher does above,
+    // so no background thread can still be running when this dialog is
+    // torn down.
+    if (extractWatcher && !extractWatcher->isFinished()) {
+        extractWatcher->waitForFinished();
+    }
     if (mediaPlayer)
         mediaPlayer->stop();
     // Children QProcess objects (ffmpegProcess) have this as parent; Qt kills
@@ -476,21 +484,42 @@ void PreviewDialog::setAudioFile(const QString &filePath)
     };
 
 #ifdef WAKKAQT_FFMPEG_NATIVE
-    // Run extraction in a thread so the UI stays responsive
-    [[maybe_unused]] auto extractFuture = QtConcurrent::run([=]() {
-        // Extract stereo (no mono hint — VocalEnhancer handles channel mixing internally)
-        const bool ok = FFmpegNative::extractAudio(audioFilePath, tempAudioFile,
-                                                    trimOffset);
-        QMetaObject::invokeMethod(this, [this, ok, onExtracted]() {
-            if (!ok) {
-                QMessageBox::critical(this, "Extraction failed",
-                                      "Native audio extraction failed.");
-                setPreviewControlsEnabled(true);
-                return;
-            }
-            onExtracted();
-        }, Qt::QueuedConnection);
+    // Run extraction in a thread so the UI stays responsive. Owned by
+    // extractWatcher (see previewdialog.h) instead of a bare discarded
+    // QFuture + QMetaObject::invokeMethod(this, ...): the worker lambda below
+    // captures only local value copies (audioFilePathCopy/tempAudioFile/
+    // trimOffset), never `this` or a member, so nothing on the background
+    // thread depends on this dialog still being alive. The watcher's
+    // finished() connection is a normal Qt signal/slot, auto-disconnected if
+    // `this` is destroyed first — and closeEvent() blocks on extractWatcher
+    // briefly so that can't race with a background thread mid-extraction.
+    if (extractWatcher) {
+        extractWatcher->deleteLater();
+        extractWatcher = nullptr;
+    }
+    extractWatcher = new QFutureWatcher<bool>(this);
+    connect(extractWatcher, &QFutureWatcher<bool>::finished, this, [this, onExtracted]() {
+        const bool ok = extractWatcher->result();
+
+        QFutureWatcher<bool> *finishedWatcher = extractWatcher;
+        extractWatcher = nullptr;
+        finishedWatcher->deleteLater();
+
+        if (!ok) {
+            QMessageBox::critical(this, "Extraction failed",
+                                  "Native audio extraction failed.");
+            setPreviewControlsEnabled(true);
+            return;
+        }
+        onExtracted();
     });
+
+    const QString audioFilePathCopy = audioFilePath;
+    auto extractFuture = QtConcurrent::run([audioFilePathCopy, tempAudioFile, trimOffset]() {
+        // Extract stereo (no mono hint — VocalEnhancer handles channel mixing internally)
+        return FFmpegNative::extractAudio(audioFilePathCopy, tempAudioFile, trimOffset);
+    });
+    extractWatcher->setFuture(extractFuture);
 #else
     QProcess *ffmpegProcess = new QProcess(this);
     QStringList arguments;

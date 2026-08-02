@@ -99,6 +99,7 @@ void MainWindow::restoreAndRender(const QString &sessionId)
 {
     // ── Restore artefacts ─────────────────────────────────────────────────
     SessionManager mgr;
+    bool restoredHasWebcam = false;
     const bool ok = mgr.restoreSession(
         sessionId,
         webcamRecorded,
@@ -109,8 +110,16 @@ void MainWindow::restoreAndRender(const QString &sessionId)
         currentVideoName,
         audioOffset,
         videoOffset,
-        offset
+        offset,
+        restoredHasWebcam
     );
+
+    // mixAndRender() (called further below) must judge THIS session, not
+    // whatever camera happens to be plugged into the machine today — a
+    // restored audio-only session must not pull in a stale/unrelated webcam
+    // file, and a restored session that does have webcam footage must not
+    // get rendered audio-only just because no camera is attached right now.
+    recordingHasWebcam = restoredHasWebcam;
 
     if (!ok) {
         QMessageBox::critical(this, "Library Error",
@@ -144,15 +153,23 @@ void MainWindow::restoreAndRender(const QString &sessionId)
     chooseInputAction->setEnabled(true);
 
     // ── Output file dialog (loop until valid path or cancelled) ─────────────
+    // Restricted to audio-only containers when the restored session itself
+    // has no webcam footage — mirrors renderAgain()'s handling for a live
+    // recording, driven by the same recordingHasWebcam flag set above.
     static const QString kRenderFilter =
         "MP4 Files (*.mp4);;MKV Files (*.mkv);;WebM Files (*.webm);;AVI Files (*.avi);;"
         "MP3 Files (*.mp3);;FLAC Files (*.flac);;WAV Files (*.wav);;Opus Files (*.opus)";
-    static const QStringList kAllowedExts =
-        {"mp4", "mkv", "webm", "avi", "mp3", "flac", "wav", "opus"};
+    static const QString kAudioOnlyRenderFilter =
+        "MP3 Files (*.mp3);;FLAC Files (*.flac);;WAV Files (*.wav);;Opus Files (*.opus)";
+    const QStringList kAllowedExts = recordingHasWebcam
+        ? QStringList{"mp4", "mkv", "webm", "avi", "mp3", "flac", "wav", "opus"}
+        : QStringList{"mp3", "flac", "wav", "opus"};
+    const QString &defaultRestoreSuffix = kAllowedExts.first();
 
     QString restoredOutput;
     while (true) {
-        QFileDialog outDlg(this, "Mix destination (default .MP4)", restoredOutput, kRenderFilter);
+        QFileDialog outDlg(this, "Mix destination (default ." + defaultRestoreSuffix.toUpper() + ")",
+                           restoredOutput, recordingHasWebcam ? kRenderFilter : kAudioOnlyRenderFilter);
         outDlg.setAcceptMode(QFileDialog::AcceptSave);
         outDlg.setOption(QFileDialog::DontUseNativeDialog);
         // Only used when the user types a filename with no extension at all —
@@ -178,7 +195,8 @@ void MainWindow::restoreAndRender(const QString &sessionId)
         if (!kAllowedExts.contains(QFileInfo(restoredOutput).suffix().toLower())) {
             QMessageBox::warning(this, "Invalid File Extension",
                 "Please choose a file with one of the following extensions:\n"
-                ".mp4, .mkv, .webm, .avi, .mp3, .flac, .wav, .opus");
+                + (recordingHasWebcam ? QString(".mp4, .mkv, .webm, .avi, .mp3, .flac, .wav, .opus")
+                                      : QString(".mp3, .flac, .wav, .opus (this session has no webcam footage — audio-only)")));
             continue;
         }
 

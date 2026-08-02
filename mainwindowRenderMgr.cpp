@@ -3,6 +3,7 @@
 #include "complexes.h"
 #include <QThreadPool>
 #include <QPushButton>
+#include <QtConcurrent/QtConcurrentRun>
 #include <atomic>
 #include <memory>
 #ifdef WAKKAQT_FFMPEG_NATIVE
@@ -31,19 +32,24 @@ void MainWindow::renderAgain()
     // (Previously used recursion here which could stack-overflow on repeated
     // bad-extension choices — replaced with a safe while loop.)
     // No camera was used for this recording, so there is no video track to
-    // mux — restrict the choice to audio-only containers.
+    // mux — restrict the choice to audio-only containers. Uses
+    // recordingHasWebcam (fixed for this specific session), not hasCamera
+    // (today's device state) — renderAgain() only ever runs right after
+    // stopRecording() finalizes THIS recording, so they're equal here, but
+    // recordingHasWebcam is the one that actually means "does this session
+    // have webcam material".
     static const QString kRenderFilter =
         "MP4 Files (*.mp4);;MKV Files (*.mkv);;WebM Files (*.webm);;AVI Files (*.avi);;"
         "MP3 Files (*.mp3);;FLAC Files (*.flac);;WAV Files (*.wav);;Opus Files (*.opus)";
     static const QString kAudioOnlyRenderFilter =
         "MP3 Files (*.mp3);;FLAC Files (*.flac);;WAV Files (*.wav);;Opus Files (*.opus)";
-    const QStringList allowedExtensions = hasCamera
+    const QStringList allowedExtensions = recordingHasWebcam
         ? QStringList{"mp4","mkv","webm","avi","mp3","flac","wav","opus"}
         : QStringList{"mp3","flac","wav","opus"};
     const QString &defaultSuffix = allowedExtensions.first();
     while (true) {
         QFileDialog dlg(this, "Mix destination (default ." + defaultSuffix.toUpper() + ")", "",
-                        hasCamera ? kRenderFilter : kAudioOnlyRenderFilter);
+                        recordingHasWebcam ? kRenderFilter : kAudioOnlyRenderFilter);
         dlg.setAcceptMode(QFileDialog::AcceptSave);
         dlg.setOption(QFileDialog::DontUseNativeDialog);
         // Only used when the user types a filename with no extension at all —
@@ -73,8 +79,8 @@ void MainWindow::renderAgain()
         if (!allowedExtensions.contains(QFileInfo(outputFilePath).suffix().toLower())) {
             QMessageBox::warning(this, "Invalid File Extension",
                 "Please choose a file with one of the following extensions:\n"
-                + (hasCamera ? QString(".mp4, .mkv, .webm, .avi, .mp3, .flac, .wav, .opus")
-                             : QString(".mp3, .flac, .wav, .opus (no camera was used — audio-only)")));
+                + (recordingHasWebcam ? QString(".mp4, .mkv, .webm, .avi, .mp3, .flac, .wav, .opus")
+                                      : QString(".mp3, .flac, .wav, .opus (no camera was used — audio-only)")));
             continue;
         }
 
@@ -162,7 +168,9 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset, const QSt
     progressLabel->setFont(QFont("Arial", 8));
     QVBoxLayout *layout = qobject_cast<QVBoxLayout*>(centralWidget()->layout());
 
-    auto renderCancelled = std::make_shared<std::atomic<bool>>(false);
+    // Member (not a local) so closeEvent() can request cancellation and wait
+    // on renderWatcher if the window is closed mid-render.
+    renderCancelled = std::make_shared<std::atomic<bool>>(false);
     QPushButton *abortRenderBtn = new QPushButton("⛔ Abort Render", this);
 
     layout->insertWidget(0, abortRenderBtn, 0, Qt::AlignCenter);
@@ -188,7 +196,7 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset, const QSt
     const qint64 effectiveAudioOffset = manualOffset;
     const qint64 effectiveVideoOffset = manualOffset;
 
-    auto onFinished = [this, progressLabel, abortRenderBtn, renderCancelled](bool success) {
+    auto onFinished = [this, progressLabel, abortRenderBtn](bool success) {
         delete progressLabel;
         delete this->progressBar;
         delete abortRenderBtn;
@@ -240,31 +248,63 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset, const QSt
     };
 
 #ifdef WAKKAQT_FFMPEG_NATIVE
-    // Native render — runs in a background thread; progress bar updated via lambda
+    // Native render — runs in a background thread; progress bar updated via lambda.
+    // Owned by renderWatcher (see mainwindow.h) instead of a bare
+    // QThreadPool::globalInstance()->start([=]{...}): the worker lambda below
+    // captures only local value copies of the QStrings it needs (never
+    // `this`), and the completion callback is delivered through a
+    // QFutureWatcher connected with `this` as context — auto-disconnected by
+    // Qt if `this` is destroyed first, unlike the previous
+    // QMetaObject::invokeMethod(qApp, ...) dispatch, where using the
+    // (effectively immortal) qApp as context gave no such protection at all
+    // for the captured `this` inside onFinished().
     QProgressBar *pb = this->progressBar;
-    connect(abortRenderBtn, &QPushButton::clicked, this, [renderCancelled]() {
+    connect(abortRenderBtn, &QPushButton::clicked, this, [this]() {
         renderCancelled->store(true);
     });
-    QThreadPool::globalInstance()->start([=]() {
-        bool ok = FFmpegNative::renderVideo(
-            tunedRecorded,
-            webcamRecorded,
-            currentVideoFile,
-            outputFilePath,
+
+    if (renderWatcher) {
+        renderWatcher->deleteLater();
+        renderWatcher = nullptr;
+    }
+    renderWatcher = new QFutureWatcher<bool>(this);
+    connect(renderWatcher, &QFutureWatcher<bool>::finished, this, [this, onFinished]() {
+        const bool ok = renderWatcher->result();
+        QFutureWatcher<bool> *finishedWatcher = renderWatcher;
+        renderWatcher = nullptr;
+        finishedWatcher->deleteLater();
+        onFinished(ok);
+    });
+
+    const QString tunedRecordedCopy    = tunedRecorded;
+    const QString webcamRecordedCopy   = webcamRecorded;
+    const QString currentVideoFileCopy = currentVideoFile;
+    const QString outputFilePathCopy   = outputFilePath;
+    const QString audioRecordedCopy    = audioRecorded;
+    const QString setRezCopy           = setRez;
+    const QString videoEffectChainCopy = videoEffectChain;
+    auto renderCancelledCopy = renderCancelled; // shared_ptr, safe to copy across threads
+
+    auto future = QtConcurrent::run([=]() {
+        return FFmpegNative::renderVideo(
+            tunedRecordedCopy,
+            webcamRecordedCopy,
+            currentVideoFileCopy,
+            outputFilePathCopy,
             vocalVolume,
             effectiveAudioOffset,
             effectiveVideoOffset,
-            setRez,
-            audioRecorded,
-            renderCancelled.get(),
+            setRezCopy,
+            audioRecordedCopy,
+            renderCancelledCopy.get(),
             [pb](double p) {
                 QMetaObject::invokeMethod(pb, [pb, p]() {
                     pb->setValue(int(p * 100));
                 }, Qt::QueuedConnection);
             },
-            videoEffectChain);
-        QMetaObject::invokeMethod(qApp, [=]() { onFinished(ok); }, Qt::QueuedConnection);
+            videoEffectChainCopy);
     });
+    renderWatcher->setFuture(future);
 #else
     // QProcess fallback (ffmpeg must be in PATH)
     const QString offsetFilter = (manualOffset < 0)
@@ -272,7 +312,7 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset, const QSt
         : QString("atrim=start=%1,asetpts=PTS-STARTPTS").arg(manualOffset / 1000.0);
 
     QString videorama;
-    if (hasCamera &&
+    if (recordingHasWebcam &&
         (outputFilePath.endsWith(".mp4", Qt::CaseInsensitive) ||
          outputFilePath.endsWith(".avi", Qt::CaseInsensitive) ||
          outputFilePath.endsWith(".mkv", Qt::CaseInsensitive) ||
@@ -283,7 +323,7 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset, const QSt
 
     // No camera recording exists to open as an input in this case — the
     // playback track shifts from index 2 to index 1.
-    const QString playbackIdx = hasCamera ? "2" : "1";
+    const QString playbackIdx = recordingHasWebcam ? "2" : "1";
 
     QStringList arguments;
     arguments << "-y"
@@ -292,7 +332,7 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset, const QSt
     // the webcam input (it seeks past its pre-roll); with no camera there is
     // no such input to seek into, so drop it rather than let it silently
     // reassign to currentVideoFile below.
-    if (hasCamera) {
+    if (recordingHasWebcam) {
         arguments << "-ss" << QString("%1ms").arg(effectiveVideoOffset)
                   << "-i" << webcamRecorded;
     }
@@ -311,7 +351,7 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset, const QSt
     int totalDuration = static_cast<int>(getMediaDuration(currentVideoFile));
 
     QProcess *process = new QProcess(this);
-    connect(abortRenderBtn, &QPushButton::clicked, this, [process, renderCancelled]() {
+    connect(abortRenderBtn, &QPushButton::clicked, this, [this, process]() {
         renderCancelled->store(true);
         process->kill();
     });
@@ -391,11 +431,23 @@ double MainWindow::getMediaDuration(const QString &filePath) {
         qDebug() << "Media duration:" << int(duration) << "seconds";
     return duration;
 #else
+    // This function is called synchronously by all of its callers (they use
+    // the returned duration immediately for arithmetic), so it can't be made
+    // truly async without restructuring every call site — but a hung
+    // ffprobe used to be able to block the GUI thread forever regardless
+    // (waitForFinished() with no timeout at all). Bounding the wait turns
+    // "frozen indefinitely" into "treated as duration=0 after 5s", the same
+    // failure this function already returns for a normal parse failure.
     QProcess ffprobeProcess;
     ffprobeProcess.start("ffprobe", QStringList() << "-v" << "error" << "-show_entries"
                          << "format=duration" << "-of" << "default=noprint_wrappers=1:nokey=1"
                          << filePath);
-    ffprobeProcess.waitForFinished();
+    if (!ffprobeProcess.waitForFinished(5000)) {
+        qWarning() << "ffprobe timed out getting duration for" << filePath << "— killing it";
+        ffprobeProcess.kill();
+        ffprobeProcess.waitForFinished();
+        return 0;
+    }
     QString durationStr = QString::fromUtf8(ffprobeProcess.readAllStandardOutput()).trimmed();
     bool ok;
     double duration = durationStr.toDouble(&ok);

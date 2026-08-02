@@ -36,6 +36,12 @@ void MainWindow::startRecording() {
         // Set up the house for recording
         offset = 0;
         isRecording = true;
+        // Fixes the webcam-having-ness of *this* recording at the moment it
+        // starts (the device won't change mid-recording), so later stages
+        // (stopRecording()/renderAgain()/mixAndRender()) judge this specific
+        // session instead of whatever camera happens to be attached by the
+        // time it's rendered.
+        recordingHasWebcam = hasCamera;
 
         if (audioRecorder && player && vizPlayer) {
 
@@ -164,7 +170,7 @@ void MainWindow::stopRecording() {
 
         QFile fileAudio(audioRecorded);
         QFile fileCam(webcamRecorded);
-        if (fileAudio.size() > 0 && (!hasCamera || fileCam.size() > 0)) {
+        if (fileAudio.size() > 0 && (!recordingHasWebcam || fileCam.size() > 0)) {
 
             setBanner("Finalizing recording, please wait...");
             auto finalizeRecording = [this]() {
@@ -184,7 +190,7 @@ void MainWindow::stopRecording() {
                 audioOffset = recDuration - pos;
 
                 // DETERMINE videoOffset (no camera means no webcam file to measure)
-                if (hasCamera) {
+                if (recordingHasWebcam) {
                     recDuration = 1000 * getMediaDuration(webcamRecorded);
                     videoOffset = recDuration - pos;
                 } else {
@@ -230,7 +236,7 @@ void MainWindow::stopRecording() {
                 renderAgain();
             };
 
-            if (hasCamera)
+            if (recordingHasWebcam)
                 waitForFileFinalization(webcamRecorded, finalizeRecording);
             else
                 finalizeRecording();

@@ -11,6 +11,9 @@
 #include "sessionmanager.h"
 
 #include <QWidget>
+#include <QFutureWatcher>
+#include <atomic>
+#include <memory>
 #include <QVideoWidget>
 #include <QVideoSink>
 #include <QVideoFrame>
@@ -69,7 +72,7 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    QString Wakka_versione = "v2.7.1";
+    QString Wakka_versione = "v2.7.7";
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
@@ -121,10 +124,38 @@ private:
     // False when no camera was selected/available (empty video-input list, or
     // the user picked audio only) — gates every camera/mediaRecorder codepath
     // so WakkaQt can record, preview, and render audio-only performances.
+    // This reflects the CURRENTLY connected/selected device, which is not
+    // necessarily the same as whether the session actually being rendered
+    // has webcam material — see recordingHasWebcam.
     bool hasCamera = false;
+    // Whether the session currently being finalized/rendered actually has a
+    // webcam recording — set from hasCamera when a live recording finishes,
+    // or from SessionManager::restoreSession()'s ground-truthed hasWebcam
+    // when restoring an old session. renderAgain()/mixAndRender() must use
+    // this, not hasCamera, so restoring an audio-only session while a camera
+    // happens to be connected right now can't pull in stale/wrong webcam
+    // material (or vice versa: a session that does have webcam footage
+    // getting rendered audio-only just because no camera is attached today).
+    bool recordingHasWebcam = false;
 
     QProgressBar *progressBar;
     int totalDuration;
+
+    // Owns the background FFmpegNative::renderVideo() call in mixAndRender()
+    // (native path only). Previously a bare QThreadPool::globalInstance()
+    // ->start([=]{...}) task whose worker lambda captured `this` implicitly
+    // and read MainWindow members (tunedRecorded, webcamRecorded, etc.)
+    // directly on the background thread, and whose completion was marshalled
+    // back via QMetaObject::invokeMethod(qApp, ...) — qApp as context gives
+    // NO protection against `this` having been destroyed by the time that
+    // queued call runs, unlike using `this` itself (which Qt purges pending
+    // posted events for). A QFutureWatcher, connected with `this` as context
+    // like previewdialog.cpp's enhanceWatcher/extractWatcher, restores that
+    // guarantee; closeEvent() blocks on it (after requesting cancellation
+    // via renderCancelled, the same token the "Abort Render" button already
+    // uses) so no background thread can be running when this window closes.
+    QFutureWatcher<bool> *renderWatcher = nullptr;
+    std::shared_ptr<std::atomic<bool>> renderCancelled;
 
     QVideoWidget *videoWidget;
     

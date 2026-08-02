@@ -54,6 +54,11 @@ public:
 
     // Restore session files back to the tmp paths.
     // Returns true if successful.
+    // hasWebcam reports whether *this session* actually has a webcam
+    // recording — ground-truthed against the session folder's own
+    // webcam.mkv, not any caller state — so restore/render can tell an
+    // audio-only session apart from a currently-connected camera that has
+    // nothing to do with it.
     bool restoreSession(const QString &id,
                         QString &webcamRecorded,
                         QString &audioRecorded,
@@ -63,7 +68,8 @@ public:
                         QString &currentVideoName,
                         qint64 &audioOffset,
                         qint64 &videoOffset,
-                        qint64 &sysOffset);
+                        qint64 &sysOffset,
+                        bool &hasWebcam);
 
 private:
     QString metaPath(const QString &sessionDir);

@@ -246,8 +246,8 @@ PcmBuffer parseWavPcm(const QByteArray &wavBytes)
         return result;
     }
 
-    quint16 audioFormatTag = 0, numChannels = 0, bitsPerSample = 0;
-    quint32 sampleRate = 0;
+    quint16 audioFormatTag = 0, numChannels = 0, bitsPerSample = 0, blockAlign = 0;
+    quint32 sampleRate = 0, byteRate = 0;
     bool haveFmt = false;
 
     qint64 pos = 12;
@@ -272,7 +272,23 @@ PcmBuffer parseWavPcm(const QByteArray &wavBytes)
             memcpy(&audioFormatTag, fmt + 0, 2);
             memcpy(&numChannels,    fmt + 2, 2);
             memcpy(&sampleRate,     fmt + 4, 4);
+            memcpy(&byteRate,       fmt + 8, 4);
+            memcpy(&blockAlign,     fmt + 12, 2);
             memcpy(&bitsPerSample,  fmt + 14, 2);
+
+            // WAVE_FORMAT_EXTENSIBLE (0xFFFE) defers the real format to a
+            // SubFormat GUID appended after the base 16-byte struct — its
+            // first two bytes are the actual format tag (1=PCM, 3=IEEE
+            // float), same convention as the plain tag field.
+            if (audioFormatTag == 0xFFFE) {
+                if (chunkSize < 40) {
+                    qWarning() << "parseWavPcm: WAVE_FORMAT_EXTENSIBLE 'fmt ' chunk too small:" << chunkSize;
+                    return result;
+                }
+                quint16 subFormatTag = 0;
+                memcpy(&subFormatTag, fmt + 24, 2);
+                audioFormatTag = subFormatTag;
+            }
             haveFmt = true;
         } else if (chunkId == "data") {
             if (!haveFmt) {
@@ -280,11 +296,22 @@ PcmBuffer parseWavPcm(const QByteArray &wavBytes)
                 return result;
             }
 
+            // Only uncompressed PCM (tag 1) or IEEE float (tag 3) actually
+            // store raw samples in the data chunk — anything else (ADPCM,
+            // mu-law/A-law, MP3-in-WAV, etc.) packs its bytes in a
+            // codec-specific way and must not be read as if it were PCM
+            // just because bitsPerSample happens to match a PCM width.
+            if (audioFormatTag != 1 && audioFormatTag != 3) {
+                qWarning() << "parseWavPcm: unsupported compressed format tag" << audioFormatTag
+                           << "— only uncompressed PCM/IEEE-float WAV is supported";
+                return result;
+            }
+
             QAudioFormat::SampleFormat sampleFormat = QAudioFormat::Unknown;
             if (audioFormatTag == 3 && bitsPerSample == 32) sampleFormat = QAudioFormat::Float;
-            else if (bitsPerSample == 16)                   sampleFormat = QAudioFormat::Int16;
-            else if (bitsPerSample == 32)                   sampleFormat = QAudioFormat::Int32;
-            else if (bitsPerSample == 8)                    sampleFormat = QAudioFormat::UInt8;
+            else if (audioFormatTag == 1 && bitsPerSample == 16) sampleFormat = QAudioFormat::Int16;
+            else if (audioFormatTag == 1 && bitsPerSample == 32) sampleFormat = QAudioFormat::Int32;
+            else if (audioFormatTag == 1 && bitsPerSample == 8)  sampleFormat = QAudioFormat::UInt8;
 
             if (sampleFormat == QAudioFormat::Unknown || numChannels == 0 || sampleRate == 0) {
                 qWarning() << "parseWavPcm: unsupported/invalid fmt —"
@@ -293,7 +320,35 @@ PcmBuffer parseWavPcm(const QByteArray &wavBytes)
                 return result;
             }
 
-            result.samples = wavBytes.mid(dataStart, int(chunkSize));
+            // Cross-check blockAlign/byteRate against what the declared
+            // format actually implies — a mismatch means a malformed or
+            // hand-edited header, which is exactly the kind of file that
+            // would otherwise get silently misread as valid PCM.
+            const int bytesPerSample = bitsPerSample / 8;
+            const quint32 expectedBlockAlign = quint32(numChannels) * quint32(bytesPerSample);
+            if (blockAlign != 0 && blockAlign != expectedBlockAlign) {
+                qWarning() << "parseWavPcm: blockAlign" << blockAlign << "!= expected"
+                           << expectedBlockAlign << "(channels * bytesPerSample) — malformed fmt chunk";
+                return result;
+            }
+            const quint32 expectedByteRate = sampleRate * expectedBlockAlign;
+            if (byteRate != 0 && byteRate != expectedByteRate) {
+                qWarning() << "parseWavPcm: byteRate" << byteRate << "!= expected"
+                           << expectedByteRate << "— malformed fmt chunk";
+                return result;
+            }
+
+            QByteArray samples = wavBytes.mid(dataStart, int(chunkSize));
+            const int frameBytes = numChannels * bytesPerSample;
+            if (frameBytes > 0 && samples.size() % frameBytes != 0) {
+                const int trimmed = samples.size() - (samples.size() % frameBytes);
+                qWarning() << "parseWavPcm: data chunk size" << samples.size()
+                           << "is not a whole number of" << frameBytes << "-byte frames; trimming"
+                           << (samples.size() - trimmed) << "trailing byte(s)";
+                samples.truncate(trimmed);
+            }
+
+            result.samples = samples;
             result.format.setSampleRate(int(sampleRate));
             result.format.setChannelCount(int(numChannels));
             result.format.setSampleFormat(sampleFormat);

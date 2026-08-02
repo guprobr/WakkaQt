@@ -295,7 +295,8 @@ bool SessionManager::restoreSession(const QString &id,
                                     QString &currentVideoName,
                                     qint64  &audioOffset,
                                     qint64  &videoOffset,
-                                    qint64  &sysOffset)
+                                    qint64  &sysOffset,
+                                    bool    &hasWebcam)
 {
     if (!isValidSessionId(id)) {
         qWarning() << "SessionManager::restoreSession: rejecting malformed id:" << id;
@@ -330,6 +331,12 @@ bool SessionManager::restoreSession(const QString &id,
         }
     }
 
+    // Ground-truth against the session folder itself, not any caller state:
+    // this is what tells restoreAndRender() apart from "is a camera
+    // currently plugged into this machine" (MainWindow::hasCamera), which
+    // has nothing to do with what a given past session actually recorded.
+    hasWebcam = QFile::exists(sessionDir + "/webcam.mkv");
+
     // Copy artefacts back to their /tmp/ paths.
     // The destination paths (webcamRecorded etc.) always point to the same
     // fixed /tmp/WakkaQt_tmp_* locations; we never reassign them here.
@@ -337,6 +344,12 @@ bool SessionManager::restoreSession(const QString &id,
         const QString src = sessionDir + "/" + srcName;
         if (!QFile::exists(src)) {
             qDebug() << "SessionManager: optional file not in session:" << srcName;
+            // A stale file from a previous session (or a previous live
+            // recording) could otherwise still be sitting at this fixed tmp
+            // path — remove it so nothing downstream that checks existence
+            // of `dst` mistakes it for belonging to this restore.
+            if (QFile::exists(dst) && !QFile::remove(dst))
+                qWarning() << "SessionManager: cannot clear stale tmp file:" << dst;
             return;
         }
         if (QFile::exists(dst) && !QFile::remove(dst))
@@ -353,6 +366,7 @@ bool SessionManager::restoreSession(const QString &id,
     // tuned.wav is not saved/restored — PreviewDialog re-generates it from audio.wav
 
     qDebug() << "SessionManager: restore complete for session" << id
+             << " | hasWebcam:" << hasWebcam
              << " | video:" << currentVideoName
              << " | audioOffset:" << audioOffset
              << " | videoOffset:" << videoOffset

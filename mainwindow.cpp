@@ -728,16 +728,35 @@ qreal MainWindow::progressBarDisplayWidth() const
 
 void MainWindow::closeEvent(QCloseEvent *event)
 {
+    const bool renderActive = renderWatcher && !renderWatcher->isFinished();
+
     int response = QMessageBox::question(
-        this, 
-        "The show must go on!", 
-        "Are you really really sure you want to leave?", 
-        QMessageBox::Yes | QMessageBox::No, 
+        this,
+        "The show must go on!",
+        renderActive
+            ? "A render is currently in progress. Closing now will abort it.\n"
+              "Are you really really sure you want to leave?"
+            : "Are you really really sure you want to leave?",
+        QMessageBox::Yes | QMessageBox::No,
         QMessageBox::No
     );
-    if (response == QMessageBox::Yes) // Now allow the window to close
-        event->accept(); // Call the base class implementation
-    else event->ignore(); // Baby come back!
+    if (response != QMessageBox::Yes) {
+        event->ignore(); // Baby come back!
+        return;
+    }
+
+    // Request cancellation (the same token the "Abort Render" button uses —
+    // FFmpegNative::renderVideo() checks it cooperatively in its own loops)
+    // and block until the background thread actually exits, so no worker
+    // thread can end up touching this window (or widgets like progressBar)
+    // after it's destroyed.
+    if (renderActive) {
+        if (renderCancelled)
+            renderCancelled->store(true);
+        renderWatcher->waitForFinished();
+    }
+
+    event->accept(); // Call the base class implementation
 }
 
 

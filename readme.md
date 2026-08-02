@@ -6,7 +6,7 @@
 
 No subscriptions. No cloud. No judgment. (Well, maybe a little judgment from the pitch monitor.)
 
-Current version: **2.7.1**
+Current version: **2.7.7**
 
 ---
 
@@ -94,6 +94,13 @@ Every recording is saved to `~/.WakkaQt/library/` with a UUID folder, all source
 ---
 
 ## Changelog
+
+### v2.7.7 — Session restore correctness, WAV parser hardening, background-thread lifetime fixes
+
+- **Fixed audio-only sessions restoring with the wrong webcam state** — `MainWindow::hasCamera` reflected whatever camera is *currently* connected, so restoring an old audio-only session while a camera happens to be plugged in could pull in a stale/unrelated webcam file left over at a shared tmp path (or, the other way round, render a session that does have webcam footage as audio-only just because no camera is attached today). `SessionManager::restoreSession()` now reports a ground-truthed `hasWebcam` for the specific session being restored (checked against that session's own folder, not any live device state), a new `recordingHasWebcam` flag tracks it separately from `hasCamera`, and stale files at the shared tmp paths are actively cleaned up on restore instead of being left for the next session to trip over
+- **WAV parser now validates format tags and header invariants instead of trusting bit depth alone** — a compressed codec (ADPCM, mu-law, etc.) that happened to report a bit depth matching a PCM width used to get silently read as if its packed bytes were raw samples; `parseWavPcm()` now accepts only uncompressed PCM/IEEE-float (unwrapping `WAVE_FORMAT_EXTENSIBLE` where needed), cross-checks `blockAlign`/`byteRate` against the declared channel count and bit depth, and trims a trailing partial frame instead of either rejecting the whole file or letting stray bytes shift every sample after them
+- **Fixed two background-thread lifetime risks that could touch a destroyed window/dialog** — `PreviewDialog`'s vocal-audio extraction and `MainWindow`'s native render both used to run on a background thread via a discarded `QFuture`, with results marshalled back through `QMetaObject::invokeMethod` using a context (`this`, or in the render case `qApp`) that didn't actually guarantee safe delivery if the window/dialog closed first — the render path in particular used `qApp` as the context, which gave no protection at all since `qApp` outlives everything. Both now run through a proper `QFutureWatcher`, capture only local value copies on the background thread (never live members), and `closeEvent()` on both waits for the in-flight job to finish (cancelling the render first, via the same token the "Abort Render" button already used) before allowing the window to actually close
+- **Bounded a remaining unbounded `ffprobe` wait** — `getMediaDuration()`'s non-native fallback path still called `QProcess::waitForFinished()` with no timeout; a hung probe could freeze the app indefinitely. Now bounded to 5 seconds, with the process killed and a `0` duration returned on timeout — the same failure value already used for a normal parse failure
 
 ### v2.7.1 — Audio-only recording, correctness/reliability fixes across recording, render, and separation
 

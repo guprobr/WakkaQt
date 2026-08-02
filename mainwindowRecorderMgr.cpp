@@ -5,7 +5,8 @@
 
 
 void MainWindow::abortRecording() {
-    isAborting = true;
+    if (!trySetState(State::Aborting))
+        return;
     qWarning() << "Stop recording.";
     stopRecording();
     return;
@@ -20,11 +21,14 @@ void MainWindow::startRecording() {
             return;
         }
 
-        if (isRecording) {
+        if (m_state == State::Recording) {
             qWarning() << "Stop recording.";
             stopRecording();
             return;
         }
+
+        if (!trySetState(State::Recording))
+            return;
 
         // Disable buttons while recording starts
         singButton->setEnabled(false);
@@ -35,7 +39,6 @@ void MainWindow::startRecording() {
 
         // Set up the house for recording
         offset = 0;
-        isRecording = true;
         // Fixes the webcam-having-ness of *this* recording at the moment it
         // starts (the device won't change mid-recording), so later stages
         // (stopRecording()/renderAgain()/mixAndRender()) judge this specific
@@ -117,14 +120,13 @@ void MainWindow::onRecorderDurationChanged(qint64 currentDuration) {
 void MainWindow::stopRecording() {
 
     try {
-        if (!isRecording) {
+        if (m_state != State::Recording && m_state != State::Aborting) {
             qWarning() << "Not recording.";
             logUI("Tried to stop Recording, but we are not recording. ERROR.");
             QMessageBox::critical(this, "ERROR.", "Tried to stop Recording, but we are not recording. ERROR.");
             return;
         }
         setBanner(".. .Finishing VIDEO.. .");
-        isRecording = false;
         disconnect(player.data(), &QMediaPlayer::positionChanged, this, &MainWindow::onPlayerPositionChanged);
 
         recordingIndicator->hide();
@@ -161,8 +163,7 @@ void MainWindow::stopRecording() {
         videoWidget->hide();
         placeholderLabel->show();
 
-        if ( isAborting ) {
-            isAborting = false;
+        if ( m_state == State::Aborting ) {
             handleRecordingError();
             //resetMediaComponents(false);
             return;
@@ -172,6 +173,8 @@ void MainWindow::stopRecording() {
         QFile fileCam(webcamRecorded);
         if (fileAudio.size() > 0 && (!recordingHasWebcam || fileCam.size() > 0)) {
 
+            if (!trySetState(State::Finalizing))
+                return;
             setBanner("Finalizing recording, please wait...");
             auto finalizeRecording = [this]() {
                 // Now video (if any) is ready, proceed safely
@@ -210,25 +213,33 @@ void MainWindow::stopRecording() {
                 QString destinationFilePath = extractedTmpPlayback;
 
                 QFile sourceFile(sourceFilePath);
+                bool playbackCopyOk = false;
 
                 if (sourceFile.exists()) {
                     // Check if the destination file exists
-                    if (QFile::exists(destinationFilePath)) {
-                        // delete the existing file
-                        if (!QFile::remove(destinationFilePath)) {
-                            qWarning() << "Failed to remove existing file:" << destinationFilePath;
-                            return;
-                        }
-                    }
-
-                    // Attempt to copy the file
-                    if (QFile::copy(sourceFilePath, destinationFilePath)) {
+                    if (QFile::exists(destinationFilePath) && !QFile::remove(destinationFilePath)) {
+                        qWarning() << "Failed to remove existing file:" << destinationFilePath;
+                    } else if (QFile::copy(sourceFilePath, destinationFilePath)) {
                         qDebug() << "File copied successfully to" << destinationFilePath;
+                        playbackCopyOk = true;
                     } else {
                         qWarning() << "Failed to copy file to" << destinationFilePath;
                     }
                 } else {
                     qWarning() << "Source file does not exist:" << sourceFilePath;
+                }
+
+                if (!playbackCopyOk) {
+                    qWarning() << "*FAILURE* Could not prepare playback audio for render.";
+                    logUI("Recording ERROR: failed to prepare playback audio for render.");
+                    setBanner("Recording ERROR: could not prepare playback audio.");
+                    enable_playback(true);
+                    chooseInputButton->setEnabled(true);
+                    chooseInputAction->setEnabled(true);
+                    QMessageBox::critical(this, "Recording Error",
+                        "The extracted playback audio could not be copied.\n"
+                        "Rendering cannot continue for this recording.");
+                    return;
                 }
 
                 qWarning() << "Recording saved successfully";
@@ -246,6 +257,7 @@ void MainWindow::stopRecording() {
             logUI("Recording ERROR. File size is zero.");
             setBanner("Recording ERROR. File size is zero.");
 
+            trySetState(State::Idle);
             enable_playback(true);
             chooseInputButton->setEnabled(true);
             chooseInputAction->setEnabled(true);
@@ -268,7 +280,7 @@ void MainWindow::handleRecorderError(QMediaRecorder::Error error) {
     qWarning() << "Detected camera error:" << error << mediaRecorder->errorString();
     logUI("Camera Error: " + mediaRecorder->errorString());
 
-    if ( !isRecording ) {
+    if ( m_state != State::Recording ) {
         return;
     }
 
@@ -281,8 +293,8 @@ void MainWindow::handleRecordingError() {
 
     logUI("Attempting to recover from recording error...");
     setBanner("Attempting to recover from recording error...");
-    
-    isRecording = false;
+
+    trySetState(State::Idle);
 
     qWarning() << "Cleaning up..";
 

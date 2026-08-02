@@ -89,7 +89,7 @@ void LibraryDialog::refreshList()
 {
     m_list->blockSignals(true);
     m_list->clear();
-    m_entries = m_mgr.loadAll();
+    m_entries = m_repo.loadAll();
     m_list->blockSignals(false);
 
     if (m_entries.isEmpty()) {
@@ -241,8 +241,17 @@ void LibraryDialog::onDeleteClicked()
         QMessageBox::No);
 
     if (ret == QMessageBox::Yes) {
-        for (const QString &id : ids)
-            m_mgr.deleteSession(id);
+        QStringList failures;
+        for (const QString &id : ids) {
+            const OperationResult result = m_repo.deleteSession(id);
+            if (!result.ok)
+                failures << QString("%1 (%2)").arg(id, result.error);
+        }
+        if (!failures.isEmpty()) {
+            QMessageBox::warning(this, "Delete Failed",
+                QString("Could not delete %1 session(s):\n%2")
+                    .arg(failures.size()).arg(failures.join("\n")));
+        }
         m_detailLabel->setText(
             ids.size() == 1 ? "Session deleted."
                             : QString("%1 sessions deleted.").arg(ids.size()));
@@ -270,7 +279,12 @@ void LibraryDialog::onRenameClicked()
         &ok);
 
     if (ok && !newName.trimmed().isEmpty()) {
-        m_mgr.renameSession(id, newName.trimmed());
+        const OperationResult result = m_repo.renameSession(id, newName.trimmed());
+        if (!result.ok) {
+            QMessageBox::warning(this, "Rename Failed",
+                "Could not rename this session:\n" + result.error);
+            return;
+        }
         const QString savedId = id;   // refreshList clears the list
         refreshList();
         // Re-select the same entry

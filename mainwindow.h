@@ -8,7 +8,8 @@
 #include "audiovisualizerwidget.h"
 #include "previewdialog.h"
 #include "librarydialog.h"
-#include "sessionmanager.h"
+#include "sessionrepository.h"
+#include "renderjob.h"
 
 #include <QWidget>
 #include <QFutureWatcher>
@@ -72,7 +73,7 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    QString Wakka_versione = "v2.7.7";
+    QString Wakka_versione = "v2.8.4";
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
@@ -110,8 +111,30 @@ private:
     QTimer *playbackTimer;
     QElapsedTimer sysLatency;
     
-    bool isRecording = false;
-    bool isAborting = false;
+    // Explicit lifecycle state — replaces the former isRecording/isAborting
+    // bools. Idle/Recording/Aborting/Finalizing/Restoring/Rendering/Separating
+    // are the only phases that can monopolize the app (recording, the
+    // post-record-or-restore output/preview flow, an active render, or vocal
+    // separation); hasCamera/recordingHasWebcam and isPlayback are deliberately
+    // NOT part of this — they're orthogonal data/readiness concerns, not
+    // lifecycle phases (see their own comments below).
+    enum class State {
+        Idle,         // nothing in progress — recording/library/separation may start
+        Recording,    // camera/audio actively recording
+        Aborting,     // transient: user aborted, stopRecording() takes the discard branch
+        Finalizing,   // post-stop work + output-path/resolution/PreviewDialog flow (live record)
+        Restoring,    // same flow, driven by a restored library session instead
+        Rendering,    // RenderJob active — reached from Finalizing or Restoring
+        Separating,   // generateBackingTrack() vocal separation in progress
+    };
+    State m_state = State::Idle;
+    // Validates the transition against the legal-transitions table below,
+    // logs it, and applies it. Returns false (no-op) and warns if the
+    // transition isn't legal from the current state — this is what makes
+    // e.g. starting vocal separation mid-recording, or restoring a session
+    // mid-render, structurally impossible instead of accidentally avoided.
+    bool trySetState(State next);
+
     bool isPlayback = false;
     
     qint64 pos = 0;
@@ -130,7 +153,7 @@ private:
     bool hasCamera = false;
     // Whether the session currently being finalized/rendered actually has a
     // webcam recording — set from hasCamera when a live recording finishes,
-    // or from SessionManager::restoreSession()'s ground-truthed hasWebcam
+    // or from SessionRepository::restoreSession()'s ground-truthed hasWebcam
     // when restoring an old session. renderAgain()/mixAndRender() must use
     // this, not hasCamera, so restoring an audio-only session while a camera
     // happens to be connected right now can't pull in stale/wrong webcam
@@ -141,21 +164,11 @@ private:
     QProgressBar *progressBar;
     int totalDuration;
 
-    // Owns the background FFmpegNative::renderVideo() call in mixAndRender()
-    // (native path only). Previously a bare QThreadPool::globalInstance()
-    // ->start([=]{...}) task whose worker lambda captured `this` implicitly
-    // and read MainWindow members (tunedRecorded, webcamRecorded, etc.)
-    // directly on the background thread, and whose completion was marshalled
-    // back via QMetaObject::invokeMethod(qApp, ...) — qApp as context gives
-    // NO protection against `this` having been destroyed by the time that
-    // queued call runs, unlike using `this` itself (which Qt purges pending
-    // posted events for). A QFutureWatcher, connected with `this` as context
-    // like previewdialog.cpp's enhanceWatcher/extractWatcher, restores that
-    // guarantee; closeEvent() blocks on it (after requesting cancellation
-    // via renderCancelled, the same token the "Abort Render" button already
-    // uses) so no background thread can be running when this window closes.
-    QFutureWatcher<bool> *renderWatcher = nullptr;
-    std::shared_ptr<std::atomic<bool>> renderCancelled;
+    // Owns the actual FFmpeg render work (native QtConcurrent path or
+    // QProcess+ffmpeg-CLI fallback) started by mixAndRender(). closeEvent()
+    // cancels and waits on it (via cancel()/waitForFinished()) so no
+    // background thread can be running when this window closes.
+    RenderJob *m_renderJob = nullptr;
 
     QVideoWidget *videoWidget;
     
@@ -237,8 +250,7 @@ private:
     QString millisecondsToSecondsString(qint64 milliseconds);
     double getMediaDuration(const QString &filePath);
     void addProgressSong(QGraphicsScene *scene, qint64 duration);
-    void updateProgress(const QString& output, QProgressBar* progressBar, int totalDuration);
-    
+
     void mixAndRender(double vocalVolume, qint64 manualOffset, const QString &videoEffectChain = {});
     void renderAgain();
 

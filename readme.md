@@ -6,7 +6,7 @@
 
 No subscriptions. No cloud. No judgment. (Well, maybe a little judgment from the pitch monitor.)
 
-Current version: **2.7.7**
+Current version: **2.8.4**
 
 ---
 
@@ -94,6 +94,14 @@ Every recording is saved to `~/.WakkaQt/library/` with a UUID folder, all source
 ---
 
 ## Changelog
+
+### v2.8.4 — Transactional restore, job/repository extraction, DSP/media library split, explicit lifecycle state machine
+
+- **`restoreSession()` is now transactional and honest about failure** — session file restores are staged to `.restoring` siblings and only swapped onto the live `/tmp/` paths once every present file has copied successfully, mirroring the same stage-then-atomic-rename principle `saveSession()` already used; a failed restore now actually returns `false` (and the Library UI shows a real error) instead of silently reporting success with missing or half-restored files. Offsets/video metadata are reset to neutral defaults before an `offsets.json` read, instead of keeping whatever was left over from a previous session, and a live recording's extracted playback track failing to copy now aborts finalization with an error dialog instead of proceeding to render anyway
+- **Extracted `RenderJob` and `PreviewJob`** — the FFmpeg render orchestration buried inside `MainWindow::mixAndRender()` (both the native `QtConcurrent` path and the `QProcess`/ffmpeg-CLI fallback) and the vocal extraction/enhancement pipeline buried inside `PreviewDialog` are now standalone `QObject`-derived job classes with `progress`/`finished` signals. `MainWindow`/`PreviewDialog` keep only UI concerns; `closeEvent()` cancellation now correctly covers the `QProcess` fallback render path too, which the old code never waited on
+- **`SessionManager` → `SessionRepository`, with structured results** — `saveSession()`/`restoreSession()` no longer take 9 positional parameters / 10 output references; they now take/return `SessionSnapshot`, `SaveResult`, and `RestoreResult` structs carrying a real `ok`/`error` string. `deleteSession()`/`renameSession()` return an `OperationResult` too — previously their return value was discarded entirely by the Library dialog, so a failed delete/rename just silently did nothing
+- **DSP and multimedia infrastructure split into separate static libraries** — `wakkaqt_dsp` (`VocalEnhancer`, `VocalSeparator`; links FFTW + optional ONNX Runtime) and `wakkaqt_media` (`FFmpegNative`, `AudioRecorder`, `AudioVizMediaPlayer`; links FFmpeg libav* + GLIB2) replace a single flat executable target where every dependency was linked unconditionally regardless of which files actually needed it
+- **Explicit lifecycle state machine replaces the `isRecording`/`isAborting` bool soup** — a single `MainWindow::State` enum (`Idle/Recording/Aborting/Finalizing/Restoring/Rendering/Separating`) with a validated `trySetState()` transition now governs the recording/render/restore/separation lifecycle. This closed several real bugs found while mapping the old implicit state: vocal-separation ("Generate Backing Track") had zero guard against running mid-recording or mid-render; a restored session's stale `isPlayback` flag could leave transport controls operating on superseded media; `RenderJob::finished`'s cancelled/failed branches never reset recording state the way the success branch did; and the restore flow's output-file cancel branch left input controls disabled when the equivalent live-record flow didn't
 
 ### v2.7.7 — Session restore correctness, WAV parser hardening, background-thread lifetime fixes
 

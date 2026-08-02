@@ -1,4 +1,5 @@
-#include "sessionmanager.h"
+#include "sessionrepository.h"
+#include "complexes.h" // webcamRecorded/audioRecorded/extractedTmpPlayback fixed tmp paths
 
 #include <QDir>
 #include <QFile>
@@ -11,30 +12,30 @@
 #include <QDebug>
 #include <algorithm>
 
-SessionManager::SessionManager() {}
+SessionRepository::SessionRepository() {}
 
-QString SessionManager::libraryRoot()
+QString SessionRepository::libraryRoot()
 {
     return QDir::homePath() + "/.WakkaQt/library";
 }
 
-QString SessionManager::metaPath(const QString &sessionDir)
+QString SessionRepository::metaPath(const QString &sessionDir)
 {
     return sessionDir + "/session.json";
 }
 
-bool SessionManager::copyFile(const QString &src, const QString &dst)
+bool SessionRepository::copyFile(const QString &src, const QString &dst)
 {
     if (src.isEmpty() || !QFile::exists(src)) {
-        qWarning() << "SessionManager::copyFile: source does not exist:" << src;
+        qWarning() << "SessionRepository::copyFile: source does not exist:" << src;
         return false;
     }
     if (QFile::exists(dst) && !QFile::remove(dst)) {
-        qWarning() << "SessionManager::copyFile: cannot remove existing dst:" << dst;
+        qWarning() << "SessionRepository::copyFile: cannot remove existing dst:" << dst;
         return false;
     }
     if (!QFile::copy(src, dst)) {
-        qWarning() << "SessionManager::copyFile: failed to copy" << src << "->" << dst;
+        qWarning() << "SessionRepository::copyFile: failed to copy" << src << "->" << dst;
         return false;
     }
     return true;
@@ -45,7 +46,7 @@ bool SessionManager::copyFile(const QString &src, const QString &dst)
 // (e.g. hand-edited or otherwise tampered before reaching deleteSession()/
 // renameSession()/restoreSession(), all of which build a filesystem path
 // directly from libraryRoot() + "/" + id).
-bool SessionManager::isValidSessionId(const QString &id)
+bool SessionRepository::isValidSessionId(const QString &id)
 {
     if (id.isEmpty() || id.contains('/') || id.contains('\\') || id.contains(".."))
         return false;
@@ -53,21 +54,15 @@ bool SessionManager::isValidSessionId(const QString &id)
 }
 
 // ── saveSession ───────────────────────────────────────────────────────────────
-QString SessionManager::saveSession(
-    const QString &webcamRecorded,
-    const QString &audioRecorded,
-    const QString &tunedRecorded,
-    const QString &extractedTmpPlayback,
-    const QString &currentVideoFile,
-    const QString &currentVideoName,
-    qint64 audioOffset,
-    qint64 videoOffset,
-    qint64 sysOffset)
+SaveResult SessionRepository::saveSession(const SessionSnapshot &snapshot)
 {
+    SaveResult result;
+
     QDir dir;
     if (!dir.mkpath(libraryRoot())) {
-        qWarning() << "SessionManager: cannot create library root" << libraryRoot();
-        return {};
+        result.error = "cannot create library root " + libraryRoot();
+        qWarning() << "SessionRepository:" << result.error;
+        return result;
     }
 
     // Built entirely under a ".partial" directory and only renamed to its
@@ -75,20 +70,21 @@ QString SessionManager::saveSession(
     // succeeded — so a save that fails partway (disk full, permissions, a
     // copy that fails mid-transfer) can never leave a session that *looks*
     // complete to loadAll()/restoreSession() but is silently missing a file
-    // or has stale metadata. Any failure below removes the partial directory
-    // and returns {}, the same "failed" signal callers already handle.
+    // or has stale metadata.
     const QString id = QUuid::createUuid().toString(QUuid::WithoutBraces).left(12);
     const QString partialDir = libraryRoot() + "/" + id + ".partial";
     const QString finalDir   = libraryRoot() + "/" + id;
 
     auto abort = [&](const QString &reason) {
-        qWarning() << "SessionManager: aborting save," << reason;
+        qWarning() << "SessionRepository: aborting save," << reason;
         QDir(partialDir).removeRecursively();
+        result.error = reason;
     };
 
     if (!dir.mkpath(partialDir)) {
-        qWarning() << "SessionManager: cannot create session dir" << partialDir;
-        return {};
+        result.error = "cannot create session dir " + partialDir;
+        qWarning() << "SessionRepository:" << result.error;
+        return result;
     }
 
     const bool hasWebcam      = QFile::exists(webcamRecorded)
@@ -103,15 +99,15 @@ QString SessionManager::saveSession(
     // once attempted, it must succeed, or the whole save is rolled back.
     if (hasWebcam && !copyFile(webcamRecorded, partialDir + "/webcam.mkv")) {
         abort("webcam.mkv copy failed");
-        return {};
+        return result;
     }
     if (hasAudio && !copyFile(audioRecorded, partialDir + "/audio.wav")) {
         abort("audio.wav copy failed");
-        return {};
+        return result;
     }
     if (hasPlaybackWav && !copyFile(extractedTmpPlayback, partialDir + "/playback.wav")) {
         abort("playback.wav copy failed");
-        return {};
+        return result;
     }
     // tuned.wav is intentionally NOT saved: it is always re-generated by
     // PreviewDialog from audio.wav with the user's current enhancement settings.
@@ -121,32 +117,32 @@ QString SessionManager::saveSession(
     // on commit(), so a crash/power-loss mid-write can't corrupt/truncate it.
     {
         QJsonObject off;
-        off["audioOffset"]  = QString::number(audioOffset);
-        off["videoOffset"]  = QString::number(videoOffset);
-        off["sysOffset"]    = QString::number(sysOffset);
-        off["playbackFile"] = currentVideoFile;
-        off["playbackName"] = currentVideoName;
+        off["audioOffset"]  = QString::number(snapshot.audioOffset);
+        off["videoOffset"]  = QString::number(snapshot.videoOffset);
+        off["sysOffset"]    = QString::number(snapshot.sysOffset);
+        off["playbackFile"] = snapshot.currentVideoFile;
+        off["playbackName"] = snapshot.currentVideoName;
         QSaveFile f(partialDir + "/offsets.json");
         if (!f.open(QIODevice::WriteOnly)
             || f.write(QJsonDocument(off).toJson()) < 0
             || !f.commit()) {
             abort("cannot write offsets.json");
-            return {};
+            return result;
         }
     }
 
     // session.json — display metadata
     QString label;
     {
-        label = currentVideoName
+        label = snapshot.currentVideoName
               + QString::fromUtf8(" \xe2\x80\x94 ")   // em dash
               + QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm");
         QJsonObject obj;
         obj["id"]          = id;
         obj["label"]       = label;
         obj["savedAt"]     = QDateTime::currentDateTime().toString(Qt::ISODate);
-        obj["playbackFile"]= currentVideoFile;
-        obj["playbackName"]= currentVideoName;
+        obj["playbackFile"]= snapshot.currentVideoFile;
+        obj["playbackName"]= snapshot.currentVideoName;
         obj["hasWebcam"]   = hasWebcam;
         obj["hasAudio"]    = hasAudio;
 
@@ -155,21 +151,23 @@ QString SessionManager::saveSession(
             || f.write(QJsonDocument(obj).toJson()) < 0
             || !f.commit()) {
             abort("cannot write session.json");
-            return {};
+            return result;
         }
     }
 
     if (!dir.rename(partialDir, finalDir)) {
         abort("cannot finalize session directory (rename)");
-        return {};
+        return result;
     }
 
-    qDebug() << "SessionManager: saved session" << id << "for" << currentVideoName;
-    return id;
+    qDebug() << "SessionRepository: saved session" << id << "for" << snapshot.currentVideoName;
+    result.ok = true;
+    result.sessionId = id;
+    return result;
 }
 
 // ── readMetadata ──────────────────────────────────────────────────────────────
-SessionEntry SessionManager::readMetadata(const QString &sessionDir)
+SessionEntry SessionRepository::readMetadata(const QString &sessionDir)
 {
     SessionEntry entry;
     entry.sessionDir = sessionDir;
@@ -192,7 +190,7 @@ SessionEntry SessionManager::readMetadata(const QString &sessionDir)
 }
 
 // ── writeMetadata — used by renameSession ─────────────────────────────────────
-bool SessionManager::writeMetadata(const SessionEntry &entry)
+bool SessionRepository::writeMetadata(const SessionEntry &entry)
 {
     QFile f(metaPath(entry.sessionDir));
 
@@ -214,7 +212,7 @@ bool SessionManager::writeMetadata(const SessionEntry &entry)
     obj["hasAudio"]    = entry.hasAudio;
 
     if (!f.open(QIODevice::WriteOnly)) {
-        qWarning() << "SessionManager::writeMetadata: cannot open for writing:" << f.fileName();
+        qWarning() << "SessionRepository::writeMetadata: cannot open for writing:" << f.fileName();
         return false;
     }
     f.write(QJsonDocument(obj).toJson());
@@ -222,7 +220,7 @@ bool SessionManager::writeMetadata(const SessionEntry &entry)
 }
 
 // ── loadAll ───────────────────────────────────────────────────────────────────
-QList<SessionEntry> SessionManager::loadAll()
+QList<SessionEntry> SessionRepository::loadAll()
 {
     QList<SessionEntry> list;
     const QDir root(libraryRoot());
@@ -243,91 +241,112 @@ QList<SessionEntry> SessionManager::loadAll()
 }
 
 // ── deleteSession ─────────────────────────────────────────────────────────────
-bool SessionManager::deleteSession(const QString &id)
+OperationResult SessionRepository::deleteSession(const QString &id)
 {
+    OperationResult result;
     if (!isValidSessionId(id)) {
-        qWarning() << "SessionManager::deleteSession: rejecting malformed id:" << id;
-        return false;
+        result.error = "malformed session id";
+        qWarning() << "SessionRepository::deleteSession: rejecting" << result.error << ":" << id;
+        return result;
     }
     const QString sessionDir = libraryRoot() + "/" + id;
     QDir dir(sessionDir);
     if (!dir.exists()) {
-        qWarning() << "SessionManager::deleteSession: not found:" << sessionDir;
-        return false;
+        result.error = "session not found";
+        qWarning() << "SessionRepository::deleteSession:" << result.error << ":" << sessionDir;
+        return result;
     }
-    return dir.removeRecursively();
+    if (!dir.removeRecursively()) {
+        result.error = "could not remove session directory";
+        qWarning() << "SessionRepository::deleteSession:" << result.error << ":" << sessionDir;
+        return result;
+    }
+    result.ok = true;
+    return result;
 }
 
 // ── renameSession ─────────────────────────────────────────────────────────────
-bool SessionManager::renameSession(const QString &id, const QString &newLabel)
+OperationResult SessionRepository::renameSession(const QString &id, const QString &newLabel)
 {
+    OperationResult result;
     if (!isValidSessionId(id)) {
-        qWarning() << "SessionManager::renameSession: rejecting malformed id:" << id;
-        return false;
+        result.error = "malformed session id";
+        qWarning() << "SessionRepository::renameSession: rejecting" << result.error << ":" << id;
+        return result;
     }
     const QString sessionDir = libraryRoot() + "/" + id;
     SessionEntry e = readMetadata(sessionDir);
     if (e.id.isEmpty()) {
-        qWarning() << "SessionManager::renameSession: session not found:" << id;
-        return false;
+        result.error = "session not found";
+        qWarning() << "SessionRepository::renameSession:" << result.error << ":" << id;
+        return result;
     }
     e.label = newLabel;
-    return writeMetadata(e);
+    if (!writeMetadata(e)) {
+        result.error = "could not write session metadata";
+        return result;
+    }
+    result.ok = true;
+    return result;
 }
 
 // ── loadEntry ─────────────────────────────────────────────────────────────────
-SessionEntry SessionManager::loadEntry(const QString &id)
+SessionEntry SessionRepository::loadEntry(const QString &id)
 {
     if (!isValidSessionId(id)) {
-        qWarning() << "SessionManager::loadEntry: rejecting malformed id:" << id;
+        qWarning() << "SessionRepository::loadEntry: rejecting malformed id:" << id;
         return {};
     }
     return readMetadata(libraryRoot() + "/" + id);
 }
 
 // ── restoreSession ────────────────────────────────────────────────────────────
-bool SessionManager::restoreSession(const QString &id,
-                                    QString &webcamRecorded,
-                                    QString &audioRecorded,
-                                    QString &tunedRecorded,
-                                    QString &extractedTmpPlayback,
-                                    QString &currentVideoFile,
-                                    QString &currentVideoName,
-                                    qint64  &audioOffset,
-                                    qint64  &videoOffset,
-                                    qint64  &sysOffset,
-                                    bool    &hasWebcam)
+RestoreResult SessionRepository::restoreSession(const QString &id)
 {
+    RestoreResult result;
+
     if (!isValidSessionId(id)) {
-        qWarning() << "SessionManager::restoreSession: rejecting malformed id:" << id;
-        return false;
+        result.error = "malformed session id";
+        qWarning() << "SessionRepository::restoreSession: rejecting" << result.error << ":" << id;
+        return result;
     }
     const QString sessionDir = libraryRoot() + "/" + id;
     if (!QDir(sessionDir).exists()) {
-        qWarning() << "SessionManager::restoreSession: dir not found:" << sessionDir;
-        return false;
+        result.error = "session folder not found";
+        qWarning() << "SessionRepository::restoreSession:" << result.error << ":" << sessionDir;
+        return result;
     }
+
+    // Neutral defaults: if offsets.json turns out to be missing/unreadable
+    // below, restore must not leave these at whatever the caller happened to
+    // have in memory from a previous recording/restore.
+    SessionSnapshot &snapshot = result.snapshot;
+    snapshot.audioOffset = 0;
+    snapshot.videoOffset = 0;
+    snapshot.sysOffset   = 0;
+    snapshot.currentVideoFile.clear();
+    snapshot.currentVideoName.clear();
 
     // Read offsets.json
     {
         QFile f(sessionDir + "/offsets.json");
         if (!f.open(QIODevice::ReadOnly)) {
-            qWarning() << "SessionManager::restoreSession: cannot open offsets.json";
-            // Non-fatal: continue, offsets stay at their current values
+            qWarning() << "SessionRepository::restoreSession: cannot open offsets.json";
+            // Non-fatal: continue with the neutral defaults set above.
         } else {
             const QJsonObject off = QJsonDocument::fromJson(f.readAll()).object();
-            audioOffset      = off["audioOffset"].toString().toLongLong();
-            videoOffset      = off["videoOffset"].toString().toLongLong();
-            sysOffset        = off["sysOffset"].toString().toLongLong();
-            currentVideoFile = off["playbackFile"].toString();
-            currentVideoName = off["playbackName"].toString();
+            snapshot.audioOffset      = off["audioOffset"].toString().toLongLong();
+            snapshot.videoOffset      = off["videoOffset"].toString().toLongLong();
+            snapshot.sysOffset        = off["sysOffset"].toString().toLongLong();
+            snapshot.currentVideoFile = off["playbackFile"].toString();
+            snapshot.currentVideoName = off["playbackName"].toString();
 
             // The render only needs audio from the playback file; always use
             // the guaranteed local copy saved inside the session folder so
             // re-renders work regardless of whether the original file still exists.
             const QString localCopy = sessionDir + "/playback.wav";
             if (QFile::exists(localCopy))
-                currentVideoFile = localCopy;
+                snapshot.currentVideoFile = localCopy;
         }
     }
 
@@ -335,41 +354,79 @@ bool SessionManager::restoreSession(const QString &id,
     // this is what tells restoreAndRender() apart from "is a camera
     // currently plugged into this machine" (MainWindow::hasCamera), which
     // has nothing to do with what a given past session actually recorded.
-    hasWebcam = QFile::exists(sessionDir + "/webcam.mkv");
+    result.hasWebcam = QFile::exists(sessionDir + "/webcam.mkv");
 
-    // Copy artefacts back to their /tmp/ paths.
-    // The destination paths (webcamRecorded etc.) always point to the same
-    // fixed /tmp/WakkaQt_tmp_* locations; we never reassign them here.
-    auto restoreOne = [&](const QString &srcName, const QString &dst) {
-        const QString src = sessionDir + "/" + srcName;
-        if (!QFile::exists(src)) {
-            qDebug() << "SessionManager: optional file not in session:" << srcName;
-            // A stale file from a previous session (or a previous live
-            // recording) could otherwise still be sitting at this fixed tmp
-            // path — remove it so nothing downstream that checks existence
-            // of `dst` mistakes it for belonging to this restore.
-            if (QFile::exists(dst) && !QFile::remove(dst))
-                qWarning() << "SessionManager: cannot clear stale tmp file:" << dst;
-            return;
-        }
-        if (QFile::exists(dst) && !QFile::remove(dst))
-            qWarning() << "SessionManager: cannot remove old tmp file:" << dst;
-        if (!QFile::copy(src, dst))
-            qWarning() << "SessionManager: failed to restore" << srcName << "->" << dst;
-        else
-            qDebug() << "SessionManager: restored" << srcName << "->" << dst;
+    // Copy artefacts back to their /tmp/ paths, staged then swapped in one
+    // pass — mirrors the same principle saveSession() uses (stage first,
+    // only make the change visible once everything required has actually
+    // succeeded), so a failure partway through never leaves a half-restored
+    // mix of old and new tmp files, and is always reported to the caller.
+    struct RestoreItem { const char *srcName; QString *dst; };
+    const RestoreItem items[] = {
+        { "webcam.mkv",   &webcamRecorded },
+        { "audio.wav",    &audioRecorded },
+        { "playback.wav", &extractedTmpPlayback },
     };
+    constexpr int kCount = int(sizeof(items) / sizeof(items[0]));
 
-    restoreOne("webcam.mkv",  webcamRecorded);
-    restoreOne("audio.wav",   audioRecorded);
-    restoreOne("playback.wav",extractedTmpPlayback);
+    bool present[kCount];
+    QString staged[kCount];
+
+    // Stage phase: copy each file that exists in the session to a ".restoring"
+    // sibling of its destination. The live tmp files are never touched here.
+    for (int i = 0; i < kCount; ++i) {
+        const QString src = sessionDir + "/" + items[i].srcName;
+        present[i] = QFile::exists(src);
+        if (!present[i]) {
+            qDebug() << "SessionRepository: optional file not in session:" << items[i].srcName;
+            continue;
+        }
+
+        const QString tmp = *items[i].dst + ".restoring";
+        QFile::remove(tmp); // clear any leftover from a previous failed attempt
+        if (!QFile::copy(src, tmp)) {
+            result.error = QString("failed to stage %1").arg(items[i].srcName);
+            qWarning() << "SessionRepository::restoreSession:" << result.error << "->" << tmp;
+            for (int j = 0; j < i; ++j)
+                if (present[j])
+                    QFile::remove(staged[j]);
+            return result;
+        }
+        staged[i] = tmp;
+    }
+
+    // Swap phase: every present file staged successfully, so make them all
+    // visible. For files not part of this session, clear a stale tmp file
+    // left over from a previous session/recording so nothing downstream
+    // mistakes it for belonging to this restore.
+    for (int i = 0; i < kCount; ++i) {
+        QString *dst = items[i].dst;
+        if (!present[i]) {
+            if (QFile::exists(*dst) && !QFile::remove(*dst))
+                qWarning() << "SessionRepository: cannot clear stale tmp file:" << *dst;
+            continue;
+        }
+        if (QFile::exists(*dst) && !QFile::remove(*dst)) {
+            result.error = QString("cannot remove old tmp file %1").arg(*dst);
+            qWarning() << "SessionRepository::restoreSession:" << result.error;
+            QFile::remove(staged[i]);
+            return result;
+        }
+        if (!QFile::rename(staged[i], *dst)) {
+            result.error = QString("failed to finalize %1").arg(*dst);
+            qWarning() << "SessionRepository::restoreSession:" << result.error;
+            return result;
+        }
+        qDebug() << "SessionRepository: restored" << items[i].srcName << "->" << *dst;
+    }
     // tuned.wav is not saved/restored — PreviewDialog re-generates it from audio.wav
 
-    qDebug() << "SessionManager: restore complete for session" << id
-             << " | hasWebcam:" << hasWebcam
-             << " | video:" << currentVideoName
-             << " | audioOffset:" << audioOffset
-             << " | videoOffset:" << videoOffset
-             << " | sysOffset:"   << sysOffset;
-    return true;
+    qDebug() << "SessionRepository: restore complete for session" << id
+             << " | hasWebcam:" << result.hasWebcam
+             << " | video:" << snapshot.currentVideoName
+             << " | audioOffset:" << snapshot.audioOffset
+             << " | videoOffset:" << snapshot.videoOffset
+             << " | sysOffset:"   << snapshot.sysOffset;
+    result.ok = true;
+    return result;
 }

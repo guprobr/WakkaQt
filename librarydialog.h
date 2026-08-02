@@ -1,7 +1,7 @@
 #ifndef LIBRARYDIALOG_H
 #define LIBRARYDIALOG_H
 
-#include "sessionmanager.h"
+#include "sessionrepository.h"
 
 #include <QDialog>
 #include <QListWidget>
@@ -44,7 +44,7 @@ private:
     QPushButton   *m_closeBtn;
     QLabel        *m_detailLabel;
 
-    SessionManager m_mgr;
+    SessionRepository m_repo;
     QString        m_selectedId;
 
     QList<SessionEntry> m_entries; // parallel list to m_list rows

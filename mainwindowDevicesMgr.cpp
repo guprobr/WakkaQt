@@ -4,7 +4,6 @@ void MainWindow::resetMediaComponents(bool isStarting)
 {
     qDebug() << "Resetting media components";
 
-    isRecording = false;
     playbackTimer->stop();
 
     if (!isStarting)

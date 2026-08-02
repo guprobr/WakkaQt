@@ -30,6 +30,9 @@ static bool hasVideoStream(const QString &filePath) {
 void MainWindow::generateBackingTrack() {
     if (currentPlayback.isEmpty()) return;
 
+    if (!trySetState(State::Separating))
+        return;
+
     // Stop playback to free audio resources for the separation process
     vizPlayer->stop();
 
@@ -43,7 +46,10 @@ void MainWindow::generateBackingTrack() {
             "Proceed with download?",
             QMessageBox::Yes | QMessageBox::No);
 
-        if (btn != QMessageBox::Yes) return;
+        if (btn != QMessageBox::Yes) {
+            trySetState(State::Idle);
+            return;
+        }
 
         QDialog dlDlg(this);
         dlDlg.setWindowTitle("Downloading MDX-Net model…");
@@ -70,6 +76,7 @@ void MainWindow::generateBackingTrack() {
         dlDlg.accept();
 
         if (!ok) {
+            trySetState(State::Idle);
             QMessageBox::critical(this, "Download Failed",
                                   "Could not download the model:\n" + dlErr +
                                   "\n\nCheck your internet connection and try again.");
@@ -155,6 +162,7 @@ void MainWindow::generateBackingTrack() {
         const QString &err     = res.second;
 
         if (tempOut.isEmpty()) {
+            trySetState(State::Idle);
             if (err == "Cancelled") return;
             QMessageBox::critical(this, "Separation Failed",
                                   "Could not generate the backing track:\n" + err);
@@ -197,11 +205,13 @@ void MainWindow::generateBackingTrack() {
                     saveDlg.selectFile(fi.dir().filePath(fi.completeBaseName() + "." + ext));
                 });
             if (saveDlg.exec() != QDialog::Accepted) {
+                trySetState(State::Idle);
                 QFile::remove(tempOut);
                 return;
             }
             savePath = saveDlg.selectedFiles().value(0);
             if (savePath.isEmpty()) {
+                trySetState(State::Idle);
                 QFile::remove(tempOut);
                 return;
             }
@@ -240,12 +250,14 @@ void MainWindow::generateBackingTrack() {
                 if (QFile::copy(tempOut, savePath)) {
                     QFile::remove(tempOut);
                 } else {
+                    trySetState(State::Idle);
                     QMessageBox::critical(this, "Save Failed",
                                           "Could not write to:\n" + savePath +
                                           "\n\nTemp file preserved at:\n" + tempOut);
                     return;
                 }
             }
+            trySetState(State::Idle);
             logUI("Backing track saved: " + savePath);
             QMessageBox::information(this, "Done",
                                      "Backing track saved to:\n" + savePath);
@@ -300,6 +312,7 @@ void MainWindow::generateBackingTrack() {
                 saveProgDlgGuard->deleteLater();
             }
 
+            trySetState(State::Idle);
             if (res.first) {
                 logUI("Backing track saved: " + savePath);
                 QMessageBox::information(this, "Done",

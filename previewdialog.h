@@ -5,6 +5,7 @@
 #include "complexes.h"
 #include "audiovisualizerwidget.h"
 #include "previewvideowidget.h"
+#include "previewjob.h"
 #ifdef WAKKAQT_FFMPEG_NATIVE
 #include "ffmpegnative.h"
 #endif
@@ -65,6 +66,8 @@ private slots:
     void startEnhancementJob();
     void onVideoFrame(const QVideoFrame &frame);
     void updateVideoEffectChain();
+    void onVocalsExtracted(QByteArray pcmSamples, QAudioFormat pcmFormat);
+    void onVocalsEnhanced(QByteArray tunedData);
 
 private:
     void updateChronos();
@@ -77,7 +80,7 @@ private:
 
     QAudioFormat format;
     QScopedPointer<AudioAmplifier> amplifier;
-    QScopedPointer<VocalEnhancer> vocalEnhancer;
+    QScopedPointer<PreviewJob> previewJob;
 
     PreviewVideoWidget *videoRama = nullptr;
     QVideoSink *videoSink = nullptr;
@@ -133,25 +136,6 @@ private:
     QTimer *volumeChangeTimer = nullptr;
     QTimer *chronosTimer = nullptr;
     QTimer *previewRebuildTimer = nullptr;
-    QFutureWatcher<QByteArray> *enhanceWatcher = nullptr;
-    // Owns the background FFmpegNative::extractAudio() call in setAudioFile().
-    // Previously a bare QtConcurrent::run() whose result was marshalled back
-    // via QMetaObject::invokeMethod(this, ...) — safe for the queued
-    // callback itself (Qt purges posted events targeting a destroyed
-    // QObject), but the worker lambda captured `this` implicitly (via [=])
-    // and read this->audioFilePath directly on the background thread with no
-    // lifetime guarantee at all. A QFutureWatcher, connected the same way
-    // enhanceWatcher already is, keeps that guarantee (Qt auto-disconnects
-    // signals targeting a destroyed receiver) and closeEvent() blocks on it
-    // briefly (extraction has no cancellation token, but is fast) so no
-    // background thread is ever touching a half-destroyed dialog.
-    QFutureWatcher<bool> *extractWatcher = nullptr;
-    // Polled from inside VocalEnhancer::enhance()'s hot loops so closeEvent()
-    // can abort a long-running enhance() promptly instead of
-    // waitForFinished() blocking the GUI thread for the rest of its
-    // (otherwise uninterruptible) runtime. Reset to false at the start of
-    // every startEnhancementJob() call.
-    std::atomic<bool> enhanceCancelled{false};
 
     QString audioFilePath;
     QByteArray previewInputAudioData;

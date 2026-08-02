@@ -1,6 +1,6 @@
 #include "mainwindow.h"
 #include "librarydialog.h"
-#include "sessionmanager.h"
+#include "sessionrepository.h"
 #include "complexes.h"
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -17,6 +17,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 void MainWindow::openLibrary()
 {
+    if (m_state != State::Idle)
+        return;
+
     // ── Pause active playback so music doesn't keep playing behind the dialog
     const bool wasPlaying = isPlayback
                          && player
@@ -68,23 +71,20 @@ void MainWindow::openLibrary()
 // ─────────────────────────────────────────────────────────────────────────────
 void MainWindow::saveCurrentSession()
 {
-    SessionManager mgr;
-    const QString id = mgr.saveSession(
-        webcamRecorded,
-        audioRecorded,
-        tunedRecorded,
-        extractedTmpPlayback,
-        currentVideoFile,
-        currentVideoName,
-        audioOffset,
-        videoOffset,
-        offset          // system-measured latency
-    );
+    SessionSnapshot snapshot;
+    snapshot.currentVideoFile = currentVideoFile;
+    snapshot.currentVideoName = currentVideoName;
+    snapshot.audioOffset      = audioOffset;
+    snapshot.videoOffset      = videoOffset;
+    snapshot.sysOffset        = offset; // system-measured latency
 
-    if (id.isEmpty())
-        logUI("Library: \xe2\x9a\xa0 WARNING — session could not be saved to library.");
+    SessionRepository repo;
+    const SaveResult result = repo.saveSession(snapshot);
+
+    if (!result.ok)
+        logUI("Library: \xe2\x9a\xa0 WARNING — session could not be saved to library: " + result.error);
     else
-        logUI("Library: session saved \xe2\x86\x92 " + id);
+        logUI("Library: session saved \xe2\x86\x92 " + result.sessionId);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -97,39 +97,41 @@ void MainWindow::saveCurrentSession()
 // ─────────────────────────────────────────────────────────────────────────────
 void MainWindow::restoreAndRender(const QString &sessionId)
 {
+    if (!trySetState(State::Restoring))
+        return;
+
+    // Closes a stale-isPlayback window: without this, transport buttons
+    // re-enabled below (enable_playback(true)) could operate on whatever
+    // media the *previous* session left loaded in player/vizPlayer.
+    isPlayback = false;
+
     // ── Restore artefacts ─────────────────────────────────────────────────
-    SessionManager mgr;
-    bool restoredHasWebcam = false;
-    const bool ok = mgr.restoreSession(
-        sessionId,
-        webcamRecorded,
-        audioRecorded,
-        tunedRecorded,
-        extractedTmpPlayback,
-        currentVideoFile,
-        currentVideoName,
-        audioOffset,
-        videoOffset,
-        offset,
-        restoredHasWebcam
-    );
+    SessionRepository repo;
+    const RestoreResult result = repo.restoreSession(sessionId);
 
     // mixAndRender() (called further below) must judge THIS session, not
     // whatever camera happens to be plugged into the machine today — a
     // restored audio-only session must not pull in a stale/unrelated webcam
     // file, and a restored session that does have webcam footage must not
     // get rendered audio-only just because no camera is attached right now.
-    recordingHasWebcam = restoredHasWebcam;
+    recordingHasWebcam = result.hasWebcam;
 
-    if (!ok) {
+    if (!result.ok) {
+        trySetState(State::Idle);
         QMessageBox::critical(this, "Library Error",
             "Could not restore session files.\n"
-            "The session folder may be missing or its files have been removed.");
+            + result.error);
         enable_playback(true);
         chooseInputButton->setEnabled(true);
         chooseInputAction->setEnabled(true);
         return;
     }
+
+    currentVideoFile = result.snapshot.currentVideoFile;
+    currentVideoName = result.snapshot.currentVideoName;
+    audioOffset       = result.snapshot.audioOffset;
+    videoOffset       = result.snapshot.videoOffset;
+    offset            = result.snapshot.sysOffset;
 
     logUI("Library: restored session " + sessionId);
     logUI("Library: resuming at render step…");
@@ -187,8 +189,13 @@ void MainWindow::restoreAndRender(const QString &sessionId)
                          ? outDlg.selectedFiles().value(0) : QString{};
 
         if (restoredOutput.isEmpty()) {
+            trySetState(State::Idle);
             logUI("Library: restore cancelled at output-file step.");
             enable_playback(true);
+            // Matches renderAgain()'s equivalent cancel branch — previously
+            // left disabled here, an inconsistency with the live-record path.
+            chooseInputButton->setEnabled(true);
+            chooseInputAction->setEnabled(true);
             return;
         }
 
@@ -246,6 +253,7 @@ void MainWindow::restoreAndRender(const QString &sessionId)
         previewDialog.reset();
         mixAndRender(vocalVolume, manualOffset, videoEffectChain);
     } else {
+        trySetState(State::Idle);
         previewDialog.reset();
         logUI("Library: restore cancelled during preview/adjustment.");
         enable_playback(true);

@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 # Project name
-project(WakkaQt VERSION 2.7.7 LANGUAGES CXX)
+project(WakkaQt VERSION 2.8.4 LANGUAGES CXX)
 
 # Set the C++ standard
 set(CMAKE_CXX_STANDARD 17)
@@ -119,8 +119,6 @@ endif()
 
 if(UNIX AND NOT APPLE)
     pkg_check_modules(GLIB2 REQUIRED glib-2.0)
-    include_directories(${GLIB2_INCLUDE_DIRS})
-    link_directories(${GLIB2_LIBRARY_DIRS})
 endif()
 
 # --- ONNX Runtime (optional — vocal separation feature) ---
@@ -168,6 +166,67 @@ endif()
 qt_add_resources(resources resources.qrc)
 message(STATUS "Resources added: ${resources}")
 
+# --- wakkaqt_dsp: pure DSP — vocal enhancement (pitch/noise/reverb) + vocal
+# separation (MDX-Net). No dependency on multimedia-infra or Widgets, except
+# vocalseparator.cpp's optional native decode path (see below). ---
+add_library(wakkaqt_dsp STATIC
+    vocalenhancer.cpp
+    vocalenhancer.h
+    vocalseparator.cpp
+    vocalseparator.h
+)
+target_include_directories(wakkaqt_dsp PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${FFTW3_INCLUDE_DIR}
+)
+target_link_libraries(wakkaqt_dsp PUBLIC
+    Qt6::Core
+    Qt6::Multimedia
+    Qt6::Network
+    ${FFTW3_LIBRARIES}
+)
+
+if(ONNXRUNTIME_FOUND)
+    target_compile_definitions(wakkaqt_dsp PUBLIC WAKKAQT_ONNX=1)
+    target_link_libraries(wakkaqt_dsp PUBLIC ${ONNXRUNTIME_LIB})
+    target_include_directories(wakkaqt_dsp PUBLIC ${ONNXRUNTIME_INCLUDE_DIR})
+endif()
+
+# --- wakkaqt_media: multimedia infrastructure — FFmpeg wrapper, audio
+# recording, and playback/extraction. ---
+add_library(wakkaqt_media STATIC
+    ffmpegnative.cpp
+    ffmpegnative.h
+    audiorecorder.cpp
+    audiorecorder.h
+    audiovizmediaplayer.cpp
+    audiovizmediaplayer.h
+)
+target_include_directories(wakkaqt_media PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(wakkaqt_media PUBLIC
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Widgets
+    Qt6::Multimedia
+)
+
+if(FFMPEG_FOUND)
+    target_compile_definitions(wakkaqt_media PUBLIC WAKKAQT_FFMPEG_NATIVE=1)
+    target_link_libraries(wakkaqt_media PUBLIC ${FFMPEG_LIBRARIES} ${GLIB2_LIBRARIES})
+    target_include_directories(wakkaqt_media PUBLIC ${FFMPEG_INCLUDE_DIR})
+    if(DEFINED FFMPEG_CFLAGS)
+        target_compile_options(wakkaqt_media PRIVATE ${FFMPEG_CFLAGS})
+    endif()
+
+    # vocalseparator.cpp's native decode path (decodeToFloat/writeFloatWav)
+    # calls into FFmpegNative when both WAKKAQT_FFMPEG_NATIVE and
+    # WAKKAQT_ONNX are enabled — a working QProcess/ffmpeg-CLI fallback
+    # exists for when this isn't the case. Accepted one-directional
+    # dependency: DSP may depend on media, never the reverse. PUBLIC so
+    # WAKKAQT_FFMPEG_NATIVE and its include dir also reach wakkaqt_dsp.
+    target_link_libraries(wakkaqt_dsp PUBLIC wakkaqt_media)
+endif()
+
 # Add the executable
 add_executable(${PROJECT_NAME}
     main.cpp
@@ -177,21 +236,18 @@ add_executable(${PROJECT_NAME}
     mainwindowRecorderMgr.cpp
     mainwindowRenderMgr.cpp
     mainwindowLibraryMgr.cpp
+    renderjob.cpp
     complexes.cpp
     sndwidget.cpp
     pitchmonitorwidget.cpp
     previewdialog.cpp
+    previewjob.cpp
     previewvideowidget.cpp
     audioamplifier.cpp
-    audiorecorder.cpp
-    audiovizmediaplayer.cpp
     audiovisualizerwidget.cpp
-    vocalenhancer.cpp
     DownloadDialog.cpp
-    sessionmanager.cpp
+    sessionrepository.cpp
     librarydialog.cpp
-    ffmpegnative.cpp
-    vocalseparator.cpp
     mainwindowSeparatorMgr.cpp
     youtubesearchdialog.cpp
     mainwindow.h
@@ -201,15 +257,10 @@ add_executable(${PROJECT_NAME}
     previewdialog.h
     previewvideowidget.h
     audioamplifier.h
-    audiorecorder.h
-    audiovizmediaplayer.h
     audiovisualizerwidget.h
-    vocalenhancer.h
     DownloadDialog.h
-    sessionmanager.h
+    sessionrepository.h
     librarydialog.h
-    ffmpegnative.h
-    vocalseparator.h
     youtubesearchdialog.h
     Logger.h
     ${resources}
@@ -217,6 +268,8 @@ add_executable(${PROJECT_NAME}
 
 # Link libraries
 target_link_libraries(${PROJECT_NAME}
+    wakkaqt_dsp
+    wakkaqt_media
     Qt6::Core
     Qt6::Gui
     Qt6::Widgets
@@ -224,32 +277,12 @@ target_link_libraries(${PROJECT_NAME}
     Qt6::MultimediaWidgets
     Qt6::Concurrent
     Qt6::Network
-    ${GLIB2_LIBRARIES}
-    ${FFTW3_LIBRARIES}
 )
 
 # Include headers
 target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
-    ${FFTW3_INCLUDE_DIR}
 )
-
-# FFmpeg native integration (optional — graceful fallback to QProcess if absent)
-if(FFMPEG_FOUND)
-    target_compile_definitions(${PROJECT_NAME} PRIVATE WAKKAQT_FFMPEG_NATIVE=1)
-    target_link_libraries(${PROJECT_NAME} ${FFMPEG_LIBRARIES})
-    target_include_directories(${PROJECT_NAME} PRIVATE ${FFMPEG_INCLUDE_DIR})
-    if(DEFINED FFMPEG_CFLAGS)
-        target_compile_options(${PROJECT_NAME} PRIVATE ${FFMPEG_CFLAGS})
-    endif()
-endif()
-
-# ONNX Runtime integration (optional — graceful no-op if absent)
-if(ONNXRUNTIME_FOUND)
-    target_compile_definitions(${PROJECT_NAME} PRIVATE WAKKAQT_ONNX=1)
-    target_link_libraries(${PROJECT_NAME} ${ONNXRUNTIME_LIB})
-    target_include_directories(${PROJECT_NAME} PRIVATE ${ONNXRUNTIME_INCLUDE_DIR})
-endif()
 
 # Keep qDebug/qWarning/etc. file+line context available even in Release
 # builds, so the UI log handler can tag messages by source file.

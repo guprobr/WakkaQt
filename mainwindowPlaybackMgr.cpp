@@ -76,7 +76,7 @@ void MainWindow::updateVideoVisibility() {
         // (live device state), is the right check here — it's specifically
         // about whether mediaRecorder was ever attached for the recording
         // currently in progress.
-        if ( isRecording && (!recordingHasWebcam || mediaRecorder->duration()) )
+        if ( m_state == State::Recording && (!recordingHasWebcam || mediaRecorder->duration()) )
             stopRecording();
 
     }
@@ -98,7 +98,7 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
             addProgressSong(progressScene, static_cast<int>(getMediaDuration(currentPlayback)));
         }
 
-        if ( isRecording )
+        if ( m_state == State::Recording )
             sysLatency.restart();
 
         isPlayback = true; // enable seeking now
@@ -115,7 +115,7 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
 }
 
 void MainWindow::onPlayPauseClicked() {
-    if (!isPlayback || isRecording || !player || !vizPlayer) return;
+    if (!isPlayback || m_state == State::Recording || !player || !vizPlayer) return;
     if (player->playbackState() == QMediaPlayer::PlayingState) {
         vizPlayer->pause();
     } else {
@@ -124,7 +124,7 @@ void MainWindow::onPlayPauseClicked() {
 }
 
 void MainWindow::onPlayerPositionChanged(qint64 position) {
-    if ( isRecording ) {
+    if ( m_state == State::Recording ) {
         pos = position;
         //sysLatency.restart();
     }

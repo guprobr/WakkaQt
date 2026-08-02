@@ -1,14 +1,11 @@
 
 #include "mainwindow.h"
 #include "complexes.h"
+#include "renderjob.h"
 #include <QThreadPool>
 #include <QPushButton>
-#include <QtConcurrent/QtConcurrentRun>
 #include <atomic>
 #include <memory>
-#ifdef WAKKAQT_FFMPEG_NATIVE
-#include "ffmpegnative.h"
-#endif
 
 // render //
 void MainWindow::renderAgain()
@@ -67,6 +64,7 @@ void MainWindow::renderAgain()
                          ? dlg.selectedFiles().value(0) : QString{};
 
         if (outputFilePath.isEmpty()) {
+            trySetState(State::Idle);
             enable_playback(true);
             chooseInputButton->setEnabled(true);
             chooseInputAction->setEnabled(true);
@@ -130,6 +128,7 @@ void MainWindow::renderAgain()
         previewDialog.reset();
         mixAndRender(vocalVolume, manualOffset, videoEffectChain);
     } else {
+        trySetState(State::Idle);
         enable_playback(true);
         chooseInputButton->setEnabled(true);
         chooseInputAction->setEnabled(true);
@@ -141,6 +140,9 @@ void MainWindow::renderAgain()
 }
 
 void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset, const QString &videoEffectChain) {
+
+    if (!trySetState(State::Rendering))
+        return;
 
     videoWidget->hide();
     placeholderLabel->show();
@@ -168,9 +170,6 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset, const QSt
     progressLabel->setFont(QFont("Arial", 8));
     QVBoxLayout *layout = qobject_cast<QVBoxLayout*>(centralWidget()->layout());
 
-    // Member (not a local) so closeEvent() can request cancellation and wait
-    // on renderWatcher if the window is closed mid-render.
-    renderCancelled = std::make_shared<std::atomic<bool>>(false);
     QPushButton *abortRenderBtn = new QPushButton("⛔ Abort Render", this);
 
     layout->insertWidget(0, abortRenderBtn, 0, Qt::AlignCenter);
@@ -196,34 +195,41 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset, const QSt
     const qint64 effectiveAudioOffset = manualOffset;
     const qint64 effectiveVideoOffset = manualOffset;
 
-    auto onFinished = [this, progressLabel, abortRenderBtn](bool success) {
+    if (m_renderJob) {
+        m_renderJob->deleteLater();
+        m_renderJob = nullptr;
+    }
+    m_renderJob = new RenderJob(this);
+
+    connect(abortRenderBtn, &QPushButton::clicked, this, [this]() {
+        m_renderJob->cancel();
+    });
+
+    QProgressBar *pb = this->progressBar;
+    connect(m_renderJob, &RenderJob::progress, this, [pb](double frac) {
+        pb->setValue(int(frac * 100));
+    });
+
+    connect(m_renderJob, &RenderJob::finished, this,
+            [this, progressLabel, abortRenderBtn](bool success, bool cancelled, const QString &errorMessage) {
         delete progressLabel;
         delete this->progressBar;
         delete abortRenderBtn;
 
         if (!success) {
+            trySetState(State::Idle);
             enable_playback(true);
             chooseInputButton->setEnabled(true);
             chooseInputAction->setEnabled(true);
             backingTrackButton->setVisible(true);
-            if (renderCancelled->load()) {
+            if (cancelled) {
                 logUI("Render aborted.");
                 QFile::remove(outputFilePath);
                 return;
             }
             logUI("Render failed.");
-            QMessageBox::critical(this, "Render Error", "Rendering failed. Check the logs.");
-            return;
-        }
-
-        QFile file(outputFilePath);
-        if (!file.exists()) {
-            qWarning() << "Output file missing:" << outputFilePath;
-            enable_playback(true);
-            chooseInputButton->setEnabled(true);
-            chooseInputAction->setEnabled(true);
-            backingTrackButton->setVisible(true);
-            QMessageBox::critical(this, "Render Error", "Output file was not created.");
+            QMessageBox::critical(this, "Render Error",
+                errorMessage.isEmpty() ? "Rendering failed. Check the logs." : errorMessage);
             return;
         }
 
@@ -231,7 +237,7 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset, const QSt
             "Prepare to preview performance.");
         logUI("Rendering finished.");
 
-        isRecording = false;
+        trySetState(State::Idle);
         enable_playback(true);
         chooseInputButton->setEnabled(true);
         chooseInputAction->setEnabled(true);
@@ -245,182 +251,29 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset, const QSt
         logUI(QString("System Latency: %1 ms").arg(offset));
         logUI(QString("Cam Offset: %1 ms").arg(videoOffset));
         logUI(QString("Audio Offset: %1 ms").arg(audioOffset));
-    };
-
-#ifdef WAKKAQT_FFMPEG_NATIVE
-    // Native render — runs in a background thread; progress bar updated via lambda.
-    // Owned by renderWatcher (see mainwindow.h) instead of a bare
-    // QThreadPool::globalInstance()->start([=]{...}): the worker lambda below
-    // captures only local value copies of the QStrings it needs (never
-    // `this`), and the completion callback is delivered through a
-    // QFutureWatcher connected with `this` as context — auto-disconnected by
-    // Qt if `this` is destroyed first, unlike the previous
-    // QMetaObject::invokeMethod(qApp, ...) dispatch, where using the
-    // (effectively immortal) qApp as context gave no such protection at all
-    // for the captured `this` inside onFinished().
-    QProgressBar *pb = this->progressBar;
-    connect(abortRenderBtn, &QPushButton::clicked, this, [this]() {
-        renderCancelled->store(true);
     });
 
-    if (renderWatcher) {
-        renderWatcher->deleteLater();
-        renderWatcher = nullptr;
-    }
-    renderWatcher = new QFutureWatcher<bool>(this);
-    connect(renderWatcher, &QFutureWatcher<bool>::finished, this, [this, onFinished]() {
-        const bool ok = renderWatcher->result();
-        QFutureWatcher<bool> *finishedWatcher = renderWatcher;
-        renderWatcher = nullptr;
-        finishedWatcher->deleteLater();
-        onFinished(ok);
-    });
+    RenderJob::Params params;
+    params.tunedAudioPath      = tunedRecorded;
+    params.webcamPath          = webcamRecorded;
+    params.playbackPath        = currentVideoFile;
+    params.rawVocalPath        = audioRecorded;
+    params.outputPath          = outputFilePath;
+    params.vocalVolume         = vocalVolume;
+    params.audioOffsetMs       = effectiveAudioOffset;
+    params.videoOffsetMs       = effectiveVideoOffset;
+    params.resolution          = setRez;
+    params.hasWebcam           = recordingHasWebcam;
+    params.videoEffectChain    = videoEffectChain;
+    params.totalDurationSeconds = getMediaDuration(currentVideoFile);
 
-    const QString tunedRecordedCopy    = tunedRecorded;
-    const QString webcamRecordedCopy   = webcamRecorded;
-    const QString currentVideoFileCopy = currentVideoFile;
-    const QString outputFilePathCopy   = outputFilePath;
-    const QString audioRecordedCopy    = audioRecorded;
-    const QString setRezCopy           = setRez;
-    const QString videoEffectChainCopy = videoEffectChain;
-    auto renderCancelledCopy = renderCancelled; // shared_ptr, safe to copy across threads
-
-    auto future = QtConcurrent::run([=]() {
-        return FFmpegNative::renderVideo(
-            tunedRecordedCopy,
-            webcamRecordedCopy,
-            currentVideoFileCopy,
-            outputFilePathCopy,
-            vocalVolume,
-            effectiveAudioOffset,
-            effectiveVideoOffset,
-            setRezCopy,
-            audioRecordedCopy,
-            renderCancelledCopy.get(),
-            [pb](double p) {
-                QMetaObject::invokeMethod(pb, [pb, p]() {
-                    pb->setValue(int(p * 100));
-                }, Qt::QueuedConnection);
-            },
-            videoEffectChainCopy);
-    });
-    renderWatcher->setFuture(future);
-#else
-    // QProcess fallback (ffmpeg must be in PATH)
-    const QString offsetFilter = (manualOffset < 0)
-        ? QString("adelay=%1|%1").arg(-manualOffset)
-        : QString("atrim=start=%1,asetpts=PTS-STARTPTS").arg(manualOffset / 1000.0);
-
-    QString videorama;
-    if (recordingHasWebcam &&
-        (outputFilePath.endsWith(".mp4", Qt::CaseInsensitive) ||
-         outputFilePath.endsWith(".avi", Qt::CaseInsensitive) ||
-         outputFilePath.endsWith(".mkv", Qt::CaseInsensitive) ||
-         outputFilePath.endsWith(".webm", Qt::CaseInsensitive)))
-    {
-        videorama = QString("[1:v]scale=s=%1[videorama];").arg(setRez);
-    }
-
-    // No camera recording exists to open as an input in this case — the
-    // playback track shifts from index 2 to index 1.
-    const QString playbackIdx = recordingHasWebcam ? "2" : "1";
-
-    QStringList arguments;
-    arguments << "-y"
-              << "-i" << tunedRecorded;
-    // -ss applies to whichever -i immediately follows it — that must stay
-    // the webcam input (it seeks past its pre-roll); with no camera there is
-    // no such input to seek into, so drop it rather than let it silently
-    // reassign to currentVideoFile below.
-    if (recordingHasWebcam) {
-        arguments << "-ss" << QString("%1ms").arg(effectiveVideoOffset)
-                  << "-i" << webcamRecorded;
-    }
-    arguments << "-i" << currentVideoFile
-              << "-filter_complex"
-              // tunedRecorded already went through the audio-masterization filter
-              // chain upstream (before VocalEnhancer), so this only applies volume/offset.
-              << QString("[0:a]%1,volume=%2[vocals];"
-                         "[%4:a][vocals]amix=inputs=2:normalize=0,aresample=async=1[wakkamix];%3")
-                     .arg(offsetFilter).arg(vocalVolume).arg(videorama).arg(playbackIdx)
-              << "-map" << "[wakkamix]";
-    if (!videorama.isEmpty())
-        arguments << "-map" << "[videorama]";
-    arguments << outputFilePath;
-
-    int totalDuration = static_cast<int>(getMediaDuration(currentVideoFile));
-
-    QProcess *process = new QProcess(this);
-    connect(abortRenderBtn, &QPushButton::clicked, this, [this, process]() {
-        renderCancelled->store(true);
-        process->kill();
-    });
-    connect(process, &QProcess::readyReadStandardError,
-            [process, totalDuration, this]() {
-        const QString out = QString::fromUtf8(process->readAllStandardError()).trimmed();
-        if (!out.isEmpty()) updateProgress(out, this->progressBar, totalDuration);
-    });
-    connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-            [this, process, onFinished](int exitCode, QProcess::ExitStatus exitStatus) {
-        process->deleteLater();
-        onFinished(exitStatus == QProcess::NormalExit && exitCode == 0);
-    });
-
-    process->start("ffmpeg", arguments);
-    if (!process->waitForStarted()) {
-        process->deleteLater();
-        layout->removeWidget(this->progressBar);
-        layout->removeWidget(progressLabel);
-        delete this->progressBar;
-        this->progressBar = nullptr;
-        progressLabel->deleteLater();
-        enable_playback(true);
-        chooseInputButton->setEnabled(true);
-        chooseInputAction->setEnabled(true);
-        backingTrackButton->setVisible(true);
-        QMessageBox::critical(this, "FFmpeg not found",
-            "Failed to start FFmpeg. Verify it is installed and available in PATH.");
-        return;
-    }
-#endif
+    m_renderJob->start(params);
 }
 
 QString MainWindow::millisecondsToSecondsString(qint64 milliseconds) {
     double seconds = milliseconds / 1000.0;
     return QString::number(seconds, 'f', 3); 
 }
-
-void MainWindow::updateProgress(const QString& output, QProgressBar* progressBar, int totalDuration) {
-    QRegularExpression timeRegex("time=(\\d{2}):(\\d{2}):(\\d{2})\\.(\\d{2})");
-    QRegularExpressionMatch match = timeRegex.match(output);
-
-    if (match.hasMatch()) {
-        bool ok1, ok2, ok3, ok4;
-        int hours       = match.captured(1).toInt(&ok1);
-        int minutes     = match.captured(2).toInt(&ok2);
-        int seconds     = match.captured(3).toInt(&ok3);
-        int centiseconds = match.captured(4).toInt(&ok4);
-
-        if (!ok1 || !ok2 || !ok3 || !ok4) {
-            qWarning() << "Error parsing FFmpeg time components";
-            return;
-        }
-
-        // Convert time to milliseconds (FFmpeg outputs centiseconds in the .xx field)
-        int elapsedMilliseconds = (hours * 3600 + minutes * 60 + seconds) * 1000
-                                  + centiseconds * 10;
-
-        int totalDurationMilliseconds = totalDuration * 1000;
-        if (totalDurationMilliseconds <= 0) {
-            qWarning() << "Total duration is not valid";
-            return;
-        }
-
-        int progressValue = static_cast<int>(100.0 * elapsedMilliseconds / totalDurationMilliseconds);
-        progressBar->setValue(qBound(0, progressValue, 100));
-    }
-}
-
 
 double MainWindow::getMediaDuration(const QString &filePath) {
 #ifdef WAKKAQT_FFMPEG_NATIVE

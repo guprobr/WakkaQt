@@ -1,9 +1,10 @@
 #include "mainwindow.h"
 #include "sndwidget.h"
+#include <QMap>
+#include <QSet>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
-    , isRecording(false)
     , webcamDialog(nullptr)
 {
 
@@ -357,17 +358,17 @@ MainWindow::MainWindow(QWidget *parent)
 
     connect(playPauseButton, &QPushButton::clicked, this, &MainWindow::onPlayPauseClicked);
     connect(stopButton, &QPushButton::clicked, this, [this]() {
-        if (!isPlayback || isRecording) return;
+        if (!isPlayback || m_state == State::Recording) return;
         vizPlayer->seek(0, true);
         vizPlayer->pause();
     });
     connect(seekBackButton, &QPushButton::clicked, this, [this]() {
-        if (!isPlayback || isRecording) return;
+        if (!isPlayback || m_state == State::Recording) return;
         const qint64 newPos = qMax(qint64(0), player->position() - 10000);
         vizPlayer->seek(newPos, true);
     });
     connect(seekFwdButton, &QPushButton::clicked, this, [this]() {
-        if (!isPlayback || isRecording) return;
+        if (!isPlayback || m_state == State::Recording) return;
         const qint64 dur    = player->duration();
         const qint64 newPos = (dur > 0) ? qMin(dur - 500, player->position() + 10000)
                                         : player->position() + 10000;
@@ -466,7 +467,7 @@ bool MainWindow::eventFilter(QObject *object, QEvent *event) {
             QPointF clickPos = mouseEvent->scenePos();  // Get the mouse click position in scene coordinates
             
             if ( progressSong && progressSongFull ) {
-                if ( !isRecording && isPlayback ) {
+                if ( m_state != State::Recording && isPlayback ) {
                     // Get progress bar position and dimensions from the actual items
                     qreal progressBarX     = progressSong->pos().x();
                     qreal progressBarY     = progressSong->pos().y();
@@ -595,8 +596,8 @@ void MainWindow::addVideoDisplayWidgetInDialog() {
 
 
 MainWindow::~MainWindow() {
-    
-     if (isRecording) {
+
+     if (m_state == State::Recording) {
         mediaRecorder->stop();
         audioRecorder->stopRecording();
         camera->stop();
@@ -726,9 +727,36 @@ qreal MainWindow::progressBarDisplayWidth() const
     return qMax(320.0, available);
 }
 
+bool MainWindow::trySetState(State next)
+{
+    // A state re-asserting itself is always a harmless no-op (e.g. an error
+    // handler that runs before any real transition happened yet) — only an
+    // actual change of state needs validating against the table below.
+    if (next == m_state)
+        return true;
+
+    static const QMap<State, QSet<State>> kAllowed = {
+        { State::Idle,       { State::Recording, State::Restoring, State::Separating } },
+        { State::Recording,  { State::Aborting, State::Finalizing, State::Idle } }, // Idle: zero-size-file failure
+        { State::Aborting,   { State::Idle } },
+        { State::Finalizing, { State::Rendering, State::Idle } },                  // Idle: any cancel branch
+        { State::Restoring,  { State::Rendering, State::Idle } },                  // Idle: failure or any cancel branch
+        { State::Rendering,  { State::Idle } },                                    // success, cancelled, or failed
+        { State::Separating, { State::Idle } },
+    };
+    if (!kAllowed.value(m_state).contains(next)) {
+        qWarning() << "MainWindow: rejected illegal state transition"
+                   << int(m_state) << "->" << int(next);
+        return false;
+    }
+    qDebug() << "MainWindow: state" << int(m_state) << "->" << int(next);
+    m_state = next;
+    return true;
+}
+
 void MainWindow::closeEvent(QCloseEvent *event)
 {
-    const bool renderActive = renderWatcher && !renderWatcher->isFinished();
+    const bool renderActive = m_renderJob && m_renderJob->isActive();
 
     int response = QMessageBox::question(
         this,
@@ -747,13 +775,12 @@ void MainWindow::closeEvent(QCloseEvent *event)
 
     // Request cancellation (the same token the "Abort Render" button uses —
     // FFmpegNative::renderVideo() checks it cooperatively in its own loops)
-    // and block until the background thread actually exits, so no worker
-    // thread can end up touching this window (or widgets like progressBar)
+    // and block until the background thread/process actually exits, so no
+    // worker can end up touching this window (or widgets like progressBar)
     // after it's destroyed.
     if (renderActive) {
-        if (renderCancelled)
-            renderCancelled->store(true);
-        renderWatcher->waitForFinished();
+        m_renderJob->cancel();
+        m_renderJob->waitForFinished();
     }
 
     event->accept(); // Call the base class implementation

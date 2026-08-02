@@ -6,7 +6,7 @@
 
 No subscriptions. No cloud. No judgment. (Well, maybe a little judgment from the pitch monitor.)
 
-Current version: **2.6.9**
+Current version: **2.7.1**
 
 ---
 
@@ -65,6 +65,7 @@ Every recording is saved to `~/.WakkaQt/library/` with a UUID folder, all source
 | MP4/MKV/WebM/MP3/WAV/FLAC playback | ✅ |
 | Microphone recording (selectable device) | ✅ |
 | Webcam recording | ✅ |
+| Audio-only recording (no webcam required) | ✅ |
 | Real-time pitch monitor (YIN, always visible) | ✅ |
 | Real-time waveform visualizer | ✅ |
 | Pitch correction (phase vocoder) | ✅ |
@@ -93,6 +94,19 @@ Every recording is saved to `~/.WakkaQt/library/` with a UUID folder, all source
 ---
 
 ## Changelog
+
+### v2.7.1 — Audio-only recording, correctness/reliability fixes across recording, render, and separation
+
+- **Recording, preview, and render now work with no camera** — a missing webcam used to hard-exit the app at startup (`chooseInputDevice()` called `exit(-1)` if the video-input list was empty, despite the README claiming webcam capture was optional). WakkaQt now falls back to audio-only end to end: device selection no longer requires a camera, `startRecording()`/`stopRecording()` skip every camera/`QMediaRecorder` call and drive the recording-started/auto-stop-at-end-of-song UI state directly instead of relying on signals a disconnected recorder never emits, and the render dialog restricts output to audio containers (MP3/FLAC/WAV/Opus) with both the native and `ffmpeg`-subprocess render paths fixed to not require a webcam file that was never recorded
+- **Fixed a real STFT/iSTFT window mismatch in the vocal separator** — the forward transform used a periodic Hann window (correctly matching how the MDX-Net model was trained) but the inverse transform used a symmetric one, breaking the perfect-reconstruction assumption overlap-add relies on and introducing amplitude-modulation artifacts into separated vocals beyond what the existing normalization step could correct for. Both now use the same periodic window
+- **SessionManager is now transactional** — sessions are built under a `.partial` directory and atomically renamed into place only on full success (via `QSaveFile` for the JSON writes), instead of a save that could fail halfway through and leave a broken, half-written session silently sitting in the library
+- **WAV and PCM are now cleanly separated everywhere** — a shared `parseWavPcm()` chunk-walking parser replaced several fixed-44-byte-offset reads; the most serious instance was `AudioAmplifier`, where the WAV header was staying attached to the audio buffer fed straight to `QAudioSink`, and being audibly played as noise at the start of every backing track
+- **VocalEnhancer processing can now be cancelled promptly** — closing the preview dialog mid-enhancement used to block on `QFutureWatcher::waitForFinished()` for however long the (uninterruptible) DSP pipeline had left to run; a cooperative `std::atomic<bool>` cancellation token is now polled inside the hot loops (phase vocoder, spectral noise gate, pitch-map builder), cutting cancel response time from the full processing duration down to under 200 ms regardless of recording length
+- **Fixed the seek step in the preview dialog's `<<`/`>>` buttons** — hardcoded to a fixed byte count that only meant a consistent ~3 seconds at one specific audio format and silently skipped a different amount of time at any other sample rate/channel count; now derived from the live `QAudioFormat` via `bytesForDuration()`
+- **`AudioRecorder` no longer reads an entire recording into memory to patch its WAV header** — it used to `readAll()` the whole file on stop, then fully reopen and rewrite it just to fix up two header fields; it now reserves the header up front and patches only those two size fields in place on stop, regardless of recording length
+- **The video-finalization poll (`ffprobe`) is now fully async** — previously ran `QProcess::waitForFinished()` with no timeout at all on a repeating 222 ms GUI-thread timer, so a slow or stuck probe could freeze the UI outright; it's now driven by `QProcess::finished()` with a 5-second watchdog, and self-schedules its next attempt only after the current one actually completes instead of risking overlapping checks
+- **ONNX model download now verifies integrity and commits atomically** — the MDX-Net model is checked against a pinned SHA-256 before ever touching disk, and written via a temp-file-then-atomic-rename (`QSaveFile`) instead of writing directly to its final path, so a crashed or interrupted download can no longer leave a corrupt file that a future launch mistakes for a complete, ready-to-load model
+- **Fixed a `setlocale` bug that could permanently pin the whole process to the C locale** — three spots in `ffmpegnative.cpp` force `LC_NUMERIC` to `"C"` while building an `libavfilter` graph (so decimal points in filter strings parse correctly regardless of system locale), but were saving `setlocale()`'s return value — which is the locale it just switched *to*, not the one it replaced — as the value to restore afterward, so the very first filter-graph build in a session would silently and permanently leave the process in the C locale
 
 ### v2.6.9 — Webcam video preview, multi-effect video filters, UI cleanup
 

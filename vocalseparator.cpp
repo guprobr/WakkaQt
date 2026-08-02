@@ -2,6 +2,8 @@
 
 #include <QDir>
 #include <QFile>
+#include <QSaveFile>
+#include <QCryptographicHash>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
@@ -33,6 +35,15 @@ static const char *MODEL_URL  =
     "https://github.com/TRvlvr/model_repo/releases/download/all_public_uvr_models/"
     "UVR-MDX-NET-Inst_HQ_3.onnx";
 static const char *MODEL_FILE = "UVR-MDX-NET-Inst_HQ_3.onnx";
+
+// GitHub's release page for this asset publishes no official checksum, so
+// this is computed from a known-good working copy rather than an
+// independently-signed source — but it still guards the model load path
+// against a truncated download, a flaky mirror, or tampering in transit,
+// which matters because the file is parsed by a C++ ONNX runtime and a
+// corrupt/malicious one is a real attack surface, not just a quality issue.
+static const char *MODEL_SHA256 =
+    "317554b07fe1ea5279a77f2b1520a41ea4b93432560c4ffd08792c30fddf9adc";
 
 // MDX-Net hop is n_fft / 4 — computed after reading model shape, not hardcoded
 
@@ -76,15 +87,36 @@ bool VocalSeparator::downloadModel(std::function<void(int)> progressFn, QString 
         return false;
     }
 
-    QFile out(modelPath());
-    if (!out.open(QIODevice::WriteOnly)) {
-        errorOut = "Cannot write model to: " + modelPath();
-        reply->deleteLater();
+    const QByteArray modelBytes = reply->readAll();
+    reply->deleteLater();
+
+    // Verify integrity before any of this ever reaches disk — a
+    // truncated/corrupt/tampered download must never be mistaken for a
+    // usable model by modelExists() (a plain QFile::exists() check) on a
+    // future launch.
+    const QByteArray actualHash =
+        QCryptographicHash::hash(modelBytes, QCryptographicHash::Sha256).toHex();
+    if (actualHash != MODEL_SHA256) {
+        errorOut = QString("Downloaded model failed the integrity check "
+                           "(expected sha256 %1, got %2). Discarding — try again.")
+                       .arg(MODEL_SHA256, QString::fromLatin1(actualHash));
         return false;
     }
-    out.write(reply->readAll());
-    out.close();
-    reply->deleteLater();
+
+    // Write to a temp file in the same directory and atomically rename into
+    // place, so a crash or interruption mid-write can never leave a partial
+    // file sitting at modelPath() that a later launch would mistake for a
+    // complete, ready-to-load model.
+    QSaveFile out(modelPath());
+    if (!out.open(QIODevice::WriteOnly)) {
+        errorOut = "Cannot write model to: " + modelPath();
+        return false;
+    }
+    out.write(modelBytes);
+    if (!out.commit()) {
+        errorOut = "Failed to finalize model file at: " + modelPath();
+        return false;
+    }
 
     if (progressFn) progressFn(100);
     return true;
@@ -219,9 +251,13 @@ static std::vector<float> computeISTFT(const MdxSpec &spec, int n_fft, int hop, 
     const int bins = n_fft / 2 + 1;
     const int half = n_fft / 2;
 
+    // Must match computeSTFT's periodic Hann exactly (n_fft, not n_fft-1) —
+    // overlap-add reconstruction requires identical analysis/synthesis
+    // windows; using the symmetric variant here broke that and introduced
+    // reconstruction artifacts on top of just an amplitude-normalization error.
     std::vector<double> win(n_fft);
     for (int i = 0; i < n_fft; ++i)
-        win[i] = 0.5 * (1.0 - std::cos(2.0 * M_PI * i / (n_fft - 1)));
+        win[i] = 0.5 * (1.0 - std::cos(2.0 * M_PI * i / n_fft));
 
     fftw_complex *inBuf =
         reinterpret_cast<fftw_complex *>(fftw_malloc(sizeof(fftw_complex) * bins));

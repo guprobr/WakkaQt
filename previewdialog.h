@@ -28,6 +28,7 @@
 #include <QTimer>
 #include <QScopedPointer>
 #include <QFutureWatcher>
+#include <atomic>
 
 class AudioAmplifier;
 
@@ -133,6 +134,12 @@ private:
     QTimer *chronosTimer = nullptr;
     QTimer *previewRebuildTimer = nullptr;
     QFutureWatcher<QByteArray> *enhanceWatcher = nullptr;
+    // Polled from inside VocalEnhancer::enhance()'s hot loops so closeEvent()
+    // can abort a long-running enhance() promptly instead of
+    // waitForFinished() blocking the GUI thread for the rest of its
+    // (otherwise uninterruptible) runtime. Reset to false at the start of
+    // every startEnhancementJob() call.
+    std::atomic<bool> enhanceCancelled{false};
 
     QString audioFilePath;
     QByteArray previewInputAudioData;

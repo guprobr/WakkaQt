@@ -271,9 +271,10 @@ void VocalEnhancer::convertToQByteArray(const QVector<double>& inputData,
 // ======================
 static double chunkRMS(const QVector<double>& x, int start, int len);
 
-QByteArray VocalEnhancer::enhance(const QByteArray& input) {
+QByteArray VocalEnhancer::enhance(const QByteArray& input, const std::atomic<bool> *cancelled) {
     qWarning() << "VocalEnhancer Input Data Size:" << input.size();
     if (input.isEmpty() || m_frameBytes <= 0) return QByteArray();
+    if (cancelled && cancelled->load()) return QByteArray();
 
     // Reset PV phase state so each recording starts with coherent phases
     resetPVState();
@@ -315,14 +316,17 @@ QByteArray VocalEnhancer::enhance(const QByteArray& input) {
         floorDb,
         noiseLearnSec,
         adaptivity,
-        lowEnergyDb
+        lowEnergyDb,
+        cancelled
     );
+    if (cancelled && cancelled->load()) return QByteArray();
 
     // Snapshot RMS after noise reduction, before pitch processing.
     // Used at the end to restore output level regardless of scale/correction amount.
     const double preProcessRMS = chunkRMS(data, 0, data.size());
 
-    processPitchCorrection(data);
+    processPitchCorrection(data, cancelled);
+    if (cancelled && cancelled->load()) return QByteArray();
 
     // ── Single-pass dynamics and exciter (run once, after all pitch work) ────
     // Previously these lived inside processPitchCorrection and compounded on
@@ -801,7 +805,7 @@ double VocalEnhancer::correctPitchChunk(QVector<double>& chunk, double prevRatio
 // chunk, causing double-windowing artifacts ("bubbles", cracks).  This version
 // builds a smooth per-PV-frame ratio array first, then runs pitchShiftContinuous()
 // exactly once over the whole signal — no outer OLA, no phase discontinuities.
-void VocalEnhancer::processPitchCorrection(QVector<double>& data) {
+void VocalEnhancer::processPitchCorrection(QVector<double>& data, const std::atomic<bool> *cancelled) {
 
     if (chunkRMS(data, 0, data.size()) < 1e-6) {
         setStatus("Enhancer: silence (bypass)", 1.0);
@@ -854,6 +858,10 @@ void VocalEnhancer::processPitchCorrection(QVector<double>& data) {
     setStatus("Building pitch correction map...");
 
     for (int f = 0; f < numFrames; ++f) {
+        if (cancelled && cancelled->load()) {
+            setStatus("Cancelled", 1.0);
+            return;
+        }
         const int pos = f * Ha;
 
         // ── Periodic pitch detection ──────────────────────────────────────
@@ -924,10 +932,14 @@ void VocalEnhancer::processPitchCorrection(QVector<double>& data) {
         frameRatios[f]     = std::pow(2.0, prevTargetCents / 1200.0);
     }
 
+    if (cancelled && cancelled->load()) {
+        setStatus("Cancelled", 1.0);
+        return;
+    }
     setStatus("Applying single-pass pitch shift...", 0.60);
 
     // ── Single-pass PV: no outer OLA, no double windowing ────────────────
-    data = pitchShiftContinuous(data, frameRatios);
+    data = pitchShiftContinuous(data, frameRatios, cancelled);
 
     // Soft-limit after PV to prevent inter-sample spikes; dynamics and harmonic
     // exciter are applied by enhance() on the fully processed signal so they
@@ -1252,7 +1264,8 @@ void VocalEnhancer::reduceNoiseSpectralGate(QVector<double>& x,
                                             double floorDb,
                                             double noiseLearnSec,
                                             double adaptivity,
-                                            double lowEnergyDb)
+                                            double lowEnergyDb,
+                                            const std::atomic<bool> *cancelled)
 {
     if (x.isEmpty()) return;
 
@@ -1364,6 +1377,8 @@ void VocalEnhancer::reduceNoiseSpectralGate(QVector<double>& x,
 
     // =============== Second pass: apply spectral gating ===============
     while (inPos + N <= x.size() && outPos + N < out.size()) {
+        if (cancelled && cancelled->load())
+            break; // leave partial `out`; caller discards it on cancellation anyway
         double frameRmsAcc = 0.0;
         for (int i = 0; i < N; ++i) {
             double s = x[inPos + i];
@@ -1582,7 +1597,8 @@ QVector<double> VocalEnhancer::timeStretchPhaseVocoder(const QVector<double>& in
 // Continuous pitch shift — one PV pass, per-frame ratio curve, no restarts
 // ─────────────────────────────────────────────────────────────────────────────
 QVector<double> VocalEnhancer::pitchShiftContinuous(const QVector<double>& in,
-                                                     const QVector<double>& frameRatio)
+                                                     const QVector<double>& frameRatio,
+                                                     const std::atomic<bool> *cancelled)
 {
     if (in.isEmpty() || frameRatio.isEmpty()) return in;
 
@@ -1624,6 +1640,8 @@ QVector<double> VocalEnhancer::pitchShiftContinuous(const QVector<double>& in,
     int frame = 0;
 
     while (inPos + N <= in.size()) {
+        if (cancelled && cancelled->load())
+            break; // leave partial `out`; caller discards it on cancellation anyway
         const double ratio = (frame < frameRatio.size())
                            ? frameRatio[frame] : frameRatio.last();
 

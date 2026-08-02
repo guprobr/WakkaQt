@@ -56,5 +56,23 @@ void writeWavHeader(QFile &file, const QAudioFormat &format, qint64 dataSize, co
 static bool isYouTubeHost(const QString& host);
 bool isSingleYouTubeVideoUrl(const QUrl& url);
 
+// A decoded WAV file's payload, kept explicitly separate from the RIFF
+// container it came out of — samples never includes the header/chunk bytes.
+// isValid() is false if parseWavPcm() couldn't make sense of the input.
+struct PcmBuffer {
+    QByteArray samples;
+    QAudioFormat format;
+    bool isValid() const { return !samples.isEmpty() && format.sampleRate() > 0; }
+};
+
+// Parses a RIFF/WAVE byte buffer by walking its actual chunk structure —
+// not by assuming a fixed 44-byte header, which silently breaks on any file
+// with extra chunks before "data" (e.g. a LIST/INFO chunk some encoders
+// add, or an extended "fmt " chunk) and, worse, leaves the header's own
+// bytes attached to what callers then treat as raw PCM samples. Returns an
+// invalid (empty-samples) PcmBuffer if `wavBytes` isn't a well-formed
+// PCM/IEEE-float WAV file.
+PcmBuffer parseWavPcm(const QByteArray &wavBytes);
+
 
 #endif

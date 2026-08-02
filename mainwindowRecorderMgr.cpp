@@ -37,12 +37,14 @@ void MainWindow::startRecording() {
         offset = 0;
         isRecording = true;
 
-        if (camera && mediaRecorder && player && vizPlayer) {
+        if (audioRecorder && player && vizPlayer) {
 
             connect(player.data(), &QMediaPlayer::positionChanged, this, &MainWindow::onPlayerPositionChanged);
-            connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onRecorderDurationChanged);
 
-            camera->start(); // prep camera first
+            if (hasCamera && camera && mediaRecorder) {
+                connect(mediaRecorder.data(), &QMediaRecorder::durationChanged, this, &MainWindow::onRecorderDurationChanged);
+                camera->start(); // prep camera first
+            }
 
             // rewind current playback to start performance
             vizPlayer->seek(0, true);
@@ -55,12 +57,20 @@ void MainWindow::startRecording() {
     #endif
 #endif
             audioRecorder->startRecording(audioRecorded); // start audio recorder
-            mediaRecorder->record(); // start recording video
-            
+            if (hasCamera && mediaRecorder) {
+                mediaRecorder->record(); // start recording video
+            } else {
+                // No camera: mediaRecorder::recorderStateChanged (connected
+                // only in the hasCamera branch of configureMediaComponents())
+                // never fires to drive the "recording started" UI update, so
+                // trigger it directly here.
+                onRecorderStateChanged(QMediaRecorder::RecordingState);
+            }
+
             player->play(); // start the show
-                       
+
         } else {
-            qWarning() << "Failed to initialize camera, media recorder or player.";
+            qWarning() << "Failed to initialize audio recorder or player.";
         }
 
     } catch (const std::exception &e) {
@@ -154,13 +164,13 @@ void MainWindow::stopRecording() {
 
         QFile fileAudio(audioRecorded);
         QFile fileCam(webcamRecorded);
-        if (fileAudio.size() > 0 && fileCam.size() > 0 ) {
+        if (fileAudio.size() > 0 && (!hasCamera || fileCam.size() > 0)) {
 
             setBanner("Finalizing recording, please wait...");
-            waitForFileFinalization(webcamRecorded, [this]() {
-                // Now video is ready, proceed safely
-                qWarning() << "VIDEO is ready. Proceeding...";
-            
+            auto finalizeRecording = [this]() {
+                // Now video (if any) is ready, proceed safely
+                qWarning() << "Proceeding with finalization...";
+
                 // DETERMINE audioOffset
                 // Pre-roll = how long the recording ran before the song started.
                 // recDuration - pos gives this directly: positive means the file
@@ -173,10 +183,14 @@ void MainWindow::stopRecording() {
                 qint64 recDuration = 1000 * getMediaDuration(audioRecorded);
                 audioOffset = recDuration - pos;
 
-                // DETERMINE videoOffset
-                recDuration = 1000 * getMediaDuration(webcamRecorded);
-                videoOffset = recDuration - pos;
-                
+                // DETERMINE videoOffset (no camera means no webcam file to measure)
+                if (hasCamera) {
+                    recDuration = 1000 * getMediaDuration(webcamRecorded);
+                    videoOffset = recDuration - pos;
+                } else {
+                    videoOffset = 0;
+                }
+
                 qWarning() << "System Latency: " << offset << " ms";
                 qWarning() << "Audio Gap: " << audioOffset << " ms";
                 qWarning() << "Video Gap: " << videoOffset << " ms";
@@ -184,7 +198,7 @@ void MainWindow::stopRecording() {
                 logUI(QString("Calculated Camera Offset: %1 ms").arg(videoOffset));
                 logUI(QString("Calculated Audio Offset: %1 ms").arg(audioOffset));
 
-                
+
 
                 QString sourceFilePath = extractedPlayback;
                 QString destinationFilePath = extractedTmpPlayback;
@@ -214,8 +228,12 @@ void MainWindow::stopRecording() {
                 qWarning() << "Recording saved successfully";
                 setBanner("Recording saved successfully!");
                 renderAgain();
+            };
 
-            });
+            if (hasCamera)
+                waitForFileFinalization(webcamRecorded, finalizeRecording);
+            else
+                finalizeRecording();
 
         } else {
             qWarning() << "*FAILURE* File size is zero.";
@@ -295,52 +313,75 @@ void MainWindow::handleRecordingError() {
 }
 
 void MainWindow::waitForFileFinalization(const QString &filePath, std::function<void()> callback) {
-    QTimer *timer = new QTimer(this);
-    int attempts = 0;
-    bool fileIsValid = false;
+    pollFileFinalization(filePath, 0, callback);
+}
 
-    connect(timer, &QTimer::timeout, this, [this, filePath, timer, callback, attempts, fileIsValid]() mutable {
+// Polls until `filePath` has a valid video stream, or bails after 30 tries.
+// Self-scheduling (each attempt only queues the next one after the current
+// check actually completes) instead of a fixed-interval repeating QTimer, so
+// checks can never overlap — the previous design relied on
+// QProcess::waitForFinished() blocking the GUI thread to guarantee that.
+// Rewritten to be fully async: the non-native ffprobe path now runs the
+// QProcess via its finished() signal instead of waitForFinished() (which had
+// no timeout at all and could block the UI thread indefinitely on a stuck
+// probe), backed by a watchdog QTimer that kills a hung process outright.
+void MainWindow::pollFileFinalization(const QString &filePath, int attempts, std::function<void()> callback) {
+    attempts++;
 
-        attempts++;
+    if (attempts > 30) {
+        qWarning() << "Timeout reached after" << attempts << "attempts.";
+        QMessageBox::critical(this, "Recorder Error", "Timeout reached. Video did not finalize properly.");
+        return;
+    }
 
-        if (attempts > 30) {
-            qWarning() << "Timeout reached after" << attempts << "attempts.";
-            timer->stop();
-            timer->deleteLater();
-            QMessageBox::critical(this, "Recorder Error", "Timeout reached. Video did not finalize properly.");
-            return;
-        }
-
-        // Check if the file has a valid video stream
-        bool isValid = false;
 #ifdef WAKKAQT_FFMPEG_NATIVE
-        isValid = FFmpegNative::hasVideoStream(filePath);
+    const bool isValid = FFmpegNative::hasVideoStream(filePath);
+    if (isValid) {
+        qDebug() << "File is a valid video.";
+        callback();
+    } else {
+        qDebug() << "File not finalized yet, retrying...";
+        QTimer::singleShot(222, this, [this, filePath, attempts, callback]() {
+            pollFileFinalization(filePath, attempts, callback);
+        });
+    }
 #else
-        QProcess *process = new QProcess(this);
-        QStringList arguments;
-        arguments << "-v" << "error"
-                  << "-select_streams" << "v:0"
-                  << "-show_entries" << "stream=codec_type"
-                  << "-of" << "default=noprint_wrappers=1:nokey=1"
-                  << filePath;
-        process->start("ffprobe", arguments);
-        process->waitForFinished();
+    QProcess *process = new QProcess(this);
+    QStringList arguments;
+    arguments << "-v" << "error"
+              << "-select_streams" << "v:0"
+              << "-show_entries" << "stream=codec_type"
+              << "-of" << "default=noprint_wrappers=1:nokey=1"
+              << filePath;
+
+    // ffprobe on a local file should return almost instantly; if it ever
+    // hangs, kill it instead of blocking forever the way an unbounded
+    // waitForFinished() could.
+    QTimer *watchdog = new QTimer(process);
+    watchdog->setSingleShot(true);
+    connect(watchdog, &QTimer::timeout, process, [process]() {
+        if (process->state() != QProcess::NotRunning)
+            process->kill();
+    });
+
+    connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            this, [this, process, filePath, attempts, callback](int, QProcess::ExitStatus) {
         const QByteArray output = process->readAllStandardOutput();
         process->deleteLater();
-        isValid = (!output.isEmpty() && output.trimmed() == "video");
-#endif
+        const bool isValid = (!output.isEmpty() && output.trimmed() == "video");
 
         if (isValid) {
             qDebug() << "File is a valid video.";
-            fileIsValid = true;
-            timer->stop();
-            timer->deleteLater();
             callback();
         } else {
             qDebug() << "File not finalized yet, retrying...";
+            QTimer::singleShot(222, this, [this, filePath, attempts, callback]() {
+                pollFileFinalization(filePath, attempts, callback);
+            });
         }
     });
 
-    timer->start(222); // Check often
-   
+    watchdog->start(5000);
+    process->start("ffprobe", arguments);
+#endif
 }

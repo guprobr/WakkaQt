@@ -372,7 +372,14 @@ void PreviewDialog::closeEvent(QCloseEvent *event)
 {
     // Cancel any in-flight enhancement future so its finished() callback
     // doesn't fire against a hidden dialog and pop up stray QMessageBoxes.
+    // enhanceCancelled is set FIRST: QFuture::cancel() alone only suppresses
+    // delivery of the result, it can't interrupt a QtConcurrent::run() task
+    // already executing — enhance() has to notice the flag itself (in its
+    // hot loops) and return early, or waitForFinished() below would block
+    // the GUI thread for however long the rest of that enhance() call was
+    // going to take anyway.
     if (enhanceWatcher && !enhanceWatcher->isFinished()) {
+        enhanceCancelled.store(true);
         enhanceWatcher->cancel();
         enhanceWatcher->waitForFinished();
     }
@@ -422,29 +429,37 @@ void PreviewDialog::setAudioFile(const QString &filePath)
             setPreviewControlsEnabled(true);
             return;
         }
-        previewInputAudioData = audioFile.readAll();
+        const QByteArray wavBytes = audioFile.readAll();
         audioFile.close();
         QFile::remove(tempAudioFile);
 
+        // parseWavPcm() walks the actual RIFF chunk structure instead of
+        // assuming a fixed 44-byte header, and — critically — never leaves
+        // header bytes attached to what everything downstream treats as raw
+        // PCM samples (VocalEnhancer::enhance(), AudioAmplifier::setAudioData(),
+        // applyFilterChainS16() all expect pure PCM, not a WAV container).
+        const PcmBuffer pcm = parseWavPcm(wavBytes);
+        if (!pcm.isValid()) {
+            qWarning() << "PreviewDialog: extracted vocal audio is not a valid WAV file";
+            QMessageBox::critical(this, "Extraction failed",
+                                  "Extracted preview audio could not be parsed.");
+            setPreviewControlsEnabled(true);
+            return;
+        }
+        previewInputAudioData = pcm.samples;
+
         // Reinitialize audio pipeline if the extracted WAV's rate differs from the
         // current format (e.g. recording at 48000 Hz vs. previous default 44100 Hz).
-        // Standard PCM WAV: channels at byte 22, sample rate at byte 24.
-        if (previewInputAudioData.size() >= 44) {
-            const int16_t wavCh   = *reinterpret_cast<const int16_t*>(
-                                        previewInputAudioData.constData() + 22);
-            const int32_t wavRate = *reinterpret_cast<const int32_t*>(
-                                        previewInputAudioData.constData() + 24);
-            if (wavRate > 0 && (wavRate != format.sampleRate() ||
-                                wavCh   != format.channelCount())) {
-                format.setSampleRate(wavRate);
-                format.setChannelCount(wavCh);
-                amplifier.reset(new AudioAmplifier(format, this));
-                connect(amplifier.data(), &AudioAmplifier::vocalPreviewChunk,
-                        vocalVisualizer, &AudioVisualizerWidget::updateVisualization);
-                vocalEnhancer.reset(new VocalEnhancer(format, this));
-                qDebug() << "PreviewDialog: audio pipeline reinitialized at"
-                         << wavRate << "Hz," << wavCh << "ch";
-            }
+        if (pcm.format.sampleRate() != format.sampleRate() ||
+            pcm.format.channelCount() != format.channelCount()) {
+            format.setSampleRate(pcm.format.sampleRate());
+            format.setChannelCount(pcm.format.channelCount());
+            amplifier.reset(new AudioAmplifier(format, this));
+            connect(amplifier.data(), &AudioAmplifier::vocalPreviewChunk,
+                    vocalVisualizer, &AudioVisualizerWidget::updateVisualization);
+            vocalEnhancer.reset(new VocalEnhancer(format, this));
+            qDebug() << "PreviewDialog: audio pipeline reinitialized at"
+                     << pcm.format.sampleRate() << "Hz," << pcm.format.channelCount() << "ch";
         }
 
 #ifdef WAKKAQT_FFMPEG_NATIVE
@@ -780,6 +795,7 @@ void PreviewDialog::startEnhancementJob()
     }
 
     pendingPreviewRebuild = false;
+    enhanceCancelled.store(false);
 
     if (enhanceWatcher) {
         enhanceWatcher->deleteLater();
@@ -813,35 +829,41 @@ void PreviewDialog::startEnhancementJob()
     connect(enhanceWatcher, &QFutureWatcher<QByteArray>::finished, this, [this]() {
         const QByteArray tunedData = enhanceWatcher->result();
 
-        QFile audioFile(tunedRecorded);
-        if (!audioFile.open(QIODevice::WriteOnly)) {
-            qWarning() << "Failed to reopen PreviewDialog output file for writing header.";
-        } else {
-            const qint64 dataSize = tunedData.size();
-            writeWavHeader(audioFile, format, dataSize, tunedData);
-            audioFile.close();
+        // A cancelled enhance() (see enhanceCancelled/closeEvent()) returns an
+        // empty buffer early instead of running to completion — skip treating
+        // that as a normal result (no point writing tunedRecorded or starting
+        // playback with nothing, and the dialog is closing anyway).
+        if (!enhanceCancelled.load() && !tunedData.isEmpty()) {
+            QFile audioFile(tunedRecorded);
+            if (!audioFile.open(QIODevice::WriteOnly)) {
+                qWarning() << "Failed to reopen PreviewDialog output file for writing header.";
+            } else {
+                const qint64 dataSize = tunedData.size();
+                writeWavHeader(audioFile, format, dataSize, tunedData);
+                audioFile.close();
+            }
+
+            amplifier->setAudioData(tunedData);
+            amplifier->setAudioOffset(newOffset);
+            amplifier->start();
+            // Resume from where the user was listening instead of rewinding to the start
+            amplifier->seekTo(m_savedPlaybackPos);
+            amplifier->setPlaybackVol(!playbackMute_option->isChecked());
+            syncVideoToAudio();
+
+            progressTimer->stop();
+            progressBar->setValue(100);
+            bannerLabel->setText(QString("Vocal Enhancement complete!  Pitch %1% · Noise %2%")
+                                 .arg(int(pitchCorrectionAmount * 100.0))
+                                 .arg(int(noiseReductionAmount * 100.0)));
+            setPreviewControlsEnabled(true);
         }
-
-        amplifier->setAudioData(tunedData);
-        amplifier->setAudioOffset(newOffset);
-        amplifier->start();
-        // Resume from where the user was listening instead of rewinding to the start
-        amplifier->seekTo(m_savedPlaybackPos);
-        amplifier->setPlaybackVol(!playbackMute_option->isChecked());
-        syncVideoToAudio();
-
-        progressTimer->stop();
-        progressBar->setValue(100);
-        bannerLabel->setText(QString("Vocal Enhancement complete!  Pitch %1% · Noise %2%")
-                             .arg(int(pitchCorrectionAmount * 100.0))
-                             .arg(int(noiseReductionAmount * 100.0)));
-        setPreviewControlsEnabled(true);
 
         QFutureWatcher<QByteArray> *finishedWatcher = enhanceWatcher;
         enhanceWatcher = nullptr;
         finishedWatcher->deleteLater();
 
-        if (pendingPreviewRebuild) {
+        if (!enhanceCancelled.load() && pendingPreviewRebuild) {
             pendingPreviewRebuild = false;
             startEnhancementJob();
         }
@@ -849,7 +871,7 @@ void PreviewDialog::startEnhancementJob()
 
     progressTimer->start(55);
     auto future = QtConcurrent::run([this, audioData = previewInputAudioData]() {
-        return vocalEnhancer->enhance(audioData);
+        return vocalEnhancer->enhance(audioData, &enhanceCancelled);
     });
     enhanceWatcher->setFuture(future);
 }

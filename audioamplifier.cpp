@@ -27,39 +27,44 @@ AudioAmplifier::AudioAmplifier(const QAudioFormat &format, QObject *parent)
         qWarning() << "Failed to open playback file!";
         return;
     }
-    playbackData = playbackFile.readAll();
+    const QByteArray wavBytes = playbackFile.readAll();
+
+    // parseWavPcm() strips the RIFF/WAV container entirely — playbackData is
+    // pure PCM from here on. It used to keep the 44-byte header attached
+    // (even re-prepending a hand-patched one after resampling below), and
+    // since playbackData is handed straight to playbackBuffer/QAudioSink
+    // with no other decoding step, those header bytes were being played as
+    // an audible transient at the start of every backing track.
+    const PcmBuffer pcm = parseWavPcm(wavBytes);
+    if (!pcm.isValid()) {
+        qWarning() << "AudioAmplifier: backing track is not a valid WAV file";
+        return;
+    }
+    playbackData = pcm.samples;
 
     // Resample backing track if its rate doesn't match the vocal format rate.
     // Both streams go through the same QAudioSink; mismatched rates cause
     // chipmunk/slow-motion effects and byte-offset seek errors.
-    if (playbackData.size() >= 44) {
-        const int16_t pbCh   = *reinterpret_cast<const int16_t*>(playbackData.constData() + 22);
-        const int32_t pbRate = *reinterpret_cast<const int32_t*>(playbackData.constData() + 24);
-        const int targetRate = audioFormat.sampleRate();
-        if (pbRate > 0 && pbRate != targetRate && pbCh == audioFormat.channelCount()) {
-            const QByteArray pcm = playbackData.mid(44);
-            const int inFrames   = pcm.size() / (pbCh * 2);
-            const int outFrames  = int(qint64(inFrames) * targetRate / pbRate);
-            QByteArray resampled(outFrames * pbCh * 2, 0);
-            const int16_t *src = reinterpret_cast<const int16_t*>(pcm.constData());
-            int16_t *dst = reinterpret_cast<int16_t*>(resampled.data());
-            for (int i = 0; i < outFrames; ++i) {
-                const double pos = double(i) * pbRate / targetRate;
-                const int i0 = std::min(static_cast<int>(pos), inFrames - 1);
-                const int i1 = std::min(i0 + 1, inFrames - 1);
-                const double f = pos - i0;
-                for (int c = 0; c < pbCh; ++c)
-                    dst[i * pbCh + c] = static_cast<int16_t>(
-                        src[i0 * pbCh + c] * (1.0 - f) + src[i1 * pbCh + c] * f);
-            }
-            QByteArray hdr = playbackData.left(44);
-            *reinterpret_cast<int32_t*>(hdr.data() +  4) = resampled.size() + 36;
-            *reinterpret_cast<int32_t*>(hdr.data() + 24) = targetRate;
-            *reinterpret_cast<int32_t*>(hdr.data() + 28) = targetRate * pbCh * 2;
-            *reinterpret_cast<int32_t*>(hdr.data() + 40) = resampled.size();
-            playbackData = hdr + resampled;
-            qDebug() << "AudioAmplifier: resampled backing" << pbRate << "Hz ->" << targetRate << "Hz";
+    const int pbCh      = pcm.format.channelCount();
+    const int pbRate     = pcm.format.sampleRate();
+    const int targetRate = audioFormat.sampleRate();
+    if (pbRate != targetRate && pbCh == audioFormat.channelCount()) {
+        const int inFrames   = playbackData.size() / (pbCh * 2);
+        const int outFrames  = int(qint64(inFrames) * targetRate / pbRate);
+        QByteArray resampled(outFrames * pbCh * 2, 0);
+        const int16_t *src = reinterpret_cast<const int16_t*>(playbackData.constData());
+        int16_t *dst = reinterpret_cast<int16_t*>(resampled.data());
+        for (int i = 0; i < outFrames; ++i) {
+            const double pos = double(i) * pbRate / targetRate;
+            const int i0 = std::min(static_cast<int>(pos), inFrames - 1);
+            const int i1 = std::min(i0 + 1, inFrames - 1);
+            const double f = pos - i0;
+            for (int c = 0; c < pbCh; ++c)
+                dst[i * pbCh + c] = static_cast<int16_t>(
+                    src[i0 * pbCh + c] * (1.0 - f) + src[i1 * pbCh + c] * f);
         }
+        playbackData = resampled;
+        qDebug() << "AudioAmplifier: resampled backing" << pbRate << "Hz ->" << targetRate << "Hz";
     }
 
     dataPushTimer.reset(new QTimer(this));
@@ -204,12 +209,20 @@ void AudioAmplifier::stop()
         dataPushTimer->stop();
 }
 
+// Was a hardcoded 514000-byte jump, which only skips ~2.7s at the format
+// this class actually runs at (48kHz/stereo/Int16) and drifts to a different
+// wall-clock duration for any other sample rate/channel count. Deriving it
+// from the live QAudioFormat keeps the seek step at a fixed time regardless
+// of format.
+static constexpr qint64 kSeekStepMs = 3000;
+
 void AudioAmplifier::seekForward()
 {
     if (!audioBuffer || !playbackBuffer)
         return;
-    if (audioBuffer->bytesAvailable() > 514000) {
-        playbackPosition = audioBuffer->pos() + 514000;
+    const qint64 seekStepBytes = audioFormat.bytesForDuration(kSeekStepMs * 1000);
+    if (audioBuffer->bytesAvailable() > seekStepBytes) {
+        playbackPosition = audioBuffer->pos() + seekStepBytes;
         audioBuffer->seek(playbackPosition);
         playbackBuffer->seek(playbackPosition);
         emitVocalPreviewChunk();
@@ -221,8 +234,9 @@ void AudioAmplifier::seekBackward()
 {
     if (!audioBuffer || !playbackBuffer)
         return;
-    if (audioBuffer->pos() - 514000 > 0) {
-        playbackPosition = audioBuffer->pos() - 514000;
+    const qint64 seekStepBytes = audioFormat.bytesForDuration(kSeekStepMs * 1000);
+    if (audioBuffer->pos() - seekStepBytes > 0) {
+        playbackPosition = audioBuffer->pos() - seekStepBytes;
         audioBuffer->seek(playbackPosition);
         playbackBuffer->seek(playbackPosition);
         emitVocalPreviewChunk();

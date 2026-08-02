@@ -8,6 +8,7 @@
 #include <QString>
 #include <QVector>
 #include <algorithm>
+#include <atomic>
 #include <fftw3.h>
 
 class VocalEnhancer : public QObject
@@ -18,7 +19,14 @@ public:
     explicit VocalEnhancer(const QAudioFormat& format, QObject *parent = nullptr);
     ~VocalEnhancer();
 
-    QByteArray enhance(const QByteArray& input);
+    // `cancelled` is polled at the start and inside the three hot loops that
+    // dominate this function's runtime on a real recording (spectral gate's
+    // main pass, the pitch-map builder, and the phase-vocoder frame loop) so
+    // a caller can abort a long-running enhance() promptly — e.g. from
+    // closeEvent() — instead of QFutureWatcher::waitForFinished() blocking
+    // the GUI thread for however long the (uninterruptible) computation was
+    // going to take anyway. Null means "never cancel", the previous behaviour.
+    QByteArray enhance(const QByteArray& input, const std::atomic<bool> *cancelled = nullptr);
     int getProgress() const;
     QString getBanner() const;
 
@@ -142,7 +150,7 @@ private:
     // Pitch correction
     double correctPitchChunk(QVector<double>& chunk, double prevRatio,
                              double pitchHzHint = 0.0);
-    void processPitchCorrection(QVector<double>& data);
+    void processPitchCorrection(QVector<double>& data, const std::atomic<bool> *cancelled = nullptr);
 
     // Windowing / interpolation
     QVector<double> createHannWindow(int size) const;
@@ -160,7 +168,8 @@ private:
 
     // Phase vocoder
     void            resetPVState();
-    QVector<double> pitchShiftContinuous(const QVector<double>& in, const QVector<double>& frameRatio);
+    QVector<double> pitchShiftContinuous(const QVector<double>& in, const QVector<double>& frameRatio,
+                                          const std::atomic<bool> *cancelled = nullptr);
     QVector<double> timeStretchPhaseVocoder(const QVector<double>& in, double stretch);
     QVector<double> pitchShiftPhaseVocoder(const QVector<double>& in, double ratio);
 
@@ -188,7 +197,8 @@ private:
                     double floorDb       = -10.0,
                     double noiseLearnSec = 0.40,
                     double adaptivity    = 0.03,
-                    double lowEnergyDb   = -45.0
+                    double lowEnergyDb   = -45.0,
+                    const std::atomic<bool> *cancelled = nullptr
                     );
 
     inline double dbToLinear(double db) const {

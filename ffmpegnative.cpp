@@ -26,8 +26,24 @@ extern "C" {
 #include <vector>
 #include <cstring>
 #include <cmath>
+#include <string>
 
 namespace FFmpegNative {
+
+// setlocale(LC_NUMERIC, "C") returns the *new* locale name ("C"), not the
+// previous one — saving that return value and passing it back to setlocale()
+// afterwards (as this code used to) just resets to "C" again, permanently
+// leaving the process in the C locale after the first call anywhere in the
+// app. Query the current locale explicitly before changing it, and copy it
+// out immediately: the pointer setlocale() returns aliases internal storage
+// that the very next setlocale() call is free to invalidate.
+static std::string forceNumericLocaleC()
+{
+    const char *cur = setlocale(LC_NUMERIC, nullptr);
+    std::string saved = cur ? cur : "C";
+    setlocale(LC_NUMERIC, "C");
+    return saved;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // getDuration
@@ -308,7 +324,7 @@ static QVector<int16_t> applyAudioFilter(const QVector<float> &input,
 
         // Force "C" locale so avfilter parses decimal points correctly regardless of
         // the system locale (e.g. "0.5" would fail on German/French locales otherwise).
-        const char *prevLocale = setlocale(LC_NUMERIC, "C");
+        const std::string prevLocale = forceNumericLocaleC();
 
         AVFilterInOut *ins = nullptr, *outs = nullptr;
         ok = (avfilter_graph_parse2(graph, fullChain.toUtf8().constData(), &ins, &outs) >= 0);
@@ -321,7 +337,7 @@ static QVector<int16_t> applyAudioFilter(const QVector<float> &input,
         ok = ok && (avfilter_graph_config(graph, nullptr) >= 0);
 
         // Restore previous locale
-        if (prevLocale) setlocale(LC_NUMERIC, prevLocale);
+        setlocale(LC_NUMERIC, prevLocale.c_str());
     }
 
     if (ok) {
@@ -408,7 +424,7 @@ QByteArray applyFilterChainS16(const QByteArray &pcmS16, int sampleRate, int cha
     if (ok) {
         const QString fullChain = filterChain + QStringLiteral(",aformat=sample_fmts=s16");
 
-        const char *prevLocale = setlocale(LC_NUMERIC, "C");
+        const std::string prevLocale = forceNumericLocaleC();
 
         AVFilterInOut *ins = nullptr, *outs = nullptr;
         ok = (avfilter_graph_parse2(graph, fullChain.toUtf8().constData(), &ins, &outs) >= 0);
@@ -420,7 +436,7 @@ QByteArray applyFilterChainS16(const QByteArray &pcmS16, int sampleRate, int cha
         avfilter_inout_free(&outs);
         ok = ok && (avfilter_graph_config(graph, nullptr) >= 0);
 
-        if (prevLocale) setlocale(LC_NUMERIC, prevLocale);
+        setlocale(LC_NUMERIC, prevLocale.c_str());
     }
 
     if (ok) {
@@ -1359,7 +1375,7 @@ static bool buildVideoFilterGraph(AVFilterGraph **graph, AVFilterContext **srcCt
 
         // Force "C" locale so avfilter parses decimal points correctly regardless
         // of the system locale (e.g. "0.5" would fail on German/French locales).
-        const char *prevLocale = setlocale(LC_NUMERIC, "C");
+        const std::string prevLocale = forceNumericLocaleC();
 
         AVFilterInOut *ins = nullptr, *outs = nullptr;
         ok = (avfilter_graph_parse2(*graph, fullChain.toUtf8().constData(), &ins, &outs) >= 0);
@@ -1371,7 +1387,7 @@ static bool buildVideoFilterGraph(AVFilterGraph **graph, AVFilterContext **srcCt
         avfilter_inout_free(&outs);
         ok = ok && (avfilter_graph_config(*graph, nullptr) >= 0);
 
-        if (prevLocale) setlocale(LC_NUMERIC, prevLocale);
+        setlocale(LC_NUMERIC, prevLocale.c_str());
     }
 
     if (!ok) {

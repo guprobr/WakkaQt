@@ -92,6 +92,14 @@ void AudioRecorder::startRecording(const QString& outputFilePath)
         return;
     }
 
+    // Reserve the 44-byte WAV header up front with placeholder (zero) size
+    // fields, so raw PCM streams in directly behind it as QAudioSource
+    // writes. stopRecording() then only has to patch the two size fields in
+    // place instead of reading the whole recording back into memory and
+    // rewriting the entire file — the old approach, which meant a full
+    // readAll() + rewrite of potentially hundreds of MB for a long take.
+    writeWavHeader(m_outputFile, m_audioFormat, 0, QByteArray());
+
     // Start recording audio
     m_audioSource->start(&m_outputFile);
     m_isRecording = true;
@@ -108,28 +116,32 @@ void AudioRecorder::stopRecording()
     // Close the output file to ensure all data is written
     m_outputFile.close();
 
-    // Open the file in read mode to get the PCM data
-    if (!m_outputFile.open(QIODevice::ReadOnly)) {
-        qWarning() << "Failed to open AudioRecorder output file for reading.";
+    // Reopen ReadWrite (not WriteOnly, which truncates) so the PCM data
+    // already on disk is left untouched — only the two WAV size fields get
+    // patched in place, at the offsets writeWavHeader() puts them at.
+    if (!m_outputFile.open(QIODevice::ReadWrite)) {
+        qWarning() << "Failed to reopen AudioRecorder output file to patch WAV header.";
+        m_isRecording = false;
         return;
     }
 
-    // Read the PCM data into a QByteArray
-    QByteArray pcmData = m_outputFile.readAll();
-    //qint64 dataSize = pcmData.size(); // Get the size of the PCM data
-
-    // Now close the file after reading
-    m_outputFile.close();
-
-    // Reopen the file in write mode to write the WAV header
-    if (!m_outputFile.open(QIODevice::WriteOnly)) {
-        qWarning() << "Failed to reopen AudioRecorder output file for writing header.";
+    static constexpr qint64 kHeaderSize = 44;
+    const qint64 dataSize = m_outputFile.size() - kHeaderSize;
+    if (dataSize < 0) {
+        qWarning() << "AudioRecorder: output file smaller than WAV header, cannot patch.";
+        m_outputFile.close();
+        m_isRecording = false;
         return;
     }
-    qint64 dataSize = pcmData.size(); // Get the size of the PCM data
-    // Write the complete WAV header and file
-    writeWavHeader(m_outputFile, m_audioFormat, dataSize, pcmData);
-    // Finalize and close the file
+
+    const qint32 chunkSize = qint32(dataSize + 36); // RIFF chunk size: data + 36 header bytes
+    const qint32 subchunk2Size = qint32(dataSize);  // "data" subchunk size
+
+    m_outputFile.seek(4); // RIFF chunk size field
+    m_outputFile.write(reinterpret_cast<const char*>(&chunkSize), sizeof(chunkSize));
+    m_outputFile.seek(40); // "data" subchunk size field
+    m_outputFile.write(reinterpret_cast<const char*>(&subchunk2Size), sizeof(subchunk2Size));
+
     m_outputFile.close();
 
     m_isRecording = false;

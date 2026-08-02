@@ -2,6 +2,7 @@
 
 #include <QDir>
 #include <QAudioFormat>
+#include <cstring>
 
 // FFMpeg filter_complexes
     const QString _audioEnhance = "aformat=channel_layouts=mono,";
@@ -225,6 +226,86 @@ void writeWavHeader(QFile &file, const QAudioFormat &format, qint64 dataSize, co
     file.write(pcmData); // Write audio data after the header
 
     qDebug() << "WAV header and audio data written.";
+}
+
+// See complexes.h. Walks actual RIFF chunks instead of assuming a fixed
+// 44-byte header, so a "fmt " chunk extension or an extra chunk (e.g. a
+// LIST/INFO block some encoders prepend before "data") doesn't shift the
+// payload out from under a fixed-offset read — and, critically, the
+// returned samples never include header bytes that would otherwise get
+// treated as (and, for anything routed straight to a QAudioSink, audibly
+// played as) audio.
+PcmBuffer parseWavPcm(const QByteArray &wavBytes)
+{
+    PcmBuffer result;
+
+    if (wavBytes.size() < 12
+        || wavBytes.mid(0, 4) != "RIFF"
+        || wavBytes.mid(8, 4) != "WAVE") {
+        qWarning() << "parseWavPcm: not a RIFF/WAVE buffer (size" << wavBytes.size() << ")";
+        return result;
+    }
+
+    quint16 audioFormatTag = 0, numChannels = 0, bitsPerSample = 0;
+    quint32 sampleRate = 0;
+    bool haveFmt = false;
+
+    qint64 pos = 12;
+    while (pos + 8 <= wavBytes.size()) {
+        const QByteArray chunkId = wavBytes.mid(pos, 4);
+        quint32 chunkSize = 0;
+        memcpy(&chunkSize, wavBytes.constData() + pos + 4, 4);
+        const qint64 dataStart = pos + 8;
+
+        if (dataStart + qint64(chunkSize) > wavBytes.size()) {
+            qWarning() << "parseWavPcm: chunk" << chunkId << "size" << chunkSize
+                       << "runs past end of buffer, stopping";
+            break;
+        }
+
+        if (chunkId == "fmt ") {
+            if (chunkSize < 16) {
+                qWarning() << "parseWavPcm: 'fmt ' chunk too small:" << chunkSize;
+                return result;
+            }
+            const char *fmt = wavBytes.constData() + dataStart;
+            memcpy(&audioFormatTag, fmt + 0, 2);
+            memcpy(&numChannels,    fmt + 2, 2);
+            memcpy(&sampleRate,     fmt + 4, 4);
+            memcpy(&bitsPerSample,  fmt + 14, 2);
+            haveFmt = true;
+        } else if (chunkId == "data") {
+            if (!haveFmt) {
+                qWarning() << "parseWavPcm: 'data' chunk arrived before 'fmt '";
+                return result;
+            }
+
+            QAudioFormat::SampleFormat sampleFormat = QAudioFormat::Unknown;
+            if (audioFormatTag == 3 && bitsPerSample == 32) sampleFormat = QAudioFormat::Float;
+            else if (bitsPerSample == 16)                   sampleFormat = QAudioFormat::Int16;
+            else if (bitsPerSample == 32)                   sampleFormat = QAudioFormat::Int32;
+            else if (bitsPerSample == 8)                    sampleFormat = QAudioFormat::UInt8;
+
+            if (sampleFormat == QAudioFormat::Unknown || numChannels == 0 || sampleRate == 0) {
+                qWarning() << "parseWavPcm: unsupported/invalid fmt —"
+                           << "tag=" << audioFormatTag << "bits=" << bitsPerSample
+                           << "channels=" << numChannels << "rate=" << sampleRate;
+                return result;
+            }
+
+            result.samples = wavBytes.mid(dataStart, int(chunkSize));
+            result.format.setSampleRate(int(sampleRate));
+            result.format.setChannelCount(int(numChannels));
+            result.format.setSampleFormat(sampleFormat);
+            return result;
+        }
+
+        // Chunks are word-aligned: an odd-sized chunk has one pad byte after it.
+        pos = dataStart + qint64(chunkSize) + (chunkSize & 1);
+    }
+
+    qWarning() << "parseWavPcm: no 'data' chunk found";
+    return result;
 }
 
 static bool isYouTubeHost(const QString& host) {

@@ -70,6 +70,11 @@ private:
     bool writeMetadata(const SessionEntry &entry);
     SessionEntry readMetadata(const QString &sessionDir);
     bool copyFile(const QString &src, const QString &dst);
+    // Guards against path traversal via a malformed/tampered id (e.g. "../../etc")
+    // reaching QDir/QFile calls built from libraryRoot() + "/" + id. Session ids
+    // are always QUuid-generated internally, but callers (Library UI, restore
+    // flows) pass them back as plain strings with no enforcement otherwise.
+    static bool isValidSessionId(const QString &id);
 };
 
 #endif // SESSIONMANAGER_H

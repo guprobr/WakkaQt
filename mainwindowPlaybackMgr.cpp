@@ -67,7 +67,12 @@ void MainWindow::updateVideoVisibility() {
 
     if ( QMediaPlayer::MediaStatus::EndOfMedia == status ) {
 
-        if ( isRecording && mediaRecorder->duration() )
+        // mediaRecorder->duration() is a sanity check that real recording has
+        // actually started before auto-stopping on a (possibly spurious)
+        // EndOfMedia status — but mediaRecorder never attaches to anything
+        // when there's no camera, so its duration stays 0 forever; skip that
+        // guard in audio-only mode instead of never auto-stopping.
+        if ( isRecording && (!hasCamera || mediaRecorder->duration()) )
             stopRecording();
 
     }

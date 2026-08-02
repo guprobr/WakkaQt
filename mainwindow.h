@@ -69,7 +69,7 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    QString Wakka_versione = "v2.6.9";
+    QString Wakka_versione = "v2.7.1";
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
@@ -118,6 +118,10 @@ private:
 
     QAudioDevice selectedDevice;
     QCameraDevice selectedCameraDevice;
+    // False when no camera was selected/available (empty video-input list, or
+    // the user picked audio only) — gates every camera/mediaRecorder codepath
+    // so WakkaQt can record, preview, and render audio-only performances.
+    bool hasCamera = false;
 
     QProgressBar *progressBar;
     int totalDuration;
@@ -193,6 +197,7 @@ private:
     void stopRecording();
     void abortRecording();
     void waitForFileFinalization(const QString &filePath, std::function<void()> callback);
+    void pollFileFinalization(const QString &filePath, int attempts, std::function<void()> callback);
     void handleRecordingError();
 
     void fetchVideo();

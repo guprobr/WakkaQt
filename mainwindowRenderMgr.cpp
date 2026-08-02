@@ -30,12 +30,20 @@ void MainWindow::renderAgain()
     // Loop until the user picks a valid output path or cancels.
     // (Previously used recursion here which could stack-overflow on repeated
     // bad-extension choices — replaced with a safe while loop.)
+    // No camera was used for this recording, so there is no video track to
+    // mux — restrict the choice to audio-only containers.
     static const QString kRenderFilter =
         "MP4 Files (*.mp4);;MKV Files (*.mkv);;WebM Files (*.webm);;AVI Files (*.avi);;"
         "MP3 Files (*.mp3);;FLAC Files (*.flac);;WAV Files (*.wav);;Opus Files (*.opus)";
-    const QStringList allowedExtensions = {"mp4","mkv","webm","avi","mp3","flac","wav","opus"};
+    static const QString kAudioOnlyRenderFilter =
+        "MP3 Files (*.mp3);;FLAC Files (*.flac);;WAV Files (*.wav);;Opus Files (*.opus)";
+    const QStringList allowedExtensions = hasCamera
+        ? QStringList{"mp4","mkv","webm","avi","mp3","flac","wav","opus"}
+        : QStringList{"mp3","flac","wav","opus"};
+    const QString &defaultSuffix = allowedExtensions.first();
     while (true) {
-        QFileDialog dlg(this, "Mix destination (default .MP4)", "", kRenderFilter);
+        QFileDialog dlg(this, "Mix destination (default ." + defaultSuffix.toUpper() + ")", "",
+                        hasCamera ? kRenderFilter : kAudioOnlyRenderFilter);
         dlg.setAcceptMode(QFileDialog::AcceptSave);
         dlg.setOption(QFileDialog::DontUseNativeDialog);
         // Only used when the user types a filename with no extension at all —
@@ -65,7 +73,8 @@ void MainWindow::renderAgain()
         if (!allowedExtensions.contains(QFileInfo(outputFilePath).suffix().toLower())) {
             QMessageBox::warning(this, "Invalid File Extension",
                 "Please choose a file with one of the following extensions:\n"
-                ".mp4, .mkv, .webm, .avi, .mp3, .flac, .wav, .opus");
+                + (hasCamera ? QString(".mp4, .mkv, .webm, .avi, .mp3, .flac, .wav, .opus")
+                             : QString(".mp3, .flac, .wav, .opus (no camera was used — audio-only)")));
             continue;
         }
 
@@ -263,26 +272,37 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset, const QSt
         : QString("atrim=start=%1,asetpts=PTS-STARTPTS").arg(manualOffset / 1000.0);
 
     QString videorama;
-    if (outputFilePath.endsWith(".mp4", Qt::CaseInsensitive) ||
-        outputFilePath.endsWith(".avi", Qt::CaseInsensitive) ||
-        outputFilePath.endsWith(".mkv", Qt::CaseInsensitive) ||
-        outputFilePath.endsWith(".webm", Qt::CaseInsensitive))
+    if (hasCamera &&
+        (outputFilePath.endsWith(".mp4", Qt::CaseInsensitive) ||
+         outputFilePath.endsWith(".avi", Qt::CaseInsensitive) ||
+         outputFilePath.endsWith(".mkv", Qt::CaseInsensitive) ||
+         outputFilePath.endsWith(".webm", Qt::CaseInsensitive)))
     {
         videorama = QString("[1:v]scale=s=%1[videorama];").arg(setRez);
     }
 
+    // No camera recording exists to open as an input in this case — the
+    // playback track shifts from index 2 to index 1.
+    const QString playbackIdx = hasCamera ? "2" : "1";
+
     QStringList arguments;
     arguments << "-y"
-              << "-i" << tunedRecorded
-              << "-ss" << QString("%1ms").arg(effectiveVideoOffset)
-              << "-i" << webcamRecorded
-              << "-i" << currentVideoFile
+              << "-i" << tunedRecorded;
+    // -ss applies to whichever -i immediately follows it — that must stay
+    // the webcam input (it seeks past its pre-roll); with no camera there is
+    // no such input to seek into, so drop it rather than let it silently
+    // reassign to currentVideoFile below.
+    if (hasCamera) {
+        arguments << "-ss" << QString("%1ms").arg(effectiveVideoOffset)
+                  << "-i" << webcamRecorded;
+    }
+    arguments << "-i" << currentVideoFile
               << "-filter_complex"
               // tunedRecorded already went through the audio-masterization filter
               // chain upstream (before VocalEnhancer), so this only applies volume/offset.
               << QString("[0:a]%1,volume=%2[vocals];"
-                         "[2:a][vocals]amix=inputs=2:normalize=0,aresample=async=1[wakkamix];%3")
-                     .arg(offsetFilter).arg(vocalVolume).arg(videorama)
+                         "[%4:a][vocals]amix=inputs=2:normalize=0,aresample=async=1[wakkamix];%3")
+                     .arg(offsetFilter).arg(vocalVolume).arg(videorama).arg(playbackIdx)
               << "-map" << "[wakkamix]";
     if (!videorama.isEmpty())
         arguments << "-map" << "[videorama]";

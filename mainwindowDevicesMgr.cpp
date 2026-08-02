@@ -108,6 +108,9 @@ void MainWindow::configureMediaComponents()
     // Setup sound level widget.
     soundLevelWidget->setInputDevice(selectedDevice);
 
+    if (!hasCamera) {
+        qDebug() << "No camera available; skipping video recorder setup (audio-only mode).";
+    } else {
     // Rebind the current camera device explicitly.
     camera->setCameraDevice(selectedCameraDevice);
 
@@ -277,6 +280,8 @@ void MainWindow::configureMediaComponents()
             this,
             &MainWindow::handleRecorderError,
             Qt::UniqueConnection);
+    } // hasCamera
+
     connect(player.data(),
             &QMediaPlayer::mediaStatusChanged,
             this,
@@ -288,7 +293,10 @@ void MainWindow::configureMediaComponents()
             &MainWindow::onPlaybackStateChanged,
             Qt::UniqueConnection);
 
-    camera->start();
+    if (hasCamera)
+        camera->start();
+
+    previewCheckbox->setEnabled(hasCamera);
 
     qDebug() << "Reconfigured media components";
 }
@@ -301,19 +309,16 @@ void MainWindow::chooseInputDevice() {
     QList<QAudioDevice> audioInputs = QMediaDevices::audioInputs();
     QList<QCameraDevice> videoInputs = QMediaDevices::videoInputs();
 
-    // Check if there are any devices available
-    if (audioInputs.isEmpty() || videoInputs.isEmpty()) {
-        QString missingDevices;
-        if (audioInputs.isEmpty()) {
-            missingDevices.append("No audio devices available.\n");
-        }
-        if (videoInputs.isEmpty()) {
-            missingDevices.append("No video devices available.");
-        }
-
-        QMessageBox::critical(this, "Device Error", missingDevices);
+    // A microphone is required — WakkaQt can't record a performance without
+    // one. A camera is optional: WakkaQt falls back to audio-only recording,
+    // preview, and render when none is available.
+    if (audioInputs.isEmpty()) {
+        QMessageBox::critical(this, "Device Error", "No audio devices available.");
         exit(-1);
         return;
+    }
+    if (videoInputs.isEmpty()) {
+        qDebug() << "No camera detected; proceeding audio-only.";
     }
 
     // Create a dialog to show the lists of devices
@@ -349,6 +354,11 @@ void MainWindow::chooseInputDevice() {
         QListWidgetItem *item = new QListWidgetItem(device.description());
         item->setData(Qt::UserRole, device.id());
         videoList->addItem(item);
+    }
+    if (videoInputs.isEmpty()) {
+        QListWidgetItem *none = new QListWidgetItem("No camera detected — will record audio-only");
+        none->setFlags(none->flags() & ~Qt::ItemIsSelectable);
+        videoList->addItem(none);
     }
     videoLayout->addWidget(videoList);
     tabWidget->addTab(videoTab, "Video Devices");
@@ -409,7 +419,10 @@ void MainWindow::chooseInputDevice() {
             soundLevelWidget->setInputDevice(selectedDevice);
         }
 
-        if (!selectedCameraDevice.isNull()) {
+        hasCamera = !selectedCameraDevice.isNull();
+        previewCheckbox->setEnabled(hasCamera);
+
+        if (hasCamera) {
             // Set up Video recording
             mediaCaptureSession.reset(new QMediaCaptureSession(this));  // Set up media session
             camera.reset(new QCamera(selectedCameraDevice, this));  // Set up camera
@@ -418,6 +431,8 @@ void MainWindow::chooseInputDevice() {
             mediaCaptureSession->setAudioInput(nullptr);
             mediaCaptureSession->setRecorder(mediaRecorder.data());
             camera->start();
+        } else {
+            qDebug() << "No camera selected; recording will be audio-only.";
         }
     });
 

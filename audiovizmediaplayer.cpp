@@ -316,16 +316,22 @@ void AudioVizMediaPlayer::loadAudioData(const QString &audioFile, const QString 
         return;
     }
 
-    *m_decodedAudioData = file.readAll();  // Read all audio data
+    const QByteArray wavBytes = file.readAll();
     file.close();
 
-    // Update format from WAV header so frame-position timing is accurate.
-    // Standard PCM WAV: sample rate at byte 24.
-    if (m_decodedAudioData->size() >= 44) {
-        const int32_t wavRate = *reinterpret_cast<const int32_t*>(
-                                    m_decodedAudioData->constData() + 24);
-        if (wavRate > 0)
-            m_audioFormat.setSampleRate(wavRate);
+    // parseWavPcm() walks the actual RIFF chunk structure and returns pure
+    // PCM — m_decodedAudioData used to include the WAV header itself (read
+    // via a fixed 44-byte offset assumption), which shifted every
+    // downstream byte-position calculation (m_framePositions, the
+    // visualizer's chunk slicing) by those 44 bytes.
+    const PcmBuffer pcm = parseWavPcm(wavBytes);
+    if (!pcm.isValid()) {
+        qWarning() << "AudioVizMediaPlayer: extracted playback audio is not a valid WAV file";
+        m_decodedAudioData->clear();
+    } else {
+        *m_decodedAudioData = pcm.samples;
+        m_audioFormat.setSampleRate(pcm.format.sampleRate());
+        m_audioFormat.setChannelCount(pcm.format.channelCount());
     }
 
     m_framePositions->clear();  // Clear any previous data

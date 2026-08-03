@@ -100,6 +100,12 @@ void MainWindow::restoreAndRender(const QString &sessionId)
     if (!trySetState(State::Restoring))
         return;
 
+    // Drop any workspace left over from a previous restore cycle before
+    // starting a new one — safe here since the state machine only lets us
+    // reach Restoring from Idle, which means whatever used the old
+    // workspace (render, or a cancel branch) has already finished with it.
+    clearRestoreWorkspace();
+
     // Closes a stale-isPlayback window: without this, transport buttons
     // re-enabled below (enable_playback(true)) could operate on whatever
     // media the *previous* session left loaded in player/vizPlayer.
@@ -108,13 +114,6 @@ void MainWindow::restoreAndRender(const QString &sessionId)
     // ── Restore artefacts ─────────────────────────────────────────────────
     SessionRepository repo;
     const RestoreResult result = repo.restoreSession(sessionId);
-
-    // mixAndRender() (called further below) must judge THIS session, not
-    // whatever camera happens to be plugged into the machine today — a
-    // restored audio-only session must not pull in a stale/unrelated webcam
-    // file, and a restored session that does have webcam footage must not
-    // get rendered audio-only just because no camera is attached right now.
-    recordingHasWebcam = result.hasWebcam;
 
     if (!result.ok) {
         trySetState(State::Idle);
@@ -126,6 +125,29 @@ void MainWindow::restoreAndRender(const QString &sessionId)
         chooseInputAction->setEnabled(true);
         return;
     }
+
+    // mixAndRender() (called further below) must judge THIS session, not
+    // whatever camera happens to be plugged into the machine today — a
+    // restored audio-only session must not pull in a stale/unrelated webcam
+    // file, and a restored session that does have webcam footage must not
+    // get rendered audio-only just because no camera is attached right now.
+    // Only assigned once restore has actually succeeded, so a failed
+    // restore never mutates this active-session flag.
+    recordingHasWebcam = result.hasWebcam;
+
+    // Render works directly out of this restore's own workspace: repoint
+    // the shared tmp-path globals so every downstream consumer (collision
+    // check below, PreviewDialog, mixAndRender()'s RenderJob::Params) reads
+    // this session's files without needing its own path plumbing. Left
+    // empty/canonical for an artefact this session doesn't have (e.g. no
+    // webcam.mkv in an audio-only session).
+    m_activeRestoreWorkspaceDir = result.workspaceDir;
+    if (!result.webcamPath.isEmpty())
+        webcamRecorded = result.webcamPath;
+    if (!result.audioPath.isEmpty())
+        audioRecorded = result.audioPath;
+    if (!result.playbackPath.isEmpty())
+        extractedTmpPlayback = result.playbackPath;
 
     currentVideoFile = result.snapshot.currentVideoFile;
     currentVideoName = result.snapshot.currentVideoName;

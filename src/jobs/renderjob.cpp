@@ -45,6 +45,10 @@ void RenderJob::waitForFinished()
 
 void RenderJob::start(const Params &params)
 {
+    if (isActive()) {
+        emit finished(false, false, "Render already in progress.");
+        return;
+    }
 #ifdef WAKKAQT_FFMPEG_NATIVE
     startNative(params);
 #else
@@ -61,12 +65,13 @@ void RenderJob::startNative(const Params &params)
         m_watcher->deleteLater();
         m_watcher = nullptr;
     }
-    m_watcher = new QFutureWatcher<bool>(this);
-    connect(m_watcher, &QFutureWatcher<bool>::finished, this, [this]() {
-        const bool ok = m_watcher->result();
-        QFutureWatcher<bool> *finishedWatcher = m_watcher;
-        m_watcher = nullptr;
-        finishedWatcher->deleteLater();
+    QFutureWatcher<bool> *watcher = new QFutureWatcher<bool>(this);
+    m_watcher = watcher;
+    connect(watcher, &QFutureWatcher<bool>::finished, this, [this, watcher]() {
+        const bool ok = watcher->result();
+        if (m_watcher == watcher)
+            m_watcher = nullptr;
+        watcher->deleteLater();
 
         if (m_cancelled->load()) {
             emit finished(false, true, QString());
@@ -114,7 +119,7 @@ void RenderJob::startNative(const Params &params)
             },
             videoEffectChain);
     });
-    m_watcher->setFuture(future);
+    watcher->setFuture(future);
 }
 #endif
 
@@ -165,10 +170,11 @@ void RenderJob::startFallback(const Params &params)
 
     const int totalDuration = static_cast<int>(params.totalDurationSeconds);
 
-    m_process = new QProcess(this);
-    connect(m_process, &QProcess::readyReadStandardError, this,
-            [this, totalDuration]() {
-        const QString out = QString::fromUtf8(m_process->readAllStandardError()).trimmed();
+    QProcess *process = new QProcess(this);
+    m_process = process;
+    connect(process, &QProcess::readyReadStandardError, this,
+            [this, process, totalDuration]() {
+        const QString out = QString::fromUtf8(process->readAllStandardError()).trimmed();
         if (out.isEmpty())
             return;
         static const QRegularExpression timeRegex("time=(\\d{2}):(\\d{2}):(\\d{2})\\.(\\d{2})");
@@ -184,11 +190,11 @@ void RenderJob::startFallback(const Params &params)
         const qint64 totalMs = qint64(totalDuration) * 1000;
         emit progress(qBound(0.0, double(elapsedMs) / double(totalMs), 1.0));
     });
-    connect(m_process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
-            [this](int exitCode, QProcess::ExitStatus exitStatus) {
-        QProcess *finishedProcess = m_process;
-        m_process = nullptr;
-        finishedProcess->deleteLater();
+    connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
+            [this, process](int exitCode, QProcess::ExitStatus exitStatus) {
+        if (m_process == process)
+            m_process = nullptr;
+        process->deleteLater();
 
         if (m_cancelled->load()) {
             emit finished(false, true, QString());
@@ -205,10 +211,11 @@ void RenderJob::startFallback(const Params &params)
         emit finished(true, false, QString());
     });
 
-    m_process->start("ffmpeg", arguments);
-    if (!m_process->waitForStarted()) {
-        m_process->deleteLater();
-        m_process = nullptr;
+    process->start("ffmpeg", arguments);
+    if (!process->waitForStarted()) {
+        if (m_process == process)
+            m_process = nullptr;
+        process->deleteLater();
         emit finished(false, false,
             "Failed to start FFmpeg. Verify it is installed and available in PATH.");
         return;

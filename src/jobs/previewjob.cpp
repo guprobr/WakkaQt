@@ -26,8 +26,13 @@ void PreviewJob::waitForIdle()
         m_enhanceWatcher->cancel();
         m_enhanceWatcher->waitForFinished();
     }
-    if (m_extractWatcher && !m_extractWatcher->isFinished())
+    if (m_extractWatcher && !m_extractWatcher->isFinished()) {
+        // Requests FFmpegNative::extractAudio() to bail out of its decode
+        // loop on the next iteration instead of just blocking here until it
+        // runs to completion on its own.
+        m_extractCancelled.store(true);
         m_extractWatcher->waitForFinished();
+    }
     if (m_extractProcess) {
         m_extractProcess->kill();
         m_extractProcess->waitForFinished();
@@ -44,17 +49,34 @@ void PreviewJob::extract(const ExtractParams &params)
 {
     const QString destTempFile = params.destTempFile;
 
+    // Both paths below write to the same caller-owned destTempFile, so a
+    // prior in-flight extraction must be stopped (not just abandoned) before
+    // starting a new one — otherwise two writers could race on that path.
+    // Cancel-and-wait instead of a plain reject: extract() replacing a
+    // still-running extraction (e.g. the user reopens the preview on a new
+    // file before the old one finished) is the normal, expected case here.
+    if (m_extractWatcher && !m_extractWatcher->isFinished()) {
+        m_extractCancelled.store(true);
+        m_extractWatcher->waitForFinished();
+    }
+    if (m_extractProcess) {
+        m_extractProcess->kill();
+        m_extractProcess->waitForFinished();
+    }
+    m_extractCancelled.store(false);
+
 #ifdef WAKKAQT_FFMPEG_NATIVE
     if (m_extractWatcher) {
         m_extractWatcher->deleteLater();
         m_extractWatcher = nullptr;
     }
-    m_extractWatcher = new QFutureWatcher<bool>(this);
-    connect(m_extractWatcher, &QFutureWatcher<bool>::finished, this, [this, destTempFile]() {
-        const bool ok = m_extractWatcher->result();
-        QFutureWatcher<bool> *finishedWatcher = m_extractWatcher;
-        m_extractWatcher = nullptr;
-        finishedWatcher->deleteLater();
+    QFutureWatcher<bool> *watcher = new QFutureWatcher<bool>(this);
+    m_extractWatcher = watcher;
+    connect(watcher, &QFutureWatcher<bool>::finished, this, [this, watcher, destTempFile]() {
+        const bool ok = watcher->result();
+        if (m_extractWatcher == watcher)
+            m_extractWatcher = nullptr;
+        watcher->deleteLater();
 
         if (!ok) {
             emit extractionFailed("Native audio extraction failed.");
@@ -65,18 +87,19 @@ void PreviewJob::extract(const ExtractParams &params)
 
     const QString sourceFile = params.sourceFile;
     const qint64 trimOffset  = params.trimOffsetMs;
-    auto extractFuture = QtConcurrent::run([sourceFile, destTempFile, trimOffset]() {
+    std::atomic<bool> *cancelFlag = &m_extractCancelled;
+    auto extractFuture = QtConcurrent::run([sourceFile, destTempFile, trimOffset, cancelFlag]() {
         // Extract stereo (no mono hint — VocalEnhancer handles channel mixing internally)
-        return FFmpegNative::extractAudio(sourceFile, destTempFile, trimOffset);
+        return FFmpegNative::extractAudio(sourceFile, destTempFile, trimOffset, {}, cancelFlag);
     });
-    m_extractWatcher->setFuture(extractFuture);
+    watcher->setFuture(extractFuture);
 #else
     if (m_extractProcess) {
-        m_extractProcess->kill();
         m_extractProcess->deleteLater();
         m_extractProcess = nullptr;
     }
-    m_extractProcess = new QProcess(this);
+    QProcess *process = new QProcess(this);
+    m_extractProcess = process;
     QStringList arguments;
     arguments << "-y"
               << "-i" << params.sourceFile
@@ -92,11 +115,11 @@ void PreviewJob::extract(const ExtractParams &params)
               << "-async" << "1"
               << destTempFile;
 
-    connect(m_extractProcess, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
-            [this, destTempFile](int exitCode, QProcess::ExitStatus exitStatus) {
-        QProcess *finishedProcess = m_extractProcess;
-        m_extractProcess = nullptr;
-        finishedProcess->deleteLater();
+    connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
+            [this, process, destTempFile](int exitCode, QProcess::ExitStatus exitStatus) {
+        if (m_extractProcess == process)
+            m_extractProcess = nullptr;
+        process->deleteLater();
 
         if (exitStatus == QProcess::CrashExit || exitCode != 0) {
             emit extractionFailed("FFmpeg process failed.");
@@ -105,10 +128,11 @@ void PreviewJob::extract(const ExtractParams &params)
         onExtractionFinished(true, destTempFile);
     });
 
-    m_extractProcess->start("ffmpeg", arguments);
-    if (!m_extractProcess->waitForStarted()) {
-        m_extractProcess->deleteLater();
-        m_extractProcess = nullptr;
+    process->start("ffmpeg", arguments);
+    if (!process->waitForStarted()) {
+        if (m_extractProcess == process)
+            m_extractProcess = nullptr;
+        process->deleteLater();
         emit extractionFailed("Failed to start FFmpeg.");
     }
 #endif
@@ -180,12 +204,13 @@ bool PreviewJob::enhance(const QByteArray &pcmData, const QAudioFormat &format,
     m_enhancer->setReverbMix(params.reverbMix);
     m_enhancer->setScalePreset(params.scalePreset, params.keyNote);
 
-    m_enhanceWatcher = new QFutureWatcher<QByteArray>(this);
-    connect(m_enhanceWatcher, &QFutureWatcher<QByteArray>::finished, this, [this]() {
-        const QByteArray tunedData = m_enhanceWatcher->result();
-        QFutureWatcher<QByteArray> *finishedWatcher = m_enhanceWatcher;
-        m_enhanceWatcher = nullptr;
-        finishedWatcher->deleteLater();
+    QFutureWatcher<QByteArray> *watcher = new QFutureWatcher<QByteArray>(this);
+    m_enhanceWatcher = watcher;
+    connect(watcher, &QFutureWatcher<QByteArray>::finished, this, [this, watcher]() {
+        const QByteArray tunedData = watcher->result();
+        if (m_enhanceWatcher == watcher)
+            m_enhanceWatcher = nullptr;
+        watcher->deleteLater();
 
         // A cancelled enhance() returns an empty buffer early — still
         // forwarded as-is; the caller checks emptiness/cancellation the
@@ -197,6 +222,6 @@ bool PreviewJob::enhance(const QByteArray &pcmData, const QAudioFormat &format,
     auto future = QtConcurrent::run([enhancer, pcmData, this]() {
         return enhancer->enhance(pcmData, &m_enhanceCancelled);
     });
-    m_enhanceWatcher->setFuture(future);
+    watcher->setFuture(future);
     return true;
 }

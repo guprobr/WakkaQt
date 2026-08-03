@@ -68,6 +68,7 @@ private:
 
     QFutureWatcher<bool> *m_extractWatcher = nullptr; // native path
     QProcess *m_extractProcess = nullptr;              // QProcess fallback path
+    std::atomic<bool> m_extractCancelled{false};
     QFutureWatcher<QByteArray> *m_enhanceWatcher = nullptr;
     std::atomic<bool> m_enhanceCancelled{false};
 };

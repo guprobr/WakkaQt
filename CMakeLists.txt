@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 # Project name
-project(WakkaQt VERSION 2.8.4 LANGUAGES CXX)
+project(WakkaQt VERSION 2.8.6 LANGUAGES CXX)
 
 # Set the C++ standard
 set(CMAKE_CXX_STANDARD 17)
@@ -166,17 +166,37 @@ endif()
 qt_add_resources(resources resources.qrc)
 message(STATUS "Resources added: ${resources}")
 
+# --- Source tree layout ---------------------------------------------------
+# src/core   shared globals/types (complexes.*), session persistence, Logger
+# src/dsp    pure DSP — vocal enhancement + vocal separation (MDX-Net)
+# src/media  multimedia infrastructure — FFmpeg wrapper, recording, playback
+# src/jobs   background-work QObjects (RenderJob/PreviewJob/VocalSeparationJob)
+# src/ui     MainWindow, dialogs, widgets
+#
+# Every source file still uses bare #include "foo.h" regardless of which of
+# these directories it (or foo.h) lives in — all five are added as PUBLIC
+# include dirs on every target below, so this reorganization needed no
+# #include edits and carries no risk of resolving the wrong same-named header.
+set(WAKKA_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src)
+set(WAKKA_INCLUDE_DIRS
+    ${WAKKA_SRC_DIR}/core
+    ${WAKKA_SRC_DIR}/dsp
+    ${WAKKA_SRC_DIR}/media
+    ${WAKKA_SRC_DIR}/jobs
+    ${WAKKA_SRC_DIR}/ui
+)
+
 # --- wakkaqt_dsp: pure DSP — vocal enhancement (pitch/noise/reverb) + vocal
 # separation (MDX-Net). No dependency on multimedia-infra or Widgets, except
 # vocalseparator.cpp's optional native decode path (see below). ---
 add_library(wakkaqt_dsp STATIC
-    vocalenhancer.cpp
-    vocalenhancer.h
-    vocalseparator.cpp
-    vocalseparator.h
+    src/dsp/vocalenhancer.cpp
+    src/dsp/vocalenhancer.h
+    src/dsp/vocalseparator.cpp
+    src/dsp/vocalseparator.h
 )
 target_include_directories(wakkaqt_dsp PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${WAKKA_INCLUDE_DIRS}
     ${FFTW3_INCLUDE_DIR}
 )
 target_link_libraries(wakkaqt_dsp PUBLIC
@@ -195,14 +215,14 @@ endif()
 # --- wakkaqt_media: multimedia infrastructure — FFmpeg wrapper, audio
 # recording, and playback/extraction. ---
 add_library(wakkaqt_media STATIC
-    ffmpegnative.cpp
-    ffmpegnative.h
-    audiorecorder.cpp
-    audiorecorder.h
-    audiovizmediaplayer.cpp
-    audiovizmediaplayer.h
+    src/media/ffmpegnative.cpp
+    src/media/ffmpegnative.h
+    src/media/audiorecorder.cpp
+    src/media/audiorecorder.h
+    src/media/audiovizmediaplayer.cpp
+    src/media/audiovizmediaplayer.h
 )
-target_include_directories(wakkaqt_media PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(wakkaqt_media PUBLIC ${WAKKA_INCLUDE_DIRS})
 target_link_libraries(wakkaqt_media PUBLIC
     Qt6::Core
     Qt6::Gui
@@ -229,40 +249,41 @@ endif()
 
 # Add the executable
 add_executable(${PROJECT_NAME}
-    main.cpp
-    mainwindow.cpp
-    mainwindowDevicesMgr.cpp
-    mainwindowPlaybackMgr.cpp
-    mainwindowRecorderMgr.cpp
-    mainwindowRenderMgr.cpp
-    mainwindowLibraryMgr.cpp
-    renderjob.cpp
-    complexes.cpp
-    sndwidget.cpp
-    pitchmonitorwidget.cpp
-    previewdialog.cpp
-    previewjob.cpp
-    previewvideowidget.cpp
-    audioamplifier.cpp
-    audiovisualizerwidget.cpp
-    DownloadDialog.cpp
-    sessionrepository.cpp
-    librarydialog.cpp
-    mainwindowSeparatorMgr.cpp
-    youtubesearchdialog.cpp
-    mainwindow.h
-    complexes.h
-    sndwidget.h
-    pitchmonitorwidget.h
-    previewdialog.h
-    previewvideowidget.h
-    audioamplifier.h
-    audiovisualizerwidget.h
-    DownloadDialog.h
-    sessionrepository.h
-    librarydialog.h
-    youtubesearchdialog.h
-    Logger.h
+    src/main.cpp
+    src/ui/mainwindow.cpp
+    src/ui/mainwindowDevicesMgr.cpp
+    src/ui/mainwindowPlaybackMgr.cpp
+    src/ui/mainwindowRecorderMgr.cpp
+    src/ui/mainwindowRenderMgr.cpp
+    src/ui/mainwindowLibraryMgr.cpp
+    src/ui/mainwindowSeparatorMgr.cpp
+    src/jobs/renderjob.cpp
+    src/jobs/vocalseparationjob.cpp
+    src/jobs/previewjob.cpp
+    src/core/complexes.cpp
+    src/core/sessionrepository.cpp
+    src/ui/sndwidget.cpp
+    src/ui/pitchmonitorwidget.cpp
+    src/ui/previewdialog.cpp
+    src/ui/previewvideowidget.cpp
+    src/media/audioamplifier.cpp
+    src/ui/audiovisualizerwidget.cpp
+    src/ui/DownloadDialog.cpp
+    src/ui/librarydialog.cpp
+    src/ui/youtubesearchdialog.cpp
+    src/ui/mainwindow.h
+    src/core/complexes.h
+    src/ui/sndwidget.h
+    src/ui/pitchmonitorwidget.h
+    src/ui/previewdialog.h
+    src/ui/previewvideowidget.h
+    src/media/audioamplifier.h
+    src/ui/audiovisualizerwidget.h
+    src/ui/DownloadDialog.h
+    src/core/sessionrepository.h
+    src/ui/librarydialog.h
+    src/ui/youtubesearchdialog.h
+    src/core/Logger.h
     ${resources}
 )
 
@@ -281,7 +302,7 @@ target_link_libraries(${PROJECT_NAME}
 
 # Include headers
 target_include_directories(${PROJECT_NAME} PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${WAKKA_INCLUDE_DIRS}
 )
 
 # Keep qDebug/qWarning/etc. file+line context available even in Release

@@ -45,6 +45,10 @@ static const char *MODEL_FILE = "UVR-MDX-NET-Inst_HQ_3.onnx";
 static const char *MODEL_SHA256 =
     "317554b07fe1ea5279a77f2b1520a41ea4b93432560c4ffd08792c30fddf9adc";
 
+static bool verifyModelHash(const QByteArray &bytes) {
+    return QCryptographicHash::hash(bytes, QCryptographicHash::Sha256).toHex() == MODEL_SHA256;
+}
+
 // MDX-Net hop is n_fft / 4 — computed after reading model shape, not hardcoded
 
 // ---------- public API ---------------------------------------------------
@@ -127,10 +131,15 @@ bool VocalSeparator::downloadModel(std::function<void(int)> progressFn, QString 
 // =========================================================================
 
 // Decode media file → interleaved float32 stereo at 44100 Hz.
-static std::vector<float> decodeToFloat(const QString &input, QString &err) {
+static std::vector<float> decodeToFloat(const QString &input, QString &err,
+                                        const std::atomic<bool> *cancelled = nullptr) {
 #ifdef WAKKAQT_FFMPEG_NATIVE
-    std::vector<float> pcm = FFmpegNative::decodeToFloatStereo(input);
-    if (pcm.empty()) err = "FFmpegNative::decodeToFloatStereo failed for: " + input;
+    std::vector<float> pcm = FFmpegNative::decodeToFloatStereo(input, cancelled);
+    if (pcm.empty()) {
+        err = (cancelled && cancelled->load())
+            ? "Cancelled"
+            : "FFmpegNative::decodeToFloatStereo failed for: " + input;
+    }
     return pcm;
 #else
     const QString tmp = QDir::tempPath() + "/wakka_sep_in.f32";
@@ -156,10 +165,13 @@ static std::vector<float> decodeToFloat(const QString &input, QString &err) {
 
 // Write interleaved float32 stereo → WAV.
 static bool writeFloatWav(const std::vector<float> &pcm,
-                          const QString &outPath, QString &err) {
+                          const QString &outPath, QString &err,
+                          const std::atomic<bool> *cancelled = nullptr) {
 #ifdef WAKKAQT_FFMPEG_NATIVE
-    if (!FFmpegNative::writeFloatWav(pcm, outPath)) {
-        err = "FFmpegNative::writeFloatWav failed for: " + outPath;
+    if (!FFmpegNative::writeFloatWav(pcm, outPath, cancelled)) {
+        err = (cancelled && cancelled->load())
+            ? "Cancelled"
+            : "FFmpegNative::writeFloatWav failed for: " + outPath;
         return false;
     }
     return true;
@@ -198,8 +210,11 @@ struct MdxSpec {
     }
 };
 
-// Forward STFT: interleaved float32 stereo → MdxSpec
-static MdxSpec computeSTFT(const std::vector<float> &stereo, int n_fft, int hop) {
+// Forward STFT: interleaved float32 stereo → MdxSpec. Stops early (returning
+// a partially-filled spec — the caller checks `cancelled` right after and
+// discards it) if cancelled becomes true mid-transform.
+static MdxSpec computeSTFT(const std::vector<float> &stereo, int n_fft, int hop,
+                           const std::atomic<bool> *cancelled = nullptr) {
     const int bins  = n_fft / 2 + 1;
     const int total = int(stereo.size()) / 2; // per-channel samples
     const int half  = n_fft / 2;
@@ -222,6 +237,8 @@ static MdxSpec computeSTFT(const std::vector<float> &stereo, int n_fft, int hop)
     MdxSpec spec(bins, frames);
 
     for (int f = 0; f < frames; ++f) {
+        if (cancelled && cancelled->load())
+            break;
         const int center = f * hop;
 
         for (int stereoIdx = 0; stereoIdx < 2; ++stereoIdx) {
@@ -246,8 +263,11 @@ static MdxSpec computeSTFT(const std::vector<float> &stereo, int n_fft, int hop)
     return spec;
 }
 
-// Inverse STFT: MdxSpec → interleaved float32 stereo
-static std::vector<float> computeISTFT(const MdxSpec &spec, int n_fft, int hop, int totalSamples) {
+// Inverse STFT: MdxSpec → interleaved float32 stereo. Stops early (returning
+// partial audio — the caller checks `cancelled` right after and discards it)
+// if cancelled becomes true mid-transform.
+static std::vector<float> computeISTFT(const MdxSpec &spec, int n_fft, int hop, int totalSamples,
+                                       const std::atomic<bool> *cancelled = nullptr) {
     const int bins = n_fft / 2 + 1;
     const int half = n_fft / 2;
 
@@ -268,6 +288,8 @@ static std::vector<float> computeISTFT(const MdxSpec &spec, int n_fft, int hop, 
     std::vector<float> norm(totalSamples, 0.f);
 
     for (int f = 0; f < spec.frames; ++f) {
+        if (cancelled && cancelled->load())
+            break;
         const int center = f * hop;
 
         for (int stereoIdx = 0; stereoIdx < 2; ++stereoIdx) {
@@ -314,136 +336,174 @@ QString VocalSeparator::separate(const QString &inputFile,
         return {};
     }
 
+    // modelExists() only checks the file is present, not that its contents
+    // still match what downloadModel() verified — a model can be truncated
+    // or altered on disk after that (disk error, manual tampering, a copy
+    // that got interrupted). Catch that before it ever reaches the ONNX
+    // Runtime rather than let a corrupt file surface as a cryptic load error.
+    {
+        QFile modelFile(modelPath());
+        if (!modelFile.open(QIODevice::ReadOnly)) {
+            errorOut = "Cannot read model file at: " + modelPath();
+            return {};
+        }
+        const QByteArray modelBytes = modelFile.readAll();
+        modelFile.close();
+        if (!verifyModelHash(modelBytes)) {
+            const QString corruptPath = modelPath() + ".corrupt";
+            QFile::remove(corruptPath);
+            QFile::rename(modelPath(), corruptPath);
+            errorOut = "Model file failed its integrity check and was moved to "
+                       + corruptPath + " — please re-download it.";
+            return {};
+        }
+    }
+
     if (progressFn) progressFn(0);
 
     // 1. Decode to interleaved float32 stereo at 44100 Hz
-    std::vector<float> stereo = decodeToFloat(inputFile, errorOut);
+    std::vector<float> stereo = decodeToFloat(inputFile, errorOut, cancelled);
     if (stereo.empty()) return {};
     const int totalSamples = int(stereo.size()) / 2;
 
     if (progressFn) progressFn(4);
 
-    // 2. Load ONNX model and query shape
-    Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "MDXSep");
-    Ort::SessionOptions opts;
-    opts.SetIntraOpNumThreads(4);
-    opts.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
+    // 2-4. Load ONNX model and run chunked inference. Ort::Session's
+    // constructor and session.Run() both throw Ort::Exception on failure
+    // (e.g. an incompatible/malformed model, unsupported ops, OOM) —
+    // separate() runs on a QtConcurrent worker thread, where an uncaught
+    // exception calls std::terminate() and crashes the whole app instead of
+    // surfacing as an errorOut string, so every ONNX Runtime call is
+    // confined to this try block.
+    int n_fft = 0, hop = 1024;
+    MdxSpec outSpec(0, 0);
+    try {
+        Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "MDXSep");
+        Ort::SessionOptions opts;
+        opts.SetIntraOpNumThreads(4);
+        opts.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
 #ifdef _WIN32
-    std::wstring wModelPath = modelPath().toStdWString();
-    Ort::Session session(env, wModelPath.c_str(), opts);
+        std::wstring wModelPath = modelPath().toStdWString();
+        Ort::Session session(env, wModelPath.c_str(), opts);
 #else
-    std::string sModelPath = modelPath().toStdString();
-    Ort::Session session(env, sModelPath.c_str(), opts);
+        std::string sModelPath = modelPath().toStdString();
+        Ort::Session session(env, sModelPath.c_str(), opts);
 #endif
-    Ort::AllocatorWithDefaultOptions allocator;
+        Ort::AllocatorWithDefaultOptions allocator;
 
-    // Input shape: [1, 4, bins, dim_t]
-    auto inputInfo = session.GetInputTypeInfo(0);
-    auto inputShape = inputInfo.GetTensorTypeAndShapeInfo().GetShape();
-    if (inputShape.size() < 4 || inputShape[1] != 4) {
-        errorOut = QString("Unexpected MDX model input shape (expected [1,4,bins,dim_t]), got %1 dims")
-                       .arg(inputShape.size());
-        return {};
-    }
-    const int bins  = int(inputShape[2]);
-    const int dim_t_raw = int(inputShape[3]);
-    const int dim_t = (dim_t_raw > 0) ? dim_t_raw : 256; // guard against dynamic axis
-    const int n_fft = (bins - 1) * 2;
-    const int hop   = 1024; // MDX-Net Inst_HQ_3 training convention
-
-    qDebug() << "[VocalSep] n_fft=" << n_fft << "hop=" << hop
-             << "bins=" << bins << "dim_t=" << dim_t;
-
-    auto inNamePtr  = session.GetInputNameAllocated(0, allocator);
-    auto outNamePtr = session.GetOutputNameAllocated(0, allocator);
-    const char *inNames[]  = {inNamePtr.get()};
-    const char *outNames[] = {outNamePtr.get()};
-    auto memInfo = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
-
-    if (progressFn) progressFn(6);
-
-    // 3. STFT
-    MdxSpec spec = computeSTFT(stereo, n_fft, hop);
-
-    if (progressFn) progressFn(18);
-
-    // 4. Trim-based chunking with context margin
-    //    Each model call gets dim_t frames.
-    //    TRIM frames on each side provide temporal context — their output is discarded.
-    //    GEN frames are the usable centre output per chunk.
-    //    This matches the audio-separator convention and eliminates boundary artefacts.
-    const int TRIM = std::max(1, dim_t / 8);
-    const int GEN  = dim_t - 2 * TRIM;
-
-    MdxSpec outSpec(bins, spec.frames);
-    std::vector<float> chunk(4 * bins * dim_t);
-    std::array<int64_t, 4> inShape = {1, 4, bins, dim_t};
-
-    // Count chunks for progress
-    int totalChunks = 0;
-    for (int i = 0; i < spec.frames; i += GEN) ++totalChunks;
-    int chunksDone = 0;
-
-    for (int i = 0; i < spec.frames; i += GEN) {
-        if (cancelled && cancelled->load()) {
-            errorOut = "Cancelled";
+        // Input shape: [1, 4, bins, dim_t]
+        auto inputInfo = session.GetInputTypeInfo(0);
+        auto inputShape = inputInfo.GetTensorTypeAndShapeInfo().GetShape();
+        if (inputShape.size() < 4 || inputShape[1] != 4) {
+            errorOut = QString("Unexpected MDX model input shape (expected [1,4,bins,dim_t]), got %1 dims")
+                           .arg(inputShape.size());
             return {};
         }
+        const int bins  = int(inputShape[2]);
+        const int dim_t_raw = int(inputShape[3]);
+        const int dim_t = (dim_t_raw > 0) ? dim_t_raw : 256; // guard against dynamic axis
+        n_fft = (bins - 1) * 2;
+        hop   = 1024; // MDX-Net Inst_HQ_3 training convention
 
-        // Input window [src_start, src_end) in spectrogram frame indices
-        const int src_start = i - TRIM;
-        const int src_end   = i + GEN + TRIM; // = i + dim_t - TRIM
+        qDebug() << "[VocalSep] n_fft=" << n_fft << "hop=" << hop
+                 << "bins=" << bins << "dim_t=" << dim_t;
 
-        // Fill chunk — zero-pad at start/end if out of bounds
-        std::fill(chunk.begin(), chunk.end(), 0.f);
-        for (int ch = 0; ch < 4; ++ch) {
-            for (int b = 0; b < bins; ++b) {
-                for (int t = 0; t < dim_t; ++t) {
-                    const int f = src_start + t;
-                    if (f < 0 || f >= spec.frames) continue;
-                    chunk[ch * bins * dim_t + b * dim_t + t] = spec.ch[ch][b * spec.frames + f];
+        auto inNamePtr  = session.GetInputNameAllocated(0, allocator);
+        auto outNamePtr = session.GetOutputNameAllocated(0, allocator);
+        const char *inNames[]  = {inNamePtr.get()};
+        const char *outNames[] = {outNamePtr.get()};
+        auto memInfo = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+
+        if (progressFn) progressFn(6);
+
+        // 3. STFT
+        MdxSpec spec = computeSTFT(stereo, n_fft, hop, cancelled);
+        if (cancelled && cancelled->load()) { errorOut = "Cancelled"; return {}; }
+
+        if (progressFn) progressFn(18);
+
+        // 4. Trim-based chunking with context margin
+        //    Each model call gets dim_t frames.
+        //    TRIM frames on each side provide temporal context — their output is discarded.
+        //    GEN frames are the usable centre output per chunk.
+        //    This matches the audio-separator convention and eliminates boundary artefacts.
+        const int TRIM = std::max(1, dim_t / 8);
+        const int GEN  = dim_t - 2 * TRIM;
+
+        outSpec = MdxSpec(bins, spec.frames);
+        std::vector<float> chunk(4 * bins * dim_t);
+        std::array<int64_t, 4> inShape = {1, 4, bins, dim_t};
+
+        // Count chunks for progress
+        int totalChunks = 0;
+        for (int i = 0; i < spec.frames; i += GEN) ++totalChunks;
+        int chunksDone = 0;
+
+        for (int i = 0; i < spec.frames; i += GEN) {
+            if (cancelled && cancelled->load()) {
+                errorOut = "Cancelled";
+                return {};
+            }
+
+            // Input window [src_start, src_end) in spectrogram frame indices
+            const int src_start = i - TRIM;
+            const int src_end   = i + GEN + TRIM; // = i + dim_t - TRIM
+
+            // Fill chunk — zero-pad at start/end if out of bounds
+            std::fill(chunk.begin(), chunk.end(), 0.f);
+            for (int ch = 0; ch < 4; ++ch) {
+                for (int b = 0; b < bins; ++b) {
+                    for (int t = 0; t < dim_t; ++t) {
+                        const int f = src_start + t;
+                        if (f < 0 || f >= spec.frames) continue;
+                        chunk[ch * bins * dim_t + b * dim_t + t] = spec.ch[ch][b * spec.frames + f];
+                    }
                 }
             }
-        }
 
-        Ort::Value inTensor = Ort::Value::CreateTensor<float>(
-            memInfo, chunk.data(), chunk.size(), inShape.data(), inShape.size());
-        auto outTensors = session.Run(Ort::RunOptions{nullptr},
-                                      inNames, &inTensor, 1, outNames, 1);
+            Ort::Value inTensor = Ort::Value::CreateTensor<float>(
+                memInfo, chunk.data(), chunk.size(), inShape.data(), inShape.size());
+            auto outTensors = session.Run(Ort::RunOptions{nullptr},
+                                          inNames, &inTensor, 1, outNames, 1);
 
-        const float *outData = outTensors[0].GetTensorData<float>();
+            const float *outData = outTensors[0].GetTensorData<float>();
 
-        // Copy only the usable GEN frames (skip TRIM on each side)
-        // First chunk has no left context, so start discarding from 0 in output
-        const int out_t0 = (i == 0) ? 0 : TRIM;
-        const int out_t1 = std::min(dim_t, TRIM + GEN + (src_end > spec.frames ? TRIM : 0));
+            // Copy only the usable GEN frames (skip TRIM on each side)
+            // First chunk has no left context, so start discarding from 0 in output
+            const int out_t0 = (i == 0) ? 0 : TRIM;
+            const int out_t1 = std::min(dim_t, TRIM + GEN + (src_end > spec.frames ? TRIM : 0));
 
-        for (int ch = 0; ch < 4; ++ch) {
-            for (int b = 0; b < bins; ++b) {
-                for (int t = out_t0; t < out_t1; ++t) {
-                    const int f = i + (t - TRIM);  // output frame index
-                    if (f < 0 || f >= spec.frames) continue;
-                    outSpec.ch[ch][b * outSpec.frames + f] =
-                        outData[ch * bins * dim_t + b * dim_t + t];
+            for (int ch = 0; ch < 4; ++ch) {
+                for (int b = 0; b < bins; ++b) {
+                    for (int t = out_t0; t < out_t1; ++t) {
+                        const int f = i + (t - TRIM);  // output frame index
+                        if (f < 0 || f >= spec.frames) continue;
+                        outSpec.ch[ch][b * outSpec.frames + f] =
+                            outData[ch * bins * dim_t + b * dim_t + t];
+                    }
                 }
             }
-        }
 
-        ++chunksDone;
-        if (progressFn)
-            progressFn(18 + chunksDone * 72 / totalChunks); // 18 → 90
+            ++chunksDone;
+            if (progressFn)
+                progressFn(18 + chunksDone * 72 / totalChunks); // 18 → 90
+        }
+    } catch (const Ort::Exception &e) {
+        errorOut = QString("ONNX Runtime error: %1").arg(e.what());
+        return {};
     }
 
     if (progressFn) progressFn(91);
 
     // 5. iSTFT
-    std::vector<float> output = computeISTFT(outSpec, n_fft, hop, totalSamples);
+    std::vector<float> output = computeISTFT(outSpec, n_fft, hop, totalSamples, cancelled);
+    if (cancelled && cancelled->load()) { errorOut = "Cancelled"; return {}; }
 
     if (progressFn) progressFn(96);
 
     // 8. Write output WAV
     const QString outPath = QDir::tempPath() + "/wakka_backing_track.wav";
-    if (!writeFloatWav(output, outPath, errorOut)) return {};
+    if (!writeFloatWav(output, outPath, errorOut, cancelled)) return {};
 
     if (progressFn) progressFn(100);
     return outPath;

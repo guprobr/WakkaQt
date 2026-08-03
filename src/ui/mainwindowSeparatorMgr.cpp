@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 #include "vocalseparator.h"
+#include "vocalseparationjob.h"
 
 #include <QDialog>
 #include <QProgressBar>
@@ -7,12 +8,8 @@
 #include <QVBoxLayout>
 #include <QFileDialog>
 #include <QMessageBox>
-#include <QTimer>
+#include <QPointer>
 #include <QProcess>
-#include <QtConcurrent>
-#include <QFutureWatcher>
-#include <atomic>
-#include <memory>
 
 #ifdef WAKKAQT_FFMPEG_NATIVE
 #  include "ffmpegnative.h"
@@ -109,7 +106,7 @@ void MainWindow::generateBackingTrack() {
     progDlg->setLayout(progLayout);
     progDlg->show();
 
-    // --- Step 3: run separation in background thread ---
+    // --- Step 3: run separation in the background via VocalSeparationJob ---
     const QString inputFile = currentPlayback;
 #ifdef WAKKAQT_FFMPEG_NATIVE
     const bool inputHasVideo = FFmpegNative::hasVideoStream(inputFile);
@@ -117,61 +114,51 @@ void MainWindow::generateBackingTrack() {
     const bool inputHasVideo = hasVideoStream(inputFile);
 #endif
 
-    // shared_ptr<atomic> allows safe cross-thread progress reporting and cancellation
-    auto progress  = std::make_shared<std::atomic<int>>(0);
-    auto cancelled = std::make_shared<std::atomic<bool>>(false);
+    if (m_separationJob) {
+        m_separationJob->deleteLater();
+        m_separationJob = nullptr;
+    }
+    m_separationJob = new VocalSeparationJob(this);
 
-    connect(cancelBtn, &QPushButton::clicked, this, [cancelled]() {
-        cancelled->store(true);
+    connect(cancelBtn, &QPushButton::clicked, this, [this]() {
+        if (m_separationJob) m_separationJob->cancelSeparate();
     });
     // Closing the window (X button) is equivalent to Abort
-    connect(progDlg, &QDialog::rejected, this, [cancelled]() {
-        cancelled->store(true);
+    connect(progDlg, &QDialog::rejected, this, [this]() {
+        if (m_separationJob) m_separationJob->cancelSeparate();
     });
 
-    // Poll the atomic from the main thread every 200 ms
-    auto *pollTimer = new QTimer(this);
-    pollTimer->start(200);
-    connect(pollTimer, &QTimer::timeout, this, [progBar, progress]() {
-        progBar->setValue(progress->load());
+    connect(m_separationJob, &VocalSeparationJob::separationProgress, this, [progBar](int pct) {
+        progBar->setValue(pct);
     });
 
-    // Result: first = path to temp WAV (empty on error), second = error string
-    using Result = QPair<QString, QString>;
-    auto *watcher = new QFutureWatcher<Result>(this);
-
-    // Guard with QPointer: if the user closed the dialog before the watcher
-    // fires, progDlgGuard will still be non-null (dialog is just hidden, not
-    // deleted), but using it explicitly signals our intent and is safe even if
-    // WA_DeleteOnClose were ever added.
+    // Guard with QPointer: if the user closed the dialog before the job
+    // finished, progDlgGuard will still be non-null (dialog is just hidden,
+    // not deleted), but using it explicitly signals our intent and is safe
+    // even if WA_DeleteOnClose were ever added.
     QPointer<QDialog> progDlgGuard(progDlg);
 
-    connect(watcher, &QFutureWatcher<Result>::finished, this, [=]() mutable {
-        pollTimer->stop();
-        pollTimer->deleteLater();
+    connect(m_separationJob, &VocalSeparationJob::separationFailed, this,
+            [this, progDlgGuard](QString err, bool wasCancelled) {
+        if (progDlgGuard) {
+            progDlgGuard->accept();
+            progDlgGuard->deleteLater();
+        }
+        trySetState(State::Idle);
+        if (wasCancelled) return;
+        QMessageBox::critical(this, "Separation Failed",
+                              "Could not generate the backing track:\n" + err);
+    });
 
-        Result res = watcher->result();
-        watcher->deleteLater();
-
+    connect(m_separationJob, &VocalSeparationJob::separated, this,
+            [this, progDlgGuard, inputFile, inputHasVideo](QString tempOut) {
         if (progDlgGuard) {
             progDlgGuard->accept();
             progDlgGuard->deleteLater();
         }
 
-        const QString &tempOut = res.first;
-        const QString &err     = res.second;
-
-        if (tempOut.isEmpty()) {
-            trySetState(State::Idle);
-            if (err == "Cancelled") return;
-            QMessageBox::critical(this, "Separation Failed",
-                                  "Could not generate the backing track:\n" + err);
-            return;
-        }
-
         // --- Step 4: ask user where to save ---
         const QString baseName = QFileInfo(inputFile).completeBaseName();
-        const QString origExt  = QFileInfo(inputFile).suffix();
         QString defaultSavePath;
         QString saveFilter;
         if (inputHasVideo) {
@@ -242,7 +229,7 @@ void MainWindow::generateBackingTrack() {
                                  !savePath.endsWith(".mp3", Qt::CaseInsensitive);
         const bool saveAsMp3 = savePath.endsWith(".mp3", Qt::CaseInsensitive);
 
-        // WAV: fast rename/copy — no progress dialog needed
+        // WAV: fast rename/copy — no progress dialog or job needed
         if (!saveAsVideo && !saveAsMp3) {
             if (QFile::exists(savePath))
                 QFile::remove(savePath);
@@ -264,7 +251,7 @@ void MainWindow::generateBackingTrack() {
             return;
         }
 
-        // Video mux or MP3 encode: run in background with progress dialog
+        // Video mux or MP3 encode: run in background via the job, with a progress dialog
         auto *saveProgDlg = new QDialog(this);
         saveProgDlg->setWindowTitle("Saving Backing Track");
         saveProgDlg->setModal(true);
@@ -290,88 +277,43 @@ void MainWindow::generateBackingTrack() {
         saveProgDlg->setLayout(saveLayout);
         saveProgDlg->show();
 
-        auto saveProgress = std::make_shared<std::atomic<int>>(0);
+        QPointer<QDialog> saveProgDlgGuard(saveProgDlg);
 
-        auto *saveTimer = new QTimer(this);
-        saveTimer->start(200);
-        connect(saveTimer, &QTimer::timeout, this, [saveProgBar, saveProgress]() {
-            saveProgBar->setValue(saveProgress->load());
+        connect(m_separationJob, &VocalSeparationJob::exportProgress, this,
+                [saveProgBar](int pct) {
+            if (pct < 0) return; // indeterminate fallback path — range already (0,0)
+            saveProgBar->setValue(pct);
         });
 
-        using SaveResult = QPair<bool, QString>;
-        auto *saveWatcher = new QFutureWatcher<SaveResult>(this);
-
-        QPointer<QDialog> saveProgDlgGuard(saveProgDlg);
-        connect(saveWatcher, &QFutureWatcher<SaveResult>::finished, this, [=]() {
-            saveTimer->stop();
-            saveTimer->deleteLater();
-            const SaveResult res = saveWatcher->result();
-            saveWatcher->deleteLater();
+        connect(m_separationJob, &VocalSeparationJob::exported, this,
+                [this, saveProgDlgGuard](QString destPath) {
             if (saveProgDlgGuard) {
                 saveProgDlgGuard->accept();
                 saveProgDlgGuard->deleteLater();
             }
-
             trySetState(State::Idle);
-            if (res.first) {
-                logUI("Backing track saved: " + savePath);
-                QMessageBox::information(this, "Done",
-                                         "Backing track saved to:\n" + savePath);
-            } else {
-                QMessageBox::critical(this, "Export Failed", res.second);
-            }
+            logUI("Backing track saved: " + destPath);
+            QMessageBox::information(this, "Done",
+                                     "Backing track saved to:\n" + destPath);
         });
 
-        QFuture<SaveResult> saveFuture = QtConcurrent::run([=]() -> SaveResult {
-            if (saveAsVideo) {
-#ifdef WAKKAQT_FFMPEG_NATIVE
-                const bool ok = FFmpegNative::muxVideoWithAudio(inputFile, tempOut, savePath,
-                    [saveProgress](int pct) { saveProgress->store(pct); });
-                QFile::remove(tempOut);
-                return {ok, ok ? QString()
-                              : "Native video muxing failed. Check console debug log for details."};
-#else
-                QProcess mux;
-                mux.start("ffmpeg", {"-y", "-i", inputFile, "-i", tempOut,
-                                      "-c:v", "copy", "-c:a", "aac",
-                                      "-map", "0:v:0", "-map", "1:a:0",
-                                      savePath});
-                mux.waitForFinished(300000);
-                const bool ok = mux.exitCode() == 0;
-                const QString err = ok ? QString()
-                    : "ffmpeg video muxing failed.\n" + QString(mux.readAllStandardError()).left(300);
-                QFile::remove(tempOut);
-                return {ok, err};
-#endif
-            } else {
-#ifdef WAKKAQT_FFMPEG_NATIVE
-                const bool ok = FFmpegNative::transcodeAudio(tempOut, savePath,
-                    [saveProgress](int pct) { saveProgress->store(pct); });
-                QFile::remove(tempOut);
-                return {ok, ok ? QString()
-                              : "Native MP3 encoding failed. Check log for details."};
-#else
-                QProcess mp3;
-                mp3.start("ffmpeg", {"-y", "-i", tempOut, "-q:a", "2", savePath});
-                mp3.waitForFinished(120000);
-                const bool ok = mp3.exitCode() == 0;
-                const QString err = ok ? QString()
-                    : "ffmpeg MP3 encoding failed.\n" + QString(mp3.readAllStandardError()).left(300);
-                QFile::remove(tempOut);
-                return {ok, err};
-#endif
+        connect(m_separationJob, &VocalSeparationJob::exportFailed, this,
+                [this, saveProgDlgGuard](QString err) {
+            if (saveProgDlgGuard) {
+                saveProgDlgGuard->accept();
+                saveProgDlgGuard->deleteLater();
             }
+            trySetState(State::Idle);
+            QMessageBox::critical(this, "Export Failed", err);
         });
-        saveWatcher->setFuture(saveFuture);
+
+        VocalSeparationJob::ExportParams exportParams;
+        exportParams.tempWavPath = tempOut;
+        exportParams.inputFile = inputFile;
+        exportParams.savePath = savePath;
+        exportParams.saveAsVideo = saveAsVideo;
+        m_separationJob->exportResult(exportParams);
     });
 
-    QFuture<Result> future = QtConcurrent::run([inputFile, progress, cancelled]() -> Result {
-        QString err;
-        QString path = VocalSeparator::separate(inputFile, [&](int pct) {
-            progress->store(pct);
-        }, err, cancelled.get());
-        return {path, err};
-    });
-
-    watcher->setFuture(future);
+    m_separationJob->separate(inputFile);
 }

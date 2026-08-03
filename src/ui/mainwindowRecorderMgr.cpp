@@ -30,6 +30,11 @@ void MainWindow::startRecording() {
         if (!trySetState(State::Recording))
             return;
 
+        // A live recording always targets the canonical /tmp paths — never
+        // whatever a previous session restore may have repointed
+        // webcamRecorded/audioRecorded/extractedTmpPlayback to.
+        clearRestoreWorkspace();
+
         // Disable buttons while recording starts
         singButton->setEnabled(false);
         singAction->setEnabled(false);
@@ -233,6 +238,7 @@ void MainWindow::stopRecording() {
                     qWarning() << "*FAILURE* Could not prepare playback audio for render.";
                     logUI("Recording ERROR: failed to prepare playback audio for render.");
                     setBanner("Recording ERROR: could not prepare playback audio.");
+                    trySetState(State::Idle);
                     enable_playback(true);
                     chooseInputButton->setEnabled(true);
                     chooseInputAction->setEnabled(true);
@@ -348,6 +354,12 @@ void MainWindow::pollFileFinalization(const QString &filePath, int attempts, std
 
     if (attempts > 30) {
         qWarning() << "Timeout reached after" << attempts << "attempts.";
+        logUI("Recording ERROR: video did not finalize in time.");
+        setBanner("Recording ERROR: video did not finalize in time.");
+        trySetState(State::Idle);
+        enable_playback(true);
+        chooseInputButton->setEnabled(true);
+        chooseInputAction->setEnabled(true);
         QMessageBox::critical(this, "Recorder Error", "Timeout reached. Video did not finalize properly.");
         return;
     }

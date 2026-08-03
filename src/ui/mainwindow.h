@@ -10,6 +10,7 @@
 #include "librarydialog.h"
 #include "sessionrepository.h"
 #include "renderjob.h"
+#include "vocalseparationjob.h"
 
 #include <QWidget>
 #include <QFutureWatcher>
@@ -73,7 +74,7 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    QString Wakka_versione = "v2.8.4";
+    QString Wakka_versione = "v2.8.6";
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
@@ -161,6 +162,18 @@ private:
     // getting rendered audio-only just because no camera is attached today).
     bool recordingHasWebcam = false;
 
+    // Set by restoreAndRender() to the per-restore workspace directory
+    // returned by SessionRepository::restoreSession() (holding that
+    // session's own copies of webcam/audio/playback) while webcamRecorded/
+    // audioRecorded/extractedTmpPlayback are repointed into it. Empty when
+    // no restore workspace is active. clearRestoreWorkspace() removes the
+    // directory and repoints those globals back to their canonical /tmp
+    // paths — called before a fresh live recording starts, before a new
+    // restore begins, and on shutdown, so a workspace never leaks past the
+    // one operation it was created for.
+    QString m_activeRestoreWorkspaceDir;
+    void clearRestoreWorkspace();
+
     QProgressBar *progressBar;
     int totalDuration;
 
@@ -169,6 +182,11 @@ private:
     // cancels and waits on it (via cancel()/waitForFinished()) so no
     // background thread can be running when this window closes.
     RenderJob *m_renderJob = nullptr;
+
+    // Owns the background work behind generateBackingTrack() (UVR-MDX-NET
+    // separation, then muxing/transcoding into the final destination).
+    // closeEvent() cancels and waits on it the same way it does m_renderJob.
+    VocalSeparationJob *m_separationJob = nullptr;
 
     QVideoWidget *videoWidget;
     

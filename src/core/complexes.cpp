@@ -159,6 +159,21 @@ const QVector<VideoEffectPreset> videoEffectPresets = {
     QString extractedPlayback = QDir::temp().filePath("WakkaQt_playback.wav");
     QString extractedTmpPlayback = QDir::temp().filePath("WakkaQt_tmp_playback.wav");
 
+namespace {
+// Captured at static-init time, before anything can repoint the globals
+// above — relies on intra-TU init order following declaration order.
+const QString kDefaultWebcamRecorded = webcamRecorded;
+const QString kDefaultAudioRecorded = audioRecorded;
+const QString kDefaultExtractedTmpPlayback = extractedTmpPlayback;
+}
+
+void resetRecordingTempPaths()
+{
+    webcamRecorded = kDefaultWebcamRecorded;
+    audioRecorded = kDefaultAudioRecorded;
+    extractedTmpPlayback = kDefaultExtractedTmpPlayback;
+}
+
 bool isAudioOnlyFile(const QString &path) {
     return path.endsWith("mp3",  Qt::CaseInsensitive)
         || path.endsWith("wav",  Qt::CaseInsensitive)

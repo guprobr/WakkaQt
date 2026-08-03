@@ -52,6 +52,11 @@ extern QString tunedRecorded;
 extern QString extractedPlayback;
 extern QString extractedTmpPlayback;
 
+// Resets webcamRecorded/audioRecorded/extractedTmpPlayback to their default
+// fixed /tmp paths, undoing any repoint done while consuming a session
+// restore's per-session workspace (see SessionRepository::restoreSession()).
+void resetRecordingTempPaths();
+
 void writeWavHeader(QFile &file, const QAudioFormat &format, qint64 dataSize, const QByteArray &pcmData);
 static bool isYouTubeHost(const QString& host);
 bool isSingleYouTubeVideoUrl(const QUrl& url);

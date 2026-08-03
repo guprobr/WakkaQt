@@ -356,73 +356,52 @@ RestoreResult SessionRepository::restoreSession(const QString &id)
     // has nothing to do with what a given past session actually recorded.
     result.hasWebcam = QFile::exists(sessionDir + "/webcam.mkv");
 
-    // Copy artefacts back to their /tmp/ paths, staged then swapped in one
-    // pass — mirrors the same principle saveSession() uses (stage first,
-    // only make the change visible once everything required has actually
-    // succeeded), so a failure partway through never leaves a half-restored
-    // mix of old and new tmp files, and is always reported to the caller.
-    struct RestoreItem { const char *srcName; QString *dst; };
+    // Copy artefacts into a throwaway directory private to this restore,
+    // instead of the shared /tmp WakkaQt_tmp_* paths every other restore
+    // and every live recording also uses. A brand-new directory has no
+    // pre-existing file to remove/swap out, so a failure partway through
+    // just means deleting the (still-private) directory and reporting an
+    // error — there is nothing for a later step to roll back, and nothing
+    // for a concurrent/subsequent restore or recording to collide with.
+    const QString workspaceDir = QDir::temp().filePath(
+        "WakkaQt_restore_" + QUuid::createUuid().toString(QUuid::WithoutBraces));
+    if (!QDir().mkpath(workspaceDir)) {
+        result.error = "failed to create restore workspace";
+        qWarning() << "SessionRepository::restoreSession:" << result.error << ":" << workspaceDir;
+        return result;
+    }
+
+    struct RestoreItem { const char *srcName; QString *outPath; };
     const RestoreItem items[] = {
-        { "webcam.mkv",   &webcamRecorded },
-        { "audio.wav",    &audioRecorded },
-        { "playback.wav", &extractedTmpPlayback },
+        { "webcam.mkv",   &result.webcamPath },
+        { "audio.wav",    &result.audioPath },
+        { "playback.wav", &result.playbackPath },
     };
     constexpr int kCount = int(sizeof(items) / sizeof(items[0]));
 
-    bool present[kCount];
-    QString staged[kCount];
-
-    // Stage phase: copy each file that exists in the session to a ".restoring"
-    // sibling of its destination. The live tmp files are never touched here.
     for (int i = 0; i < kCount; ++i) {
         const QString src = sessionDir + "/" + items[i].srcName;
-        present[i] = QFile::exists(src);
-        if (!present[i]) {
+        if (!QFile::exists(src)) {
             qDebug() << "SessionRepository: optional file not in session:" << items[i].srcName;
             continue;
         }
-
-        const QString tmp = *items[i].dst + ".restoring";
-        QFile::remove(tmp); // clear any leftover from a previous failed attempt
-        if (!QFile::copy(src, tmp)) {
+        const QString dst = workspaceDir + "/" + items[i].srcName;
+        if (!QFile::copy(src, dst)) {
             result.error = QString("failed to stage %1").arg(items[i].srcName);
-            qWarning() << "SessionRepository::restoreSession:" << result.error << "->" << tmp;
-            for (int j = 0; j < i; ++j)
-                if (present[j])
-                    QFile::remove(staged[j]);
+            qWarning() << "SessionRepository::restoreSession:" << result.error << "->" << dst;
+            QDir(workspaceDir).removeRecursively();
             return result;
         }
-        staged[i] = tmp;
-    }
-
-    // Swap phase: every present file staged successfully, so make them all
-    // visible. For files not part of this session, clear a stale tmp file
-    // left over from a previous session/recording so nothing downstream
-    // mistakes it for belonging to this restore.
-    for (int i = 0; i < kCount; ++i) {
-        QString *dst = items[i].dst;
-        if (!present[i]) {
-            if (QFile::exists(*dst) && !QFile::remove(*dst))
-                qWarning() << "SessionRepository: cannot clear stale tmp file:" << *dst;
-            continue;
-        }
-        if (QFile::exists(*dst) && !QFile::remove(*dst)) {
-            result.error = QString("cannot remove old tmp file %1").arg(*dst);
-            qWarning() << "SessionRepository::restoreSession:" << result.error;
-            QFile::remove(staged[i]);
-            return result;
-        }
-        if (!QFile::rename(staged[i], *dst)) {
-            result.error = QString("failed to finalize %1").arg(*dst);
-            qWarning() << "SessionRepository::restoreSession:" << result.error;
-            return result;
-        }
-        qDebug() << "SessionRepository: restored" << items[i].srcName << "->" << *dst;
+        *items[i].outPath = dst;
+        qDebug() << "SessionRepository: restored" << items[i].srcName << "->" << dst;
     }
     // tuned.wav is not saved/restored — PreviewDialog re-generates it from audio.wav
 
+    result.workspaceDir = workspaceDir;
+
     qDebug() << "SessionRepository: restore complete for session" << id
              << " | hasWebcam:" << result.hasWebcam
+             << " | workspace:" << workspaceDir
              << " | video:" << snapshot.currentVideoName
              << " | audioOffset:" << snapshot.audioOffset
              << " | videoOffset:" << snapshot.videoOffset

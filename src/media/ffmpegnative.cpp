@@ -84,7 +84,8 @@ bool hasVideoStream(const QString &filePath)
 // ─────────────────────────────────────────────────────────────────────────────
 
 bool extractAudio(const QString &input, const QString &output,
-                  qint64 offsetMs, const QString &filterStr)
+                  qint64 offsetMs, const QString &filterStr,
+                  const std::atomic<bool> *cancelled)
 {
     AVFormatContext *fmtCtx = nullptr;
     if (avformat_open_input(&fmtCtx, input.toUtf8().constData(), nullptr, nullptr) < 0) {
@@ -148,7 +149,9 @@ bool extractAudio(const QString &input, const QString &output,
     AVPacket *pkt   = av_packet_alloc();
     AVFrame  *frame = av_frame_alloc();
 
+    bool wasCancelled = false;
     while (av_read_frame(fmtCtx, pkt) >= 0) {
+        if (cancelled && cancelled->load()) { wasCancelled = true; av_packet_unref(pkt); break; }
         if (pkt->stream_index != audioIdx) { av_packet_unref(pkt); continue; }
         if (avcodec_send_packet(decCtx, pkt) < 0)  { av_packet_unref(pkt); continue; }
         av_packet_unref(pkt);
@@ -174,8 +177,8 @@ bool extractAudio(const QString &input, const QString &output,
             av_frame_unref(frame);
         }
     }
-    // Flush resampler
-    {
+    // Flush resampler (skipped on cancellation — the output would be discarded anyway)
+    if (!wasCancelled) {
         const int outN = (int)swr_get_delay(swr, outRate) + 1024;
         std::vector<uint8_t> tmp(outN * outCh * sizeof(int16_t));
         uint8_t *ptr = tmp.data();
@@ -190,6 +193,11 @@ bool extractAudio(const QString &input, const QString &output,
     swr_free(&swr);
     avcodec_free_context(&decCtx);
     avformat_close_input(&fmtCtx);
+
+    if (wasCancelled) {
+        qDebug() << "FFmpegNative::extractAudio: cancelled for" << input;
+        return false;
+    }
 
     if (pcmData.isEmpty()) {
         qWarning() << "FFmpegNative::extractAudio: empty PCM for" << input;
@@ -218,7 +226,8 @@ bool extractAudio(const QString &input, const QString &output,
 // Decode entire audio track to float PCM (44100 Hz, stereo).
 // Applies volume, and if offsetMs > 0, skips that many ms from the start.
 // If offsetMs < 0, the caller should prepend silence after the fact.
-static QVector<float> decodeAudioToFloat(const QString &path, qint64 offsetMs, double volume)
+static QVector<float> decodeAudioToFloat(const QString &path, qint64 offsetMs, double volume,
+                                         const std::atomic<bool> *cancelled = nullptr)
 {
     AVFormatContext *fmt = nullptr;
     if (avformat_open_input(&fmt, path.toUtf8().constData(), nullptr, nullptr) < 0)
@@ -253,7 +262,9 @@ static QVector<float> decodeAudioToFloat(const QString &path, qint64 offsetMs, d
     AVPacket *pkt = av_packet_alloc();
     AVFrame  *frm = av_frame_alloc();
 
+    bool wasCancelled = false;
     while (av_read_frame(fmt, pkt) >= 0) {
+        if (cancelled && cancelled->load()) { wasCancelled = true; av_packet_unref(pkt); break; }
         if (pkt->stream_index != audioIdx) { av_packet_unref(pkt); continue; }
         if (avcodec_send_packet(ctx, pkt) < 0) { av_packet_unref(pkt); continue; }
         av_packet_unref(pkt);
@@ -276,8 +287,8 @@ static QVector<float> decodeAudioToFloat(const QString &path, qint64 offsetMs, d
             av_frame_unref(frm);
         }
     }
-    // Flush
-    {
+    // Flush (skipped on cancellation — the caller only wants a clean bail-out)
+    if (!wasCancelled) {
         const int outN = (int)swr_get_delay(swr, 44100) + 1024;
         QVector<float> tmp(outN * 2);
         uint8_t *ptr = reinterpret_cast<uint8_t*>(tmp.data());
@@ -292,7 +303,7 @@ static QVector<float> decodeAudioToFloat(const QString &path, qint64 offsetMs, d
     swr_free(&swr);
     avcodec_free_context(&ctx);
     avformat_close_input(&fmt);
-    return pcm;
+    return wasCancelled ? QVector<float>{} : pcm;
 }
 
 // Apply an avfilter chain (e.g. "deesser,speechnorm,...") to float stereo 44100 PCM.
@@ -815,9 +826,9 @@ static void paintPitchOverlay(AVFrame *frame, int64_t lookupMs,
 // decodeToFloatStereo
 // ─────────────────────────────────────────────────────────────────────────────
 
-std::vector<float> decodeToFloatStereo(const QString &filePath)
+std::vector<float> decodeToFloatStereo(const QString &filePath, const std::atomic<bool> *cancelled)
 {
-    const QVector<float> q = decodeAudioToFloat(filePath, 0, 1.0);
+    const QVector<float> q = decodeAudioToFloat(filePath, 0, 1.0, cancelled);
     return std::vector<float>(q.constBegin(), q.constEnd());
 }
 
@@ -825,7 +836,8 @@ std::vector<float> decodeToFloatStereo(const QString &filePath)
 // writeFloatWav
 // ─────────────────────────────────────────────────────────────────────────────
 
-bool writeFloatWav(const std::vector<float> &pcm, const QString &outPath)
+bool writeFloatWav(const std::vector<float> &pcm, const QString &outPath,
+                   const std::atomic<bool> *cancelled)
 {
     if (pcm.empty() || pcm.size() % 2 != 0) {
         qWarning() << "FFmpegNative::writeFloatWav: invalid PCM";
@@ -879,7 +891,9 @@ bool writeFloatWav(const std::vector<float> &pcm, const QString &outPath)
         }
     };
 
+    bool wasCancelled = false;
     for (int off = 0; off < totalSamps; off += chunkSz) {
+        if (cancelled && cancelled->load()) { wasCancelled = true; break; }
         const int n = std::min(chunkSz, totalSamps - off);
         frm->format      = AV_SAMPLE_FMT_FLT;
         frm->sample_rate = 44100;
@@ -892,14 +906,21 @@ bool writeFloatWav(const std::vector<float> &pcm, const QString &outPath)
         av_frame_unref(frm);
         pts += n;
     }
-    flushEnc(nullptr);
 
-    av_write_trailer(outFmt);
+    if (!wasCancelled) {
+        flushEnc(nullptr);
+        av_write_trailer(outFmt);
+    }
     avio_closep(&outFmt->pb);
     av_frame_free(&frm);
     av_packet_free(&pkt);
     avcodec_free_context(&encCtx);
     avformat_free_context(outFmt);
+
+    if (wasCancelled) {
+        QFile::remove(outPath); // partial file, never a valid WAV
+        return false;
+    }
     return true;
 }
 

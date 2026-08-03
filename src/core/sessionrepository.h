@@ -47,6 +47,16 @@ struct RestoreResult {
     // restore/render can tell an audio-only session apart from a
     // currently-connected camera that has nothing to do with it.
     bool            hasWebcam = false;
+    // A throwaway directory holding this restore's own copies of its
+    // artefacts (see restoreSession()). Empty if !ok. The caller owns it —
+    // it must remove workspaceDir (recursively) once the restored files are
+    // no longer needed.
+    QString         workspaceDir;
+    // Paths inside workspaceDir; empty when the session doesn't have that
+    // particular artefact (e.g. webcamPath for an audio-only session).
+    QString         webcamPath;
+    QString         audioPath;
+    QString         playbackPath;
 };
 
 struct OperationResult {

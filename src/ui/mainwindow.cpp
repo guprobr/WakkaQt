@@ -2,6 +2,7 @@
 #include "sndwidget.h"
 #include <QMap>
 #include <QSet>
+#include <QDir>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -754,15 +755,28 @@ bool MainWindow::trySetState(State next)
     return true;
 }
 
+// Removes the active per-restore workspace directory (if any) and repoints
+// webcamRecorded/audioRecorded/extractedTmpPlayback back to their canonical
+// /tmp paths. Safe to call even when no restore workspace is active.
+void MainWindow::clearRestoreWorkspace()
+{
+    if (!m_activeRestoreWorkspaceDir.isEmpty()) {
+        QDir(m_activeRestoreWorkspaceDir).removeRecursively();
+        m_activeRestoreWorkspaceDir.clear();
+    }
+    resetRecordingTempPaths();
+}
+
 void MainWindow::closeEvent(QCloseEvent *event)
 {
     const bool renderActive = m_renderJob && m_renderJob->isActive();
+    const bool separationActive = m_separationJob && m_separationJob->isActive();
 
     int response = QMessageBox::question(
         this,
         "The show must go on!",
-        renderActive
-            ? "A render is currently in progress. Closing now will abort it.\n"
+        (renderActive || separationActive)
+            ? "A render or backing-track export is currently in progress. Closing now will abort it.\n"
               "Are you really really sure you want to leave?"
             : "Are you really really sure you want to leave?",
         QMessageBox::Yes | QMessageBox::No,
@@ -782,6 +796,19 @@ void MainWindow::closeEvent(QCloseEvent *event)
         m_renderJob->cancel();
         m_renderJob->waitForFinished();
     }
+
+    // Same idea for vocal separation: cancelSeparate() is checked
+    // cooperatively throughout VocalSeparator::separate()'s decode/STFT/
+    // inference/iSTFT/write stages. The export stage (mux/transcode) has no
+    // cancellation of its own — matches its progress dialog, which already
+    // disables its close button — so this just waits for it to finish
+    // rather than leaving it to run against a destroyed window.
+    if (separationActive) {
+        m_separationJob->cancelSeparate();
+        m_separationJob->waitForFinished();
+    }
+
+    clearRestoreWorkspace();
 
     event->accept(); // Call the base class implementation
 }

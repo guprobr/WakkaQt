@@ -18,11 +18,14 @@ double getDuration(const QString &filePath);
 bool hasVideoStream(const QString &filePath);
 
 /// Decode media file to interleaved float32 stereo PCM at 44100 Hz.
-/// Returns an empty vector on error.
-std::vector<float> decodeToFloatStereo(const QString &filePath);
+/// Returns an empty vector on error, or if cancelled becomes true mid-decode.
+std::vector<float> decodeToFloatStereo(const QString &filePath,
+                                       const std::atomic<bool> *cancelled = nullptr);
 
 /// Write interleaved float32 stereo at 44100 Hz to a WAV file (pcm_f32le).
-bool writeFloatWav(const std::vector<float> &pcm, const QString &outPath);
+/// Returns false (and leaves no output file) if cancelled becomes true mid-write.
+bool writeFloatWav(const std::vector<float> &pcm, const QString &outPath,
+                   const std::atomic<bool> *cancelled = nullptr);
 
 /// Transcode audio to another format (output format determined by file extension).
 /// progressCb (optional) is called with 0–100 values on the calling thread.
@@ -42,7 +45,8 @@ bool muxVideoWithAudio(const QString &videoSrc, const QString &audioSrc,
 /// `filterStr` hints at the desired channel layout (e.g. "mono").
 bool extractAudio(const QString &input, const QString &output,
                   qint64 offsetMs = 0,
-                  const QString &filterStr = {});
+                  const QString &filterStr = {},
+                  const std::atomic<bool> *cancelled = nullptr);
 
 /// Applies a libavfilter audio chain (e.g. "deesser,speechnorm,...") to
 /// interleaved Int16 PCM at the given sample rate/channel count, returning

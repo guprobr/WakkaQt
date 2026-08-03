@@ -40,31 +40,48 @@ AudioAmplifier::AudioAmplifier(const QAudioFormat &format, QObject *parent)
         qWarning() << "AudioAmplifier: backing track is not a valid WAV file";
         return;
     }
-    playbackData = pcm.samples;
 
-    // Resample backing track if its rate doesn't match the vocal format rate.
-    // Both streams go through the same QAudioSink; mismatched rates cause
-    // chipmunk/slow-motion effects and byte-offset seek errors.
+    // The resample below reinterprets the raw bytes as int16_t and the mix
+    // clamp in applyAmplification() hardcodes 16-bit range — both silently
+    // produce garbage if either side isn't actually Int16. Skip the backing
+    // track rather than feed noise into the sink; the vocal path (set up
+    // below regardless) is unaffected.
     const int pbCh      = pcm.format.channelCount();
     const int pbRate     = pcm.format.sampleRate();
     const int targetRate = audioFormat.sampleRate();
-    if (pbRate != targetRate && pbCh == audioFormat.channelCount()) {
-        const int inFrames   = playbackData.size() / (pbCh * 2);
-        const int outFrames  = int(qint64(inFrames) * targetRate / pbRate);
-        QByteArray resampled(outFrames * pbCh * 2, 0);
-        const int16_t *src = reinterpret_cast<const int16_t*>(playbackData.constData());
-        int16_t *dst = reinterpret_cast<int16_t*>(resampled.data());
-        for (int i = 0; i < outFrames; ++i) {
-            const double pos = double(i) * pbRate / targetRate;
-            const int i0 = std::min(static_cast<int>(pos), inFrames - 1);
-            const int i1 = std::min(i0 + 1, inFrames - 1);
-            const double f = pos - i0;
-            for (int c = 0; c < pbCh; ++c)
-                dst[i * pbCh + c] = static_cast<int16_t>(
-                    src[i0 * pbCh + c] * (1.0 - f) + src[i1 * pbCh + c] * f);
+    if (pcm.format.sampleFormat() != QAudioFormat::Int16 ||
+        audioFormat.sampleFormat() != QAudioFormat::Int16) {
+        qWarning() << "AudioAmplifier: backing track/vocal PCM is not Int16 (backing:"
+                   << pcm.format.sampleFormat() << ", vocal:" << audioFormat.sampleFormat()
+                   << ") — disabling backing playback";
+    } else if (pbCh != audioFormat.channelCount()) {
+        qWarning() << "AudioAmplifier: backing track channel count (" << pbCh
+                   << ") does not match vocal format (" << audioFormat.channelCount()
+                   << ") — disabling backing playback";
+    } else {
+        playbackData = pcm.samples;
+
+        // Resample backing track if its rate doesn't match the vocal format
+        // rate. Both streams go through the same QAudioSink; mismatched
+        // rates cause chipmunk/slow-motion effects and byte-offset seek errors.
+        if (pbRate != targetRate) {
+            const int inFrames   = playbackData.size() / (pbCh * 2);
+            const int outFrames  = int(qint64(inFrames) * targetRate / pbRate);
+            QByteArray resampled(outFrames * pbCh * 2, 0);
+            const int16_t *src = reinterpret_cast<const int16_t*>(playbackData.constData());
+            int16_t *dst = reinterpret_cast<int16_t*>(resampled.data());
+            for (int i = 0; i < outFrames; ++i) {
+                const double pos = double(i) * pbRate / targetRate;
+                const int i0 = std::min(static_cast<int>(pos), inFrames - 1);
+                const int i1 = std::min(i0 + 1, inFrames - 1);
+                const double f = pos - i0;
+                for (int c = 0; c < pbCh; ++c)
+                    dst[i * pbCh + c] = static_cast<int16_t>(
+                        src[i0 * pbCh + c] * (1.0 - f) + src[i1 * pbCh + c] * f);
+            }
+            playbackData = resampled;
+            qDebug() << "AudioAmplifier: resampled backing" << pbRate << "Hz ->" << targetRate << "Hz";
         }
-        playbackData = resampled;
-        qDebug() << "AudioAmplifier: resampled backing" << pbRate << "Hz ->" << targetRate << "Hz";
     }
 
     dataPushTimer.reset(new QTimer(this));

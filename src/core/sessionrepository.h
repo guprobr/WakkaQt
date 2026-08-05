@@ -57,6 +57,11 @@ struct RestoreResult {
     QString         webcamPath;
     QString         audioPath;
     QString         playbackPath;
+    // Non-fatal issues found while restoring (ok is still true) — e.g. a
+    // corrupt offsets.json that was reset to neutral defaults. Empty when
+    // nothing was degraded. The caller should surface these to the user
+    // rather than silently proceeding as if the restore were pristine.
+    QStringList     warnings;
 };
 
 struct OperationResult {

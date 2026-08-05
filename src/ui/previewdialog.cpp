@@ -305,7 +305,14 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
 #endif
 
     connect(previewJob.data(), &PreviewJob::extracted, this, &PreviewDialog::onVocalsExtracted);
-    connect(previewJob.data(), &PreviewJob::extractionFailed, this, [this](const QString &reason) {
+    connect(previewJob.data(), &PreviewJob::extractionFailed, this,
+            [this](const QString &reason, bool wasCancelled) {
+        // A cancelled extraction means this run was deliberately superseded
+        // (a newer extract() call, or the dialog closing) — the run that
+        // actually matters is still in flight or the dialog is going away
+        // either way, so there is nothing useful to show the user here.
+        if (wasCancelled)
+            return;
         QMessageBox::critical(this, "Extraction failed", reason);
         setPreviewControlsEnabled(true);
     });

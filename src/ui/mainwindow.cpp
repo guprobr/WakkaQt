@@ -771,12 +771,14 @@ void MainWindow::closeEvent(QCloseEvent *event)
 {
     const bool renderActive = m_renderJob && m_renderJob->isActive();
     const bool separationActive = m_separationJob && m_separationJob->isActive();
+    const bool downloadActive = m_modelDownloadJob && m_modelDownloadJob->isActive();
 
     int response = QMessageBox::question(
         this,
         "The show must go on!",
-        (renderActive || separationActive)
-            ? "A render or backing-track export is currently in progress. Closing now will abort it.\n"
+        (renderActive || separationActive || downloadActive)
+            ? "A render, backing-track export, or model download is currently in progress. "
+              "Closing now will abort it.\n"
               "Are you really really sure you want to leave?"
             : "Are you really really sure you want to leave?",
         QMessageBox::Yes | QMessageBox::No,
@@ -799,13 +801,20 @@ void MainWindow::closeEvent(QCloseEvent *event)
 
     // Same idea for vocal separation: cancelSeparate() is checked
     // cooperatively throughout VocalSeparator::separate()'s decode/STFT/
-    // inference/iSTFT/write stages. The export stage (mux/transcode) has no
-    // cancellation of its own — matches its progress dialog, which already
-    // disables its close button — so this just waits for it to finish
-    // rather than leaving it to run against a destroyed window.
+    // inference/iSTFT/write stages, and cancelExport() either sets the
+    // native path's cooperative token or kill()s the QProcess fallback
+    // directly — so this can request cancellation of whichever stage is
+    // actually running instead of just waiting out mux/transcode's
+    // multi-minute timeout.
     if (separationActive) {
         m_separationJob->cancelSeparate();
+        m_separationJob->cancelExport();
         m_separationJob->waitForFinished();
+    }
+
+    if (downloadActive) {
+        m_modelDownloadJob->cancel();
+        m_modelDownloadJob->waitForFinished();
     }
 
     clearRestoreWorkspace();

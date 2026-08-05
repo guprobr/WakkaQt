@@ -156,6 +156,8 @@ void MainWindow::restoreAndRender(const QString &sessionId)
     offset            = result.snapshot.sysOffset;
 
     logUI("Library: restored session " + sessionId);
+    for (const QString &warning : result.warnings)
+        logUI("Library: \xe2\x9a\xa0 WARNING — " + warning);
     logUI("Library: resuming at render step…");
     setBanner("Session restored \xe2\x80\x94 choose output and adjust!");
 

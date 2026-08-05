@@ -1,6 +1,7 @@
 #include "mainwindow.h"
 #include "vocalseparator.h"
 #include "vocalseparationjob.h"
+#include "modeldownloadjob.h"
 
 #include <QDialog>
 #include <QProgressBar>
@@ -34,55 +35,89 @@ void MainWindow::generateBackingTrack() {
     vizPlayer->stop();
 
     // --- Step 1: ensure model is present, offer to download ---
-    if (!VocalSeparator::modelExists()) {
-        auto btn = QMessageBox::question(
-            this,
-            "Download MDX-Net Model",
-            "The UVR-MDX-NET-Inst_HQ_3 separation model (~80 MB) needs to be downloaded once.\n"
-            "It will be stored in ~/.WakkaQt/models/ for future use.\n\n"
-            "Proceed with download?",
-            QMessageBox::Yes | QMessageBox::No);
+    if (VocalSeparator::modelExists()) {
+        runVocalSeparation();
+        return;
+    }
 
-        if (btn != QMessageBox::Yes) {
-            trySetState(State::Idle);
-            return;
+    auto btn = QMessageBox::question(
+        this,
+        "Download MDX-Net Model",
+        "The UVR-MDX-NET-Inst_HQ_3 separation model (~80 MB) needs to be downloaded once.\n"
+        "It will be stored in ~/.WakkaQt/models/ for future use.\n\n"
+        "Proceed with download?",
+        QMessageBox::Yes | QMessageBox::No);
+
+    if (btn != QMessageBox::Yes) {
+        trySetState(State::Idle);
+        return;
+    }
+
+    auto *dlDlg = new QDialog(this);
+    dlDlg->setWindowTitle("Downloading MDX-Net model…");
+    dlDlg->setModal(true);
+    dlDlg->setMinimumWidth(420);
+
+    auto *dlLbl = new QLabel("Downloading UVR-MDX-NET-Inst_HQ_3.onnx from GitHub…", dlDlg);
+    dlLbl->setAlignment(Qt::AlignCenter);
+    auto *dlBar = new QProgressBar(dlDlg);
+    dlBar->setRange(0, 100);
+    auto *dlCancelBtn = new QPushButton("Abort", dlDlg);
+
+    auto *dlLayout = new QVBoxLayout(dlDlg);
+    dlLayout->addWidget(dlLbl);
+    dlLayout->addWidget(dlBar);
+    dlLayout->addWidget(dlCancelBtn);
+    dlDlg->setLayout(dlLayout);
+    dlDlg->show();
+
+    if (m_modelDownloadJob) {
+        m_modelDownloadJob->deleteLater();
+        m_modelDownloadJob = nullptr;
+    }
+    m_modelDownloadJob = new ModelDownloadJob(this);
+
+    connect(dlCancelBtn, &QPushButton::clicked, this, [this]() {
+        if (m_modelDownloadJob) m_modelDownloadJob->cancel();
+    });
+    connect(dlDlg, &QDialog::rejected, this, [this]() {
+        if (m_modelDownloadJob) m_modelDownloadJob->cancel();
+    });
+
+    connect(m_modelDownloadJob, &ModelDownloadJob::progress, this, [dlBar](int pct) {
+        if (pct < 0) return;
+        dlBar->setValue(pct);
+    });
+
+    QPointer<QDialog> dlDlgGuard(dlDlg);
+    connect(m_modelDownloadJob, &ModelDownloadJob::finished, this,
+            [this, dlDlgGuard](bool success, bool cancelled, QString errorMessage) {
+        if (dlDlgGuard) {
+            dlDlgGuard->accept();
+            dlDlgGuard->deleteLater();
         }
 
-        QDialog dlDlg(this);
-        dlDlg.setWindowTitle("Downloading MDX-Net model…");
-        dlDlg.setModal(true);
-        dlDlg.setMinimumWidth(420);
-
-        auto *dlLbl = new QLabel("Downloading UVR-MDX-NET-Inst_HQ_3.onnx from GitHub…", &dlDlg);
-        dlLbl->setAlignment(Qt::AlignCenter);
-        auto *dlBar = new QProgressBar(&dlDlg);
-        dlBar->setRange(0, 100);
-
-        auto *dlLayout = new QVBoxLayout(&dlDlg);
-        dlLayout->addWidget(dlLbl);
-        dlLayout->addWidget(dlBar);
-        dlDlg.setLayout(dlLayout);
-        dlDlg.show();
-
-        QString dlErr;
-        bool ok = VocalSeparator::downloadModel([&](int pct) {
-            dlBar->setValue(pct);
-            QApplication::processEvents();
-        }, dlErr);
-
-        dlDlg.accept();
-
-        if (!ok) {
+        if (!success) {
             trySetState(State::Idle);
+            if (cancelled) return;
             QMessageBox::critical(this, "Download Failed",
-                                  "Could not download the model:\n" + dlErr +
+                                  "Could not download the model:\n" + errorMessage +
                                   "\n\nCheck your internet connection and try again.");
             return;
         }
 
         logUI("MDX-Net model downloaded to " + VocalSeparator::modelPath());
-    }
+        runVocalSeparation();
+    });
 
+    m_modelDownloadJob->start(VocalSeparator::modelUrl(), VocalSeparator::modelPath(),
+                              VocalSeparator::modelSha256());
+}
+
+// The separation+export flow proper — runs once the model is confirmed
+// present, either immediately (generateBackingTrack() found it already
+// downloaded) or from the download job's finished-signal handler above.
+void MainWindow::runVocalSeparation() {
     // --- Step 2: progress dialog for separation ---
     auto *progDlg = new QDialog(this);
     progDlg->setWindowTitle("Generating Backing Track");
@@ -193,13 +228,13 @@ void MainWindow::generateBackingTrack() {
                 });
             if (saveDlg.exec() != QDialog::Accepted) {
                 trySetState(State::Idle);
-                QFile::remove(tempOut);
+                if (m_separationJob) m_separationJob->discardWorkspace();
                 return;
             }
             savePath = saveDlg.selectedFiles().value(0);
             if (savePath.isEmpty()) {
                 trySetState(State::Idle);
-                QFile::remove(tempOut);
+                if (m_separationJob) m_separationJob->discardWorkspace();
                 return;
             }
 
@@ -229,21 +264,50 @@ void MainWindow::generateBackingTrack() {
                                  !savePath.endsWith(".mp3", Qt::CaseInsensitive);
         const bool saveAsMp3 = savePath.endsWith(".mp3", Qt::CaseInsensitive);
 
-        // WAV: fast rename/copy — no progress dialog or job needed
+        // WAV: fast rename/copy — no progress dialog or job needed. Staged
+        // through a sibling ".partial" path first so a pre-existing file at
+        // savePath is only ever removed once the new content has actually
+        // landed on disk — previously savePath was removed unconditionally
+        // up front, so a failed rename/copy right after could lose a valid
+        // existing file for nothing.
         if (!saveAsVideo && !saveAsMp3) {
-            if (QFile::exists(savePath))
-                QFile::remove(savePath);
-            if (!QFile::rename(tempOut, savePath)) {
-                if (QFile::copy(tempOut, savePath)) {
-                    QFile::remove(tempOut);
-                } else {
-                    trySetState(State::Idle);
-                    QMessageBox::critical(this, "Save Failed",
-                                          "Could not write to:\n" + savePath +
-                                          "\n\nTemp file preserved at:\n" + tempOut);
-                    return;
-                }
+            const QString partialPath = savePath + ".partial";
+            QFile::remove(partialPath); // clear any leftover from a previous crashed attempt
+
+            bool staged = QFile::rename(tempOut, partialPath);
+            if (!staged && QFile::copy(tempOut, partialPath)) {
+                QFile::remove(tempOut);
+                staged = true;
             }
+            if (!staged) {
+                trySetState(State::Idle);
+                QMessageBox::critical(this, "Save Failed",
+                                      "Could not write to:\n" + savePath +
+                                      "\n\nTemp file preserved at:\n" + tempOut);
+                return;
+            }
+
+            // tempOut has already been relocated out of the workspace (renamed
+            // or copied to partialPath, next to savePath) by this point in
+            // every remaining branch below, so the workspace itself is no
+            // longer needed regardless of how this finishes.
+            if (m_separationJob) m_separationJob->discardWorkspace();
+
+            if (QFile::exists(savePath) && !QFile::remove(savePath)) {
+                trySetState(State::Idle);
+                QMessageBox::critical(this, "Save Failed",
+                                      "Could not replace existing file at:\n" + savePath +
+                                      "\n\nThe new export was preserved at:\n" + partialPath);
+                return;
+            }
+            if (!QFile::rename(partialPath, savePath)) {
+                trySetState(State::Idle);
+                QMessageBox::critical(this, "Save Failed",
+                                      "Could not finalize output at:\n" + savePath +
+                                      "\n\nThe new export was preserved at:\n" + partialPath);
+                return;
+            }
+
             trySetState(State::Idle);
             logUI("Backing track saved: " + savePath);
             QMessageBox::information(this, "Done",
@@ -256,9 +320,6 @@ void MainWindow::generateBackingTrack() {
         saveProgDlg->setWindowTitle("Saving Backing Track");
         saveProgDlg->setModal(true);
         saveProgDlg->setMinimumWidth(340);
-        // No cancellation for mux/encode — disable close button so the user
-        // can't accidentally discard the operation mid-way.
-        saveProgDlg->setWindowFlags(saveProgDlg->windowFlags() & ~Qt::WindowCloseButtonHint);
 
         auto *saveProgLbl = new QLabel(
             saveAsVideo ? "Muxing audio into video…" : "Encoding MP3…", saveProgDlg);
@@ -271,13 +332,24 @@ void MainWindow::generateBackingTrack() {
         saveProgBar->setRange(0, 0); // indeterminate — QProcess gives no sub-step progress
 #endif
 
+        auto *saveCancelBtn = new QPushButton("Abort", saveProgDlg);
+
         auto *saveLayout = new QVBoxLayout(saveProgDlg);
         saveLayout->addWidget(saveProgLbl);
         saveLayout->addWidget(saveProgBar);
+        saveLayout->addWidget(saveCancelBtn);
         saveProgDlg->setLayout(saveLayout);
         saveProgDlg->show();
 
         QPointer<QDialog> saveProgDlgGuard(saveProgDlg);
+
+        connect(saveCancelBtn, &QPushButton::clicked, this, [this]() {
+            if (m_separationJob) m_separationJob->cancelExport();
+        });
+        // Closing the window (X button) is equivalent to Abort
+        connect(saveProgDlg, &QDialog::rejected, this, [this]() {
+            if (m_separationJob) m_separationJob->cancelExport();
+        });
 
         connect(m_separationJob, &VocalSeparationJob::exportProgress, this,
                 [saveProgBar](int pct) {
@@ -304,6 +376,7 @@ void MainWindow::generateBackingTrack() {
                 saveProgDlgGuard->deleteLater();
             }
             trySetState(State::Idle);
+            if (err == "Cancelled") return;
             QMessageBox::critical(this, "Export Failed", err);
         });
 

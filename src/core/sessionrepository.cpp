@@ -211,11 +211,20 @@ bool SessionRepository::writeMetadata(const SessionEntry &entry)
     obj["hasWebcam"]   = entry.hasWebcam;
     obj["hasAudio"]    = entry.hasAudio;
 
-    if (!f.open(QIODevice::WriteOnly)) {
-        qWarning() << "SessionRepository::writeMetadata: cannot open for writing:" << f.fileName();
+    // QSaveFile writes to a temp file next to the target and only replaces
+    // it on commit(), so a disk-full or interrupted write can't truncate
+    // session.json — the previous QFile-based write ignored write()'s
+    // return value and reported success even on a partial write.
+    const QByteArray json = QJsonDocument(obj).toJson();
+    QSaveFile saveFile(metaPath(entry.sessionDir));
+    if (!saveFile.open(QIODevice::WriteOnly)) {
+        qWarning() << "SessionRepository::writeMetadata: cannot open for writing:" << saveFile.fileName();
         return false;
     }
-    f.write(QJsonDocument(obj).toJson());
+    if (saveFile.write(json) != json.size() || !saveFile.commit()) {
+        qWarning() << "SessionRepository::writeMetadata: failed to write/commit:" << saveFile.fileName();
+        return false;
+    }
     return true;
 }
 
@@ -334,27 +343,74 @@ RestoreResult SessionRepository::restoreSession(const QString &id)
             qWarning() << "SessionRepository::restoreSession: cannot open offsets.json";
             // Non-fatal: continue with the neutral defaults set above.
         } else {
-            const QJsonObject off = QJsonDocument::fromJson(f.readAll()).object();
-            snapshot.audioOffset      = off["audioOffset"].toString().toLongLong();
-            snapshot.videoOffset      = off["videoOffset"].toString().toLongLong();
-            snapshot.sysOffset        = off["sysOffset"].toString().toLongLong();
-            snapshot.currentVideoFile = off["playbackFile"].toString();
-            snapshot.currentVideoName = off["playbackName"].toString();
+            QJsonParseError parseError;
+            const QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &parseError);
+            if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
+                qWarning() << "SessionRepository::restoreSession: offsets.json is invalid:"
+                           << parseError.errorString();
+                result.warnings << "Offsets metadata is invalid; offsets were reset to zero "
+                                   "and audio/video sync may need manual adjustment.";
+                // Neutral defaults set above are left in place.
+            } else {
+                const QJsonObject off = doc.object();
+                snapshot.audioOffset      = off["audioOffset"].toString().toLongLong();
+                snapshot.videoOffset      = off["videoOffset"].toString().toLongLong();
+                snapshot.sysOffset        = off["sysOffset"].toString().toLongLong();
+                snapshot.currentVideoFile = off["playbackFile"].toString();
+                snapshot.currentVideoName = off["playbackName"].toString();
 
-            // The render only needs audio from the playback file; always use
-            // the guaranteed local copy saved inside the session folder so
-            // re-renders work regardless of whether the original file still exists.
-            const QString localCopy = sessionDir + "/playback.wav";
-            if (QFile::exists(localCopy))
-                snapshot.currentVideoFile = localCopy;
+                // The render only needs audio from the playback file; always use
+                // the guaranteed local copy saved inside the session folder so
+                // re-renders work regardless of whether the original file still exists.
+                const QString localCopy = sessionDir + "/playback.wav";
+                if (QFile::exists(localCopy))
+                    snapshot.currentVideoFile = localCopy;
+            }
         }
+    }
+
+    // Validate the session's actual file content before trusting it, instead
+    // of just checking which files happen to exist. A session whose
+    // session.json claims hasAudio/hasWebcam but whose corresponding file is
+    // now missing, empty, or otherwise corrupted (disk error, manual
+    // tampering, an interrupted copy) used to be reported as a successful
+    // restore regardless — silently losing vocals entirely, or downgrading a
+    // webcam session to audio-only with no indication anything was wrong.
+    const SessionEntry meta = readMetadata(sessionDir);
+
+    const QString audioPath = sessionDir + "/audio.wav";
+    const bool audioOk = QFile::exists(audioPath) && QFileInfo(audioPath).size() > 0;
+    if (!audioOk) {
+        result.error = meta.hasAudio
+            ? "session metadata claims audio was recorded, but audio.wav is "
+              "missing or empty — the session cannot be restored"
+            : "session has no usable audio.wav — the session cannot be restored";
+        qWarning() << "SessionRepository::restoreSession:" << result.error << ":" << sessionDir;
+        return result;
     }
 
     // Ground-truth against the session folder itself, not any caller state:
     // this is what tells restoreAndRender() apart from "is a camera
     // currently plugged into this machine" (MainWindow::hasCamera), which
     // has nothing to do with what a given past session actually recorded.
-    result.hasWebcam = QFile::exists(sessionDir + "/webcam.mkv");
+    const QString webcamPath = sessionDir + "/webcam.mkv";
+    result.hasWebcam = QFile::exists(webcamPath) && QFileInfo(webcamPath).size() > 0;
+    if (meta.hasWebcam && !result.hasWebcam) {
+        result.warnings << "This session was recorded with a webcam, but its video file is "
+                            "missing or empty — restoring as audio-only.";
+        qWarning() << "SessionRepository::restoreSession: webcam.mkv missing/empty despite "
+                      "hasWebcam=true in metadata:" << sessionDir;
+    }
+
+    // The render's only source of the karaoke track itself — without it
+    // there is nothing to mix the restored vocal against, so this is fatal
+    // rather than a downgrade, same as the audio.wav check above.
+    if (!QFile::exists(snapshot.currentVideoFile)) {
+        result.error = "playback source '" + snapshot.currentVideoFile
+                      + "' could not be found — the session cannot be restored";
+        qWarning() << "SessionRepository::restoreSession:" << result.error;
+        return result;
+    }
 
     // Copy artefacts into a throwaway directory private to this restore,
     // instead of the shared /tmp WakkaQt_tmp_* paths every other restore

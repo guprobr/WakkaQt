@@ -11,6 +11,7 @@
 #include "sessionrepository.h"
 #include "renderjob.h"
 #include "vocalseparationjob.h"
+#include "modeldownloadjob.h"
 
 #include <QWidget>
 #include <QFutureWatcher>
@@ -74,7 +75,7 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    QString Wakka_versione = "v2.8.6";
+    QString Wakka_versione = "v2.9.4";
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
@@ -188,6 +189,13 @@ private:
     // closeEvent() cancels and waits on it the same way it does m_renderJob.
     VocalSeparationJob *m_separationJob = nullptr;
 
+    // Owns the one-time async download of the MDX-Net model, when
+    // generateBackingTrack() finds it missing. Not covered by closeEvent()
+    // beyond destruction: cancel()+waitForFinished() both run from its own
+    // destructor (see ModelDownloadJob), so simply letting MainWindow's
+    // QObject child-destruction take it down on close is already safe.
+    ModelDownloadJob *m_modelDownloadJob = nullptr;
+
     QVideoWidget *videoWidget;
     
     AudioVisualizerWidget *vizUpperLeft;
@@ -276,6 +284,10 @@ private:
     void saveCurrentSession();
     void restoreAndRender(const QString &sessionId);
     void generateBackingTrack();
+    // The actual separation+export flow — split out of generateBackingTrack()
+    // so it can run either immediately (model already present) or from
+    // ModelDownloadJob::finished's success branch (model just downloaded).
+    void runVocalSeparation();
 
     void resetMediaComponents(bool isStarting);
     void configureMediaComponents();

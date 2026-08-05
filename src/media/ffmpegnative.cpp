@@ -27,23 +27,51 @@ extern "C" {
 #include <cstring>
 #include <cmath>
 #include <string>
+#include <mutex>
 
 namespace FFmpegNative {
 
+// setlocale() mutates process-global state — it is not per-thread. Two
+// threads each building a filter graph at the same time (preview extraction
+// and a render, say) could otherwise interleave: thread A saves "pt_BR" and
+// switches to "C", thread B saves whatever A just set ("C") and also
+// switches to "C", then A finishes and restores "pt_BR" out from under B's
+// still-in-progress parse, and finally B "restores" the wrong saved value on
+// top of that. This RAII guard serializes every locale-dependent span behind
+// one mutex, held for the guard's entire lifetime — not just around the
+// setlocale() calls themselves — so at most one thread is ever between
+// "switched to C" and "restored" at a time.
+//
 // setlocale(LC_NUMERIC, "C") returns the *new* locale name ("C"), not the
 // previous one — saving that return value and passing it back to setlocale()
-// afterwards (as this code used to) just resets to "C" again, permanently
-// leaving the process in the C locale after the first call anywhere in the
-// app. Query the current locale explicitly before changing it, and copy it
-// out immediately: the pointer setlocale() returns aliases internal storage
-// that the very next setlocale() call is free to invalidate.
-static std::string forceNumericLocaleC()
+// afterwards (as this code used to, before the mutex was added) just resets
+// to "C" again, permanently leaving the process in the C locale after the
+// first call anywhere in the app. Query the current locale explicitly before
+// changing it, and copy it out immediately: the pointer setlocale() returns
+// aliases internal storage that the very next setlocale() call is free to
+// invalidate.
+class NumericLocaleGuard
 {
-    const char *cur = setlocale(LC_NUMERIC, nullptr);
-    std::string saved = cur ? cur : "C";
-    setlocale(LC_NUMERIC, "C");
-    return saved;
-}
+public:
+    NumericLocaleGuard() : m_lock(s_mutex)
+    {
+        const char *cur = setlocale(LC_NUMERIC, nullptr);
+        m_previous = cur ? cur : "C";
+        setlocale(LC_NUMERIC, "C");
+    }
+    ~NumericLocaleGuard()
+    {
+        setlocale(LC_NUMERIC, m_previous.c_str());
+    }
+    NumericLocaleGuard(const NumericLocaleGuard &) = delete;
+    NumericLocaleGuard &operator=(const NumericLocaleGuard &) = delete;
+
+private:
+    static std::mutex s_mutex;
+    std::unique_lock<std::mutex> m_lock;
+    std::string m_previous;
+};
+std::mutex NumericLocaleGuard::s_mutex;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // getDuration
@@ -335,7 +363,7 @@ static QVector<int16_t> applyAudioFilter(const QVector<float> &input,
 
         // Force "C" locale so avfilter parses decimal points correctly regardless of
         // the system locale (e.g. "0.5" would fail on German/French locales otherwise).
-        const std::string prevLocale = forceNumericLocaleC();
+        NumericLocaleGuard localeGuard;
 
         AVFilterInOut *ins = nullptr, *outs = nullptr;
         ok = (avfilter_graph_parse2(graph, fullChain.toUtf8().constData(), &ins, &outs) >= 0);
@@ -346,9 +374,6 @@ static QVector<int16_t> applyAudioFilter(const QVector<float> &input,
         avfilter_inout_free(&ins);
         avfilter_inout_free(&outs);
         ok = ok && (avfilter_graph_config(graph, nullptr) >= 0);
-
-        // Restore previous locale
-        setlocale(LC_NUMERIC, prevLocale.c_str());
     }
 
     if (ok) {
@@ -435,7 +460,7 @@ QByteArray applyFilterChainS16(const QByteArray &pcmS16, int sampleRate, int cha
     if (ok) {
         const QString fullChain = filterChain + QStringLiteral(",aformat=sample_fmts=s16");
 
-        const std::string prevLocale = forceNumericLocaleC();
+        NumericLocaleGuard localeGuard;
 
         AVFilterInOut *ins = nullptr, *outs = nullptr;
         ok = (avfilter_graph_parse2(graph, fullChain.toUtf8().constData(), &ins, &outs) >= 0);
@@ -446,8 +471,6 @@ QByteArray applyFilterChainS16(const QByteArray &pcmS16, int sampleRate, int cha
         avfilter_inout_free(&ins);
         avfilter_inout_free(&outs);
         ok = ok && (avfilter_graph_config(graph, nullptr) >= 0);
-
-        setlocale(LC_NUMERIC, prevLocale.c_str());
     }
 
     if (ok) {
@@ -1092,14 +1115,16 @@ static AVCodecID audioCodecForExt(const QString &ext)
 }
 
 bool transcodeAudio(const QString &input, const QString &output,
-                    std::function<void(int)> progressCb)
+                    std::function<void(int)> progressCb,
+                    const std::atomic<bool> *cancelled)
 {
     if (progressCb) progressCb(0);
-    const QVector<float>   floatPcm = decodeAudioToFloat(input, 0, 1.0);
+    const QVector<float>   floatPcm = decodeAudioToFloat(input, 0, 1.0, cancelled);
     if (floatPcm.isEmpty()) {
-        qWarning() << "FFmpegNative::transcodeAudio: decode failed for" << input;
+        qWarning() << "FFmpegNative::transcodeAudio: decode failed or cancelled for" << input;
         return false;
     }
+    if (cancelled && cancelled->load()) return false;
     if (progressCb) progressCb(20);
     const QVector<int16_t> s16Pcm = applyAudioFilter(floatPcm, {});
     if (progressCb) progressCb(35);
@@ -1150,7 +1175,8 @@ bool transcodeAudio(const QString &input, const QString &output,
 
 bool muxVideoWithAudio(const QString &videoSrc, const QString &audioSrc,
                        const QString &output,
-                       std::function<void(int)> progressCb)
+                       std::function<void(int)> progressCb,
+                       const std::atomic<bool> *cancelled)
 {
     if (progressCb) progressCb(0);
     // Open video source to copy its video stream
@@ -1170,11 +1196,13 @@ bool muxVideoWithAudio(const QString &videoSrc, const QString &audioSrc,
     }
 
     // Decode audio source
-    const QVector<float> floatPcm = decodeAudioToFloat(audioSrc, 0, 1.0);
+    const QVector<float> floatPcm = decodeAudioToFloat(audioSrc, 0, 1.0, cancelled);
     if (floatPcm.isEmpty()) {
-        qWarning() << "FFmpegNative::muxVideoWithAudio: cannot decode audio from" << audioSrc;
+        qWarning() << "FFmpegNative::muxVideoWithAudio: cannot decode audio from"
+                   << audioSrc << "(or cancelled)";
         avformat_close_input(&vidFmt); return false;
     }
+    if (cancelled && cancelled->load()) { avformat_close_input(&vidFmt); return false; }
     if (progressCb) progressCb(10);
     const QVector<int16_t> s16Pcm = applyAudioFilter(floatPcm, {});
     if (progressCb) progressCb(20);
@@ -1234,8 +1262,10 @@ bool muxVideoWithAudio(const QString &videoSrc, const QString &audioSrc,
 
     AVPacket *pkt = av_packet_alloc();
     int64_t firstPts = AV_NOPTS_VALUE;
+    bool wasCancelled = false;
 
     while (av_read_frame(vidFmt, pkt) >= 0) {
+        if (cancelled && cancelled->load()) { wasCancelled = true; av_packet_unref(pkt); break; }
         if (pkt->stream_index != vidIdx) { av_packet_unref(pkt); continue; }
 
         // Normalize PTS/DTS to start from 0
@@ -1271,14 +1301,18 @@ bool muxVideoWithAudio(const QString &videoSrc, const QString &audioSrc,
         av_packet_unref(pkt);
     }
 
-    // Drain any audio that extends past the end of the video track
+    // Drain any audio that extends past the end of the video track — on
+    // cancellation these are simply freed instead of written, since the
+    // output is being discarded either way.
     for (; audioQueueIdx < audioQueue.size(); audioQueueIdx++) {
-        av_write_frame(outFmt, audioQueue[audioQueueIdx]);
+        if (!wasCancelled)
+            av_write_frame(outFmt, audioQueue[audioQueueIdx]);
         av_packet_free(&audioQueue[audioQueueIdx]);
     }
     audioQueue.clear();
 
-    av_write_trailer(outFmt);
+    if (!wasCancelled)
+        av_write_trailer(outFmt);
     if (!(outFmt->oformat->flags & AVFMT_NOFILE))
         avio_closep(&outFmt->pb);
 
@@ -1287,6 +1321,11 @@ bool muxVideoWithAudio(const QString &videoSrc, const QString &audioSrc,
     avcodec_free_context(&audioEncCtx);
     avformat_close_input(&vidFmt);
     avformat_free_context(outFmt);
+
+    if (wasCancelled) {
+        QFile::remove(output); // partial file, never a valid mux
+        return false;
+    }
 
     if (progressCb) progressCb(100);
     qDebug() << "FFmpegNative::muxVideoWithAudio: done →" << output;
@@ -1396,7 +1435,7 @@ static bool buildVideoFilterGraph(AVFilterGraph **graph, AVFilterContext **srcCt
 
         // Force "C" locale so avfilter parses decimal points correctly regardless
         // of the system locale (e.g. "0.5" would fail on German/French locales).
-        const std::string prevLocale = forceNumericLocaleC();
+        NumericLocaleGuard localeGuard;
 
         AVFilterInOut *ins = nullptr, *outs = nullptr;
         ok = (avfilter_graph_parse2(*graph, fullChain.toUtf8().constData(), &ins, &outs) >= 0);
@@ -1407,8 +1446,6 @@ static bool buildVideoFilterGraph(AVFilterGraph **graph, AVFilterContext **srcCt
         avfilter_inout_free(&ins);
         avfilter_inout_free(&outs);
         ok = ok && (avfilter_graph_config(*graph, nullptr) >= 0);
-
-        setlocale(LC_NUMERIC, prevLocale.c_str());
     }
 
     if (!ok) {

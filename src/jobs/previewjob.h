@@ -11,6 +11,7 @@
 #include <QProcess>
 #include <QScopedPointer>
 #include <atomic>
+#include <memory>
 
 // Owns the vocal-extraction + VocalEnhancer DSP work that used to live
 // inline in PreviewDialog::setAudioFile()/startEnhancementJob(). PreviewDialog
@@ -56,7 +57,11 @@ public:
 
 signals:
     void extracted(QByteArray pcmSamples, QAudioFormat format);
-    void extractionFailed(QString reason);
+    // wasCancelled distinguishes a deliberate cancel (extract() replacing a
+    // still-running extraction, or waitForIdle() during shutdown/dialog
+    // close) from a real decode error — mirrors RenderJob::finished()'s
+    // (success, cancelled, errorMessage) shape. reason is empty when cancelled.
+    void extractionFailed(QString reason, bool wasCancelled);
     void enhanced(QByteArray tunedPcm);
 
 private:
@@ -68,7 +73,11 @@ private:
 
     QFutureWatcher<bool> *m_extractWatcher = nullptr; // native path
     QProcess *m_extractProcess = nullptr;              // QProcess fallback path
-    std::atomic<bool> m_extractCancelled{false};
+    // Per-run flag (fresh shared_ptr each extract() call, not reused) so a
+    // still-in-flight run's finished-callback can tell whether cancellation
+    // was requested for THAT run specifically, even after a later extract()
+    // call has moved on to a new run of its own.
+    std::shared_ptr<std::atomic<bool>> m_extractCancelled;
     QFutureWatcher<QByteArray> *m_enhanceWatcher = nullptr;
     std::atomic<bool> m_enhanceCancelled{false};
 };

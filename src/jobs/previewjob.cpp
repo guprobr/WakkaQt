@@ -30,10 +30,13 @@ void PreviewJob::waitForIdle()
         // Requests FFmpegNative::extractAudio() to bail out of its decode
         // loop on the next iteration instead of just blocking here until it
         // runs to completion on its own.
-        m_extractCancelled.store(true);
+        if (m_extractCancelled)
+            m_extractCancelled->store(true);
         m_extractWatcher->waitForFinished();
     }
     if (m_extractProcess) {
+        if (m_extractCancelled)
+            m_extractCancelled->store(true);
         m_extractProcess->kill();
         m_extractProcess->waitForFinished();
     }
@@ -56,14 +59,22 @@ void PreviewJob::extract(const ExtractParams &params)
     // still-running extraction (e.g. the user reopens the preview on a new
     // file before the old one finished) is the normal, expected case here.
     if (m_extractWatcher && !m_extractWatcher->isFinished()) {
-        m_extractCancelled.store(true);
+        if (m_extractCancelled)
+            m_extractCancelled->store(true);
         m_extractWatcher->waitForFinished();
     }
     if (m_extractProcess) {
+        if (m_extractCancelled)
+            m_extractCancelled->store(true);
         m_extractProcess->kill();
         m_extractProcess->waitForFinished();
     }
-    m_extractCancelled.store(false);
+
+    // Fresh per-run flag: the outgoing run's finished-callback (queued, not
+    // yet delivered) keeps its own shared_ptr copy, so it can still tell it
+    // was cancelled after this new run replaces m_extractCancelled here.
+    auto cancelledForThisRun = std::make_shared<std::atomic<bool>>(false);
+    m_extractCancelled = cancelledForThisRun;
 
 #ifdef WAKKAQT_FFMPEG_NATIVE
     if (m_extractWatcher) {
@@ -72,14 +83,19 @@ void PreviewJob::extract(const ExtractParams &params)
     }
     QFutureWatcher<bool> *watcher = new QFutureWatcher<bool>(this);
     m_extractWatcher = watcher;
-    connect(watcher, &QFutureWatcher<bool>::finished, this, [this, watcher, destTempFile]() {
+    connect(watcher, &QFutureWatcher<bool>::finished, this,
+            [this, watcher, destTempFile, cancelledForThisRun]() {
         const bool ok = watcher->result();
         if (m_extractWatcher == watcher)
             m_extractWatcher = nullptr;
         watcher->deleteLater();
 
         if (!ok) {
-            emit extractionFailed("Native audio extraction failed.");
+            if (cancelledForThisRun->load()) {
+                emit extractionFailed(QString(), true);
+                return;
+            }
+            emit extractionFailed("Native audio extraction failed.", false);
             return;
         }
         onExtractionFinished(true, destTempFile);
@@ -87,7 +103,7 @@ void PreviewJob::extract(const ExtractParams &params)
 
     const QString sourceFile = params.sourceFile;
     const qint64 trimOffset  = params.trimOffsetMs;
-    std::atomic<bool> *cancelFlag = &m_extractCancelled;
+    std::atomic<bool> *cancelFlag = cancelledForThisRun.get();
     auto extractFuture = QtConcurrent::run([sourceFile, destTempFile, trimOffset, cancelFlag]() {
         // Extract stereo (no mono hint — VocalEnhancer handles channel mixing internally)
         return FFmpegNative::extractAudio(sourceFile, destTempFile, trimOffset, {}, cancelFlag);
@@ -116,13 +132,18 @@ void PreviewJob::extract(const ExtractParams &params)
               << destTempFile;
 
     connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
-            [this, process, destTempFile](int exitCode, QProcess::ExitStatus exitStatus) {
+            [this, process, destTempFile, cancelledForThisRun]
+            (int exitCode, QProcess::ExitStatus exitStatus) {
         if (m_extractProcess == process)
             m_extractProcess = nullptr;
         process->deleteLater();
 
         if (exitStatus == QProcess::CrashExit || exitCode != 0) {
-            emit extractionFailed("FFmpeg process failed.");
+            if (cancelledForThisRun->load()) {
+                emit extractionFailed(QString(), true);
+                return;
+            }
+            emit extractionFailed("FFmpeg process failed.", false);
             return;
         }
         onExtractionFinished(true, destTempFile);
@@ -133,7 +154,7 @@ void PreviewJob::extract(const ExtractParams &params)
         if (m_extractProcess == process)
             m_extractProcess = nullptr;
         process->deleteLater();
-        emit extractionFailed("Failed to start FFmpeg.");
+        emit extractionFailed("Failed to start FFmpeg.", false);
     }
 #endif
 }
@@ -142,11 +163,11 @@ void PreviewJob::onExtractionFinished(bool /*ok*/, const QString &destTempFile)
 {
     QFile audioFile(destTempFile);
     if (!audioFile.exists() || audioFile.size() <= 0) {
-        emit extractionFailed("Audio extraction failed or file is empty.");
+        emit extractionFailed("Audio extraction failed or file is empty.", false);
         return;
     }
     if (!audioFile.open(QIODevice::ReadOnly)) {
-        emit extractionFailed("Failed to read extracted preview audio.");
+        emit extractionFailed("Failed to read extracted preview audio.", false);
         return;
     }
     const QByteArray wavBytes = audioFile.readAll();
@@ -158,7 +179,7 @@ void PreviewJob::onExtractionFinished(bool /*ok*/, const QString &destTempFile)
     // attached to what everything downstream treats as raw PCM samples.
     PcmBuffer pcm = parseWavPcm(wavBytes);
     if (!pcm.isValid()) {
-        emit extractionFailed("Extracted preview audio could not be parsed.");
+        emit extractionFailed("Extracted preview audio could not be parsed.", false);
         return;
     }
 

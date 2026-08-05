@@ -4,10 +4,6 @@
 #include <QFile>
 #include <QSaveFile>
 #include <QCryptographicHash>
-#include <QNetworkAccessManager>
-#include <QNetworkReply>
-#include <QNetworkRequest>
-#include <QEventLoop>
 #include <QProcess>
 
 #include <cmath>
@@ -65,65 +61,12 @@ bool VocalSeparator::modelExists() {
     return QFile::exists(modelPath());
 }
 
-bool VocalSeparator::downloadModel(std::function<void(int)> progressFn, QString &errorOut) {
-    QDir().mkpath(modelDir());
+QString VocalSeparator::modelUrl() {
+    return QString::fromLatin1(MODEL_URL);
+}
 
-    QUrl modelUrl{MODEL_URL};
-    QNetworkRequest req{modelUrl};
-    req.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
-                     QNetworkRequest::NoLessSafeRedirectPolicy);
-
-    QNetworkAccessManager mgr;
-    QEventLoop loop;
-    QNetworkReply *reply = mgr.get(req);
-
-    QObject::connect(reply, &QNetworkReply::downloadProgress,
-                     [&](qint64 rx, qint64 tot) {
-        if (tot > 0 && progressFn)
-            progressFn(int(rx * 100 / tot));
-    });
-    QObject::connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
-    loop.exec();
-
-    if (reply->error() != QNetworkReply::NoError) {
-        errorOut = reply->errorString();
-        reply->deleteLater();
-        return false;
-    }
-
-    const QByteArray modelBytes = reply->readAll();
-    reply->deleteLater();
-
-    // Verify integrity before any of this ever reaches disk — a
-    // truncated/corrupt/tampered download must never be mistaken for a
-    // usable model by modelExists() (a plain QFile::exists() check) on a
-    // future launch.
-    const QByteArray actualHash =
-        QCryptographicHash::hash(modelBytes, QCryptographicHash::Sha256).toHex();
-    if (actualHash != MODEL_SHA256) {
-        errorOut = QString("Downloaded model failed the integrity check "
-                           "(expected sha256 %1, got %2). Discarding — try again.")
-                       .arg(MODEL_SHA256, QString::fromLatin1(actualHash));
-        return false;
-    }
-
-    // Write to a temp file in the same directory and atomically rename into
-    // place, so a crash or interruption mid-write can never leave a partial
-    // file sitting at modelPath() that a later launch would mistake for a
-    // complete, ready-to-load model.
-    QSaveFile out(modelPath());
-    if (!out.open(QIODevice::WriteOnly)) {
-        errorOut = "Cannot write model to: " + modelPath();
-        return false;
-    }
-    out.write(modelBytes);
-    if (!out.commit()) {
-        errorOut = "Failed to finalize model file at: " + modelPath();
-        return false;
-    }
-
-    if (progressFn) progressFn(100);
-    return true;
+QString VocalSeparator::modelSha256() {
+    return QString::fromLatin1(MODEL_SHA256);
 }
 
 // =========================================================================
@@ -131,7 +74,8 @@ bool VocalSeparator::downloadModel(std::function<void(int)> progressFn, QString 
 // =========================================================================
 
 // Decode media file → interleaved float32 stereo at 44100 Hz.
-static std::vector<float> decodeToFloat(const QString &input, QString &err,
+static std::vector<float> decodeToFloat(const QString &input, const QString &workspaceDir,
+                                        QString &err,
                                         const std::atomic<bool> *cancelled = nullptr) {
 #ifdef WAKKAQT_FFMPEG_NATIVE
     std::vector<float> pcm = FFmpegNative::decodeToFloatStereo(input, cancelled);
@@ -142,7 +86,7 @@ static std::vector<float> decodeToFloat(const QString &input, QString &err,
     }
     return pcm;
 #else
-    const QString tmp = QDir::tempPath() + "/wakka_sep_in.f32";
+    const QString tmp = workspaceDir + "/decode.f32";
     QProcess p;
     p.start("ffmpeg", {"-y", "-i", input,
                        "-vn", "-ar", "44100", "-ac", "2",
@@ -165,7 +109,7 @@ static std::vector<float> decodeToFloat(const QString &input, QString &err,
 
 // Write interleaved float32 stereo → WAV.
 static bool writeFloatWav(const std::vector<float> &pcm,
-                          const QString &outPath, QString &err,
+                          const QString &outPath, const QString &workspaceDir, QString &err,
                           const std::atomic<bool> *cancelled = nullptr) {
 #ifdef WAKKAQT_FFMPEG_NATIVE
     if (!FFmpegNative::writeFloatWav(pcm, outPath, cancelled)) {
@@ -176,7 +120,7 @@ static bool writeFloatWav(const std::vector<float> &pcm,
     }
     return true;
 #else
-    const QString tmp = QDir::tempPath() + "/wakka_sep_out.f32";
+    const QString tmp = workspaceDir + "/encode.f32";
     QFile f(tmp);
     if (!f.open(QIODevice::WriteOnly)) { err = "Cannot write temp PCM"; return false; }
     f.write(reinterpret_cast<const char *>(pcm.data()), pcm.size() * sizeof(float));
@@ -316,6 +260,12 @@ static std::vector<float> computeISTFT(const MdxSpec &spec, int n_fft, int hop, 
     fftw_destroy_plan(plan);
     fftw_free(inBuf);
 
+    // The caller discards this result outright when cancelled (checked right
+    // after computeISTFT() returns) — skip the O(totalSamples) normalization
+    // pass too instead of spending it on a buffer nobody will use.
+    if (cancelled && cancelled->load())
+        return {};
+
     // Normalize by squared-window sum (overlap-add reconstruction)
     for (int i = 0; i < totalSamples; ++i) {
         const float w = norm[i] > 1e-9f ? norm[i] : 1.f;
@@ -328,6 +278,7 @@ static std::vector<float> computeISTFT(const MdxSpec &spec, int n_fft, int hop, 
 // ---- main separation routine --------------------------------------------
 
 QString VocalSeparator::separate(const QString &inputFile,
+                                 const QString &workspaceDir,
                                  std::function<void(int)> progressFn,
                                  QString &errorOut,
                                  const std::atomic<bool> *cancelled) {
@@ -362,7 +313,7 @@ QString VocalSeparator::separate(const QString &inputFile,
     if (progressFn) progressFn(0);
 
     // 1. Decode to interleaved float32 stereo at 44100 Hz
-    std::vector<float> stereo = decodeToFloat(inputFile, errorOut, cancelled);
+    std::vector<float> stereo = decodeToFloat(inputFile, workspaceDir, errorOut, cancelled);
     if (stereo.empty()) return {};
     const int totalSamples = int(stereo.size()) / 2;
 
@@ -502,8 +453,8 @@ QString VocalSeparator::separate(const QString &inputFile,
     if (progressFn) progressFn(96);
 
     // 8. Write output WAV
-    const QString outPath = QDir::tempPath() + "/wakka_backing_track.wav";
-    if (!writeFloatWav(output, outPath, errorOut, cancelled)) return {};
+    const QString outPath = workspaceDir + "/instrumental.wav";
+    if (!writeFloatWav(output, outPath, workspaceDir, errorOut, cancelled)) return {};
 
     if (progressFn) progressFn(100);
     return outPath;
@@ -514,6 +465,7 @@ QString VocalSeparator::separate(const QString &inputFile,
 // =========================================================================
 
 QString VocalSeparator::separate(const QString &,
+                                 const QString &,
                                  std::function<void(int)>,
                                  QString &errorOut,
                                  const std::atomic<bool> *) {

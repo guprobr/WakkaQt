@@ -65,15 +65,24 @@ void RenderJob::startNative(const Params &params)
         m_watcher->deleteLater();
         m_watcher = nullptr;
     }
+    // Captured by value below instead of read from m_cancelled/m_lastOutputPath
+    // inside the callback: isActive() only reflects whether the QFuture
+    // itself has finished, not whether this queued callback has actually run
+    // yet, so a new start() could in principle slip in during that narrow
+    // window and repoint the members before this callback reads them.
+    auto cancelledForThisRun = m_cancelled;
+    const QString outputPathForThisRun = params.outputPath;
+
     QFutureWatcher<bool> *watcher = new QFutureWatcher<bool>(this);
     m_watcher = watcher;
-    connect(watcher, &QFutureWatcher<bool>::finished, this, [this, watcher]() {
+    connect(watcher, &QFutureWatcher<bool>::finished, this,
+            [this, watcher, cancelledForThisRun, outputPathForThisRun]() {
         const bool ok = watcher->result();
         if (m_watcher == watcher)
             m_watcher = nullptr;
         watcher->deleteLater();
 
-        if (m_cancelled->load()) {
+        if (cancelledForThisRun->load()) {
             emit finished(false, true, QString());
             return;
         }
@@ -81,7 +90,7 @@ void RenderJob::startNative(const Params &params)
             emit finished(false, false, "Rendering failed. Check the logs.");
             return;
         }
-        if (!QFile::exists(m_lastOutputPath)) {
+        if (!QFile::exists(outputPathForThisRun)) {
             emit finished(false, false, "Output file was not created.");
             return;
         }
@@ -190,13 +199,16 @@ void RenderJob::startFallback(const Params &params)
         const qint64 totalMs = qint64(totalDuration) * 1000;
         emit progress(qBound(0.0, double(elapsedMs) / double(totalMs), 1.0));
     });
+    auto cancelledForThisRun = m_cancelled;
+    const QString outputPathForThisRun = params.outputPath;
     connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
-            [this, process](int exitCode, QProcess::ExitStatus exitStatus) {
+            [this, process, cancelledForThisRun, outputPathForThisRun]
+            (int exitCode, QProcess::ExitStatus exitStatus) {
         if (m_process == process)
             m_process = nullptr;
         process->deleteLater();
 
-        if (m_cancelled->load()) {
+        if (cancelledForThisRun->load()) {
             emit finished(false, true, QString());
             return;
         }
@@ -204,7 +216,7 @@ void RenderJob::startFallback(const Params &params)
             emit finished(false, false, "Rendering failed. Check the logs.");
             return;
         }
-        if (!QFile::exists(m_lastOutputPath)) {
+        if (!QFile::exists(outputPathForThisRun)) {
             emit finished(false, false, "Output file was not created.");
             return;
         }

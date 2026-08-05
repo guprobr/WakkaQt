@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 # Project name
-project(WakkaQt VERSION 2.8.6 LANGUAGES CXX)
+project(WakkaQt VERSION 2.9.4 LANGUAGES CXX)
 
 # Set the C++ standard
 set(CMAKE_CXX_STANDARD 17)
@@ -117,7 +117,10 @@ else()
   endif()
 endif()
 
-if(UNIX AND NOT APPLE)
+# Only needed by the native FFmpeg integration path (wakkaqt_media links
+# GLIB2_LIBRARIES below inside its own if(FFMPEG_FOUND) block) — a build that
+# falls back to the ffmpeg CLI has no reason to hard-require it.
+if(UNIX AND NOT APPLE AND FFMPEG_FOUND)
     pkg_check_modules(GLIB2 REQUIRED glib-2.0)
 endif()
 
@@ -260,6 +263,7 @@ add_executable(${PROJECT_NAME}
     src/jobs/renderjob.cpp
     src/jobs/vocalseparationjob.cpp
     src/jobs/previewjob.cpp
+    src/jobs/modeldownloadjob.cpp
     src/core/complexes.cpp
     src/core/sessionrepository.cpp
     src/ui/sndwidget.cpp

@@ -91,4 +91,13 @@ jobs:
 
       - name: Run unit tests
         working-directory: build
+        # test_vocalenhancer/test_renderjob/test_vocalseparationjob link
+        # Qt6::Gui/Widgets (transitively via wakkaqt_dsp/wakkaqt_jobs), so
+        # QTEST_MAIN constructs a QApplication, not a QCoreApplication — that
+        # needs a working QPA platform plugin, and this runner has no X11/
+        # Wayland display for the default "xcb" plugin to connect to.
+        # "offscreen" is Qt's own headless-CI platform plugin, no real
+        # display required.
+        env:
+          QT_QPA_PLATFORM: offscreen
         run: ctest --output-on-failure

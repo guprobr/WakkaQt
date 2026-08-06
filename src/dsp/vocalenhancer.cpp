@@ -1515,8 +1515,11 @@ QVector<double> VocalEnhancer::timeStretchPhaseVocoder(const QVector<double>& in
 
     // Per-bin state — prevPhase and sumPhase are class members so they
     // persist across consecutive chunk calls (no phase reset at boundaries).
-    if (m_pvPrevPhase.size() != bins) { m_pvPrevPhase.assign(bins, 0.0); }
-    if (m_pvSumPhase.size()  != bins) { m_pvSumPhase.assign(bins,  0.0); }
+    // fill(value, size), not assign(size, value): QList::assign(qsizetype, T)
+    // is a recent addition (missing on the Qt 6.4-era qt6-base-dev CI builds
+    // against) — fill() has been stable across QVector/QList since Qt5.
+    if (m_pvPrevPhase.size() != bins) { m_pvPrevPhase.fill(0.0, bins); }
+    if (m_pvSumPhase.size()  != bins) { m_pvSumPhase.fill(0.0, bins); }
     QVector<double>& prevPhase = m_pvPrevPhase;
     QVector<double>& sumPhase  = m_pvSumPhase;
     QVector<double>  trueFreq(bins, 0.0);

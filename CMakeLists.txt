@@ -108,6 +108,17 @@ else()
     set(FFMPEG_LIBRARIES
         ${AVFORMAT_LIBRARIES} ${AVCODEC_LIBRARIES} ${AVFILTER_LIBRARIES}
         ${AVUTIL_LIBRARIES} ${SWRESAMPLE_LIBRARIES} ${SWSCALE_LIBRARIES})
+    # pkg_check_modules() (non-IMPORTED_TARGET form) resolves *_LIBRARIES to
+    # bare names ("avformat", not "/path/to/libavformat.so") — the linker
+    # only finds those without an explicit -L if they happen to already sit
+    # on its default search path. That's true for a normal distro package
+    # install, but false for FFmpeg pulled from a non-standard prefix (e.g.
+    # CI's BtbN download — see .github/workflows/ci.yml) with nothing else
+    # providing libavformat.so.* on the default path, so this needs to be
+    # threaded through explicitly via target_link_directories() below.
+    set(FFMPEG_LIBRARY_DIRS
+        ${AVFORMAT_LIBRARY_DIRS} ${AVCODEC_LIBRARY_DIRS} ${AVFILTER_LIBRARY_DIRS}
+        ${AVUTIL_LIBRARY_DIRS} ${SWRESAMPLE_LIBRARY_DIRS} ${SWSCALE_LIBRARY_DIRS})
     set(FFMPEG_CFLAGS
         ${AVFORMAT_CFLAGS_OTHER} ${AVCODEC_CFLAGS_OTHER})
     message(STATUS "FFmpeg native libraries found — native integration enabled")
@@ -235,6 +246,12 @@ target_link_libraries(wakkaqt_media PUBLIC
 
 if(FFMPEG_FOUND)
     target_compile_definitions(wakkaqt_media PUBLIC WAKKAQT_FFMPEG_NATIVE=1)
+    # PUBLIC: propagates to every target that links wakkaqt_media (directly
+    # or transitively, e.g. wakkaqt_dsp below), same reasoning as the
+    # PUBLIC target_link_libraries() call right after it — a target 3 hops
+    # away that never mentions FFmpeg by name still needs -L to actually
+    # find these .so files at link time (see FFMPEG_LIBRARY_DIRS above).
+    target_link_directories(wakkaqt_media PUBLIC ${FFMPEG_LIBRARY_DIRS})
     target_link_libraries(wakkaqt_media PUBLIC ${FFMPEG_LIBRARIES} ${GLIB2_LIBRARIES})
     target_include_directories(wakkaqt_media PUBLIC ${FFMPEG_INCLUDE_DIR})
     if(DEFINED FFMPEG_CFLAGS)

@@ -356,7 +356,11 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
         reverbLabel->setText(QString("Reverb — Room: %1%  Decay: %2%  Mix: %3%")
             .arg(int(m_reverbRoomSize*100)).arg(int(m_reverbDecay*100)).arg(v));
     });
-    connect(playbackMute_option, &QCheckBox::checkStateChanged, this, [this]() {
+    // stateChanged(int), not checkStateChanged: the latter only exists from
+    // Qt 6.7 onward (missing on the Qt 6.4-era qt6-base-dev CI builds
+    // against) — stateChanged() has been available since Qt5 and still
+    // works everywhere in Qt6, just deprecated (not removed) from 6.7 on.
+    connect(playbackMute_option, &QCheckBox::stateChanged, this, [this]() {
         amplifier->setPlaybackVol(!playbackMute_option->isChecked());
     });
 

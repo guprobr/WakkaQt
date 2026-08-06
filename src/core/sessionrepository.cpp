@@ -40,6 +40,13 @@ SessionRepository::SessionRepository() {}
 
 QString SessionRepository::libraryRoot()
 {
+    // Test-only override: unit tests need a throwaway root instead of the
+    // real ~/.WakkaQt/library so save/restore/delete round-trips don't touch
+    // (or race with) an actual user's library. Unset in every normal run,
+    // so production behavior is exactly the unconditional path below.
+    const QString override = qEnvironmentVariable("WAKKAQT_LIBRARY_ROOT_OVERRIDE");
+    if (!override.isEmpty())
+        return override;
     return QDir::homePath() + "/.WakkaQt/library";
 }
 

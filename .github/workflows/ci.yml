@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Mirrors readme.md's "Building on Linux" prerequisites exactly, minus
+      # libavcodec-extra (a runtime H264-recording concern, not a build dep).
+      # These are all mandatory: CMakeLists.txt hard-fails (FFTW3, via
+      # pkg_check_modules REQUIRED) or is the actual thing under test
+      # (qt6-base-dev's bundled QtTest headers) if any of them are missing.
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build \
+            qt6-base-dev qt6-multimedia-dev \
+            libqt6multimedia6 libqt6multimediawidgets6 \
+            libfftw3-dev \
+            libavformat-dev libavcodec-dev libavfilter-dev \
+            libavutil-dev libswresample-dev libswscale-dev \
+            libglib2.0-dev \
+            pkg-config
+
+      # Optional: CMakeLists.txt treats a missing ONNX Runtime as a graceful
+      # feature-disable (vocal separation off), not a build failure — so this
+      # is intentionally best-effort and kept out of the mandatory apt-get
+      # call above, where one unresolvable package name would abort the
+      # whole install and take FFTW3 down with it.
+      - name: Install ONNX Runtime (optional — vocal separation support)
+        run: sudo apt-get install -y libonnxruntime-dev || echo "libonnxruntime-dev unavailable on this runner — vocal separation will be disabled for this build, which is a supported configuration."
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Run unit tests
+        working-directory: build
+        run: ctest --output-on-failure

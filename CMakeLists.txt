@@ -250,6 +250,34 @@ if(FFMPEG_FOUND)
     target_link_libraries(wakkaqt_dsp PUBLIC wakkaqt_media)
 endif()
 
+# --- wakkaqt_core: shared globals/types (complexes.*), session persistence
+# (sessionrepository.*), and the atomic-file-commit helper used by the job
+# layer. Split out as its own static lib (same reasoning as wakkaqt_dsp/
+# wakkaqt_media) purely so the unit tests under tests/ can link this logic
+# without also pulling in every UI/job .cpp compiled straight into the
+# executable target. ---
+add_library(wakkaqt_core STATIC
+    src/core/complexes.cpp
+    src/core/complexes.h
+    src/core/sessionrepository.cpp
+    src/core/sessionrepository.h
+    src/core/Logger.h
+    src/jobs/atomicfilecommit.cpp
+    src/jobs/atomicfilecommit.h
+)
+target_include_directories(wakkaqt_core PUBLIC ${WAKKA_INCLUDE_DIRS})
+target_link_libraries(wakkaqt_core PUBLIC
+    Qt6::Core
+    Qt6::Multimedia
+    Qt6::Network
+)
+if(FFMPEG_FOUND)
+    # sessionrepository.cpp's webcam-validation helper calls into
+    # FFmpegNative::hasVideoStream() under WAKKAQT_FFMPEG_NATIVE, same
+    # opt-in path as wakkaqt_dsp above.
+    target_link_libraries(wakkaqt_core PUBLIC wakkaqt_media)
+endif()
+
 # Add the executable
 add_executable(${PROJECT_NAME}
     src/main.cpp
@@ -264,9 +292,6 @@ add_executable(${PROJECT_NAME}
     src/jobs/vocalseparationjob.cpp
     src/jobs/previewjob.cpp
     src/jobs/modeldownloadjob.cpp
-    src/jobs/atomicfilecommit.cpp
-    src/core/complexes.cpp
-    src/core/sessionrepository.cpp
     src/ui/sndwidget.cpp
     src/ui/pitchmonitorwidget.cpp
     src/ui/previewdialog.cpp
@@ -285,10 +310,8 @@ add_executable(${PROJECT_NAME}
     src/media/audioamplifier.h
     src/ui/audiovisualizerwidget.h
     src/ui/DownloadDialog.h
-    src/core/sessionrepository.h
     src/ui/librarydialog.h
     src/ui/youtubesearchdialog.h
-    src/core/Logger.h
     ${resources}
 )
 
@@ -296,6 +319,7 @@ add_executable(${PROJECT_NAME}
 target_link_libraries(${PROJECT_NAME}
     wakkaqt_dsp
     wakkaqt_media
+    wakkaqt_core
     Qt6::Core
     Qt6::Gui
     Qt6::Widgets
@@ -344,4 +368,19 @@ if(UNIX AND NOT APPLE)
     install(FILES images/icon.png DESTINATION ${ICON_INSTALL_DIR} RENAME WakkaQt.png)
     # Install .desktop file
     install(FILES WakkaQt.desktop DESTINATION ${CMAKE_INSTALL_PREFIX}/share/applications)
+endif()
+
+# --- Unit tests (Qt Test) ---------------------------------------------------
+# Off by default only if Qt6::Test genuinely isn't installed — never silently
+# skipped just because someone forgot to pass a flag, since that's exactly
+# how a test suite atrophies.
+option(WAKKAQT_BUILD_TESTS "Build the Qt Test unit test suite" ON)
+if(WAKKAQT_BUILD_TESTS)
+    find_package(Qt6 COMPONENTS Test)
+    if(Qt6Test_FOUND)
+        enable_testing()
+        add_subdirectory(tests)
+    else()
+        message(WARNING "Qt6Test not found — unit tests disabled. Install libqt6test6/qt6-base-dev or pass -DWAKKAQT_BUILD_TESTS=OFF.")
+    endif()
 endif()

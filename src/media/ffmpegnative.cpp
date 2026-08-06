@@ -337,10 +337,12 @@ static QVector<float> decodeAudioToFloat(const QString &path, qint64 offsetMs, d
 // Apply an avfilter chain (e.g. "deesser,speechnorm,...") to float stereo 44100 PCM.
 // Returns S16 stereo 44100 Hz output. Falls back to plain float→S16 conversion on error.
 static QVector<int16_t> applyAudioFilter(const QVector<float> &input,
-                                          const QString &filterChain)
+                                          const QString &filterChain,
+                                          const std::atomic<bool> *cancelled = nullptr)
 {
     QVector<int16_t> out;
     out.reserve(input.size());
+    bool wasCancelled = false;
 
     // ── Build graph: abuffersrc → <filterChain>,aformat=s16 → abuffersink ──
     AVFilterGraph *graph = avfilter_graph_alloc();
@@ -385,6 +387,7 @@ static QVector<int16_t> applyAudioFilter(const QVector<float> &input,
         int offset = 0;
 
         while (offset <= total) {
+            if (cancelled && cancelled->load()) { wasCancelled = true; break; }
             if (offset < total) {
                 const int n = std::min(chunkSamples, total - offset);
                 inF->sample_rate = 44100;
@@ -426,6 +429,8 @@ static QVector<int16_t> applyAudioFilter(const QVector<float> &input,
     }
 
     avfilter_graph_free(&graph);
+    if (wasCancelled)
+        return {};
     return out;
 }
 
@@ -981,7 +986,8 @@ static bool encodeS16ToStream(const QVector<int16_t> &s16,
                                AVCodecContext *encCtx,
                                SwrContext *encSwr,
                                std::function<void(int)> progressCb = {},
-                               std::vector<AVPacket*> *queueOut = nullptr)
+                               std::vector<AVPacket*> *queueOut = nullptr,
+                               const std::atomic<bool> *cancelled = nullptr)
 {
     AVAudioFifo *fifo = av_audio_fifo_alloc(encCtx->sample_fmt, 2,
                                              std::max(1, encCtx->frame_size));
@@ -1030,8 +1036,10 @@ static bool encodeS16ToStream(const QVector<int16_t> &s16,
     const int totalSamplesIn = s16.size() / 2;
     int       samplesWritten = 0;
     int64_t   audioPts       = 0;
+    bool      wasCancelled   = false;
 
     while (samplesWritten < totalSamplesIn || av_audio_fifo_size(fifo) > 0) {
+        if (cancelled && cancelled->load()) { wasCancelled = true; break; }
         if (samplesWritten < totalSamplesIn) {
             const int batch = std::min(frameSize * 4, totalSamplesIn - samplesWritten);
             pushToFifo(s16.constData() + samplesWritten * 2, batch);
@@ -1056,10 +1064,11 @@ static bool encodeS16ToStream(const QVector<int16_t> &s16,
             audioPts += read;
         }
     }
-    flushEnc(nullptr);
+    if (!wasCancelled)
+        flushEnc(nullptr);
 
     av_audio_fifo_free(fifo);
-    return true;
+    return !wasCancelled;
 }
 
 // Build audio encoder context for 44100 Hz stereo into outFmt.
@@ -1126,7 +1135,8 @@ bool transcodeAudio(const QString &input, const QString &output,
     }
     if (cancelled && cancelled->load()) return false;
     if (progressCb) progressCb(20);
-    const QVector<int16_t> s16Pcm = applyAudioFilter(floatPcm, {});
+    const QVector<int16_t> s16Pcm = applyAudioFilter(floatPcm, {}, cancelled);
+    if (s16Pcm.isEmpty() || (cancelled && cancelled->load())) return false;
     if (progressCb) progressCb(35);
 
     const QString ext = QFileInfo(output).suffix().toLower();
@@ -1155,15 +1165,21 @@ bool transcodeAudio(const QString &input, const QString &output,
         return false;
     }
 
-    encodeS16ToStream(s16Pcm, outFmt, outSt, encCtx, encSwr,
+    const bool encodedOk = encodeS16ToStream(s16Pcm, outFmt, outSt, encCtx, encSwr,
         progressCb ? [&progressCb](int pct) { progressCb(35 + pct * 65 / 100); }
-                   : std::function<void(int)>{});
+                   : std::function<void(int)>{},
+        nullptr, cancelled);
 
-    av_write_trailer(outFmt);
+    if (encodedOk)
+        av_write_trailer(outFmt);
     avio_closep(&outFmt->pb);
     if (encSwr) swr_free(&encSwr);
     avcodec_free_context(&encCtx);
     avformat_free_context(outFmt);
+    if (!encodedOk) {
+        QFile::remove(output); // partial/cancelled encode, never a valid file
+        return false;
+    }
     if (progressCb) progressCb(100);
     qDebug() << "FFmpegNative::transcodeAudio: done →" << output;
     return true;
@@ -1204,7 +1220,11 @@ bool muxVideoWithAudio(const QString &videoSrc, const QString &audioSrc,
     }
     if (cancelled && cancelled->load()) { avformat_close_input(&vidFmt); return false; }
     if (progressCb) progressCb(10);
-    const QVector<int16_t> s16Pcm = applyAudioFilter(floatPcm, {});
+    const QVector<int16_t> s16Pcm = applyAudioFilter(floatPcm, {}, cancelled);
+    if (s16Pcm.isEmpty() || (cancelled && cancelled->load())) {
+        avformat_close_input(&vidFmt);
+        return false;
+    }
     if (progressCb) progressCb(20);
 
     // Output format
@@ -1251,10 +1271,22 @@ bool muxVideoWithAudio(const QString &videoSrc, const QString &audioSrc,
     // video from the start, or no audio after a seek.
     std::vector<AVPacket*> audioQueue;
     size_t audioQueueIdx = 0;
-    encodeS16ToStream(s16Pcm, outFmt, outAudSt, audioEncCtx, audioEncSwr,
+    const bool audioEncodedOk = encodeS16ToStream(s16Pcm, outFmt, outAudSt, audioEncCtx, audioEncSwr,
         progressCb ? [&progressCb](int pct) { progressCb(20 + pct * 20 / 100); }
                    : std::function<void(int)>{},
-        &audioQueue);
+        &audioQueue, cancelled);
+    if (!audioEncodedOk) {
+        // Cancelled partway through encoding the full audio track — bail out
+        // before ever touching the video loop below instead of continuing
+        // to mux a track everyone already knows is being discarded.
+        for (AVPacket *p : audioQueue) av_packet_free(&p);
+        if (!(outFmt->oformat->flags & AVFMT_NOFILE)) avio_closep(&outFmt->pb);
+        if (audioEncSwr) swr_free(&audioEncSwr);
+        avcodec_free_context(&audioEncCtx);
+        avformat_close_input(&vidFmt);
+        avformat_free_context(outFmt);
+        return false;
+    }
     if (progressCb) progressCb(40);
 
     // Copy video packets — seek to start in case avformat_find_stream_info advanced it

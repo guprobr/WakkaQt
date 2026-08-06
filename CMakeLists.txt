@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 # Project name
-project(WakkaQt VERSION 2.9.4 LANGUAGES CXX)
+project(WakkaQt VERSION 2.9.5 LANGUAGES CXX)
 
 # Set the C++ standard
 set(CMAKE_CXX_STANDARD 17)
@@ -264,6 +264,7 @@ add_executable(${PROJECT_NAME}
     src/jobs/vocalseparationjob.cpp
     src/jobs/previewjob.cpp
     src/jobs/modeldownloadjob.cpp
+    src/jobs/atomicfilecommit.cpp
     src/core/complexes.cpp
     src/core/sessionrepository.cpp
     src/ui/sndwidget.cpp

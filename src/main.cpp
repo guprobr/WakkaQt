@@ -2,6 +2,7 @@
 #include "Logger.h"
 
 #include <QApplication>
+#include <QDateTime>
 #include <QDir>
 #include <QFileInfo>
 #include <QHash>
@@ -13,6 +14,29 @@
 #include <QStyleFactory>
 #include <QStyleHints>
 #include <QTime>
+
+// Cleans up WakkaQt's own /tmp restore/separation workspace directories left
+// behind by a previous run that didn't shut down cleanly (crash, kill -9,
+// power loss) — a normal exit already removes its own via
+// MainWindow::clearRestoreWorkspace() / VocalSeparationJob::discardWorkspace().
+// Safe to run unconditionally here because the single-instance QLockFile
+// below guarantees nothing could still be using one of these concurrently.
+// Only removes directories older than a day, so one deliberately preserved
+// after a recent export failure (see VocalSeparationJob's exportFailed
+// messages, which point the user at exactly this kind of directory) survives
+// long enough to actually be recovered instead of vanishing on next launch.
+static void cleanupStaleWorkspaces()
+{
+    const QDir tempDir = QDir::temp();
+    const QStringList patterns = { "WakkaQt_restore_*", "WakkaQt_separation_*" };
+    const QFileInfoList entries =
+        tempDir.entryInfoList(patterns, QDir::Dirs | QDir::NoDotAndDotDot);
+    const QDateTime cutoff = QDateTime::currentDateTime().addDays(-1);
+    for (const QFileInfo &entry : entries) {
+        if (entry.lastModified() < cutoff)
+            QDir(entry.absoluteFilePath()).removeRecursively();
+    }
+}
 
 // Message handler — turns raw qDebug/qWarning/qCritical/qFatal traffic into
 // a timestamped, tagged, colorized (and occasionally comical) line for the
@@ -164,6 +188,7 @@ int main(int argc, char *argv[]) {
     }
 
     qInstallMessageHandler(messageHandler);
+    cleanupStaleWorkspaces();
 
     MainWindow w;
     // Connect logger to UI log method

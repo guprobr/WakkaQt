@@ -1,5 +1,5 @@
 #include "sessionrepository.h"
-#include "complexes.h" // webcamRecorded/audioRecorded/extractedTmpPlayback fixed tmp paths
+#include "complexes.h" // webcamRecorded/audioRecorded/extractedTmpPlayback fixed tmp paths + parseWavPcm()
 
 #include <QDir>
 #include <QFile>
@@ -11,6 +11,30 @@
 #include <QDateTime>
 #include <QDebug>
 #include <algorithm>
+
+#ifdef WAKKAQT_FFMPEG_NATIVE
+#include "ffmpegnative.h"
+#else
+#include <QProcess>
+#endif
+
+// Ground-truth check for restoreSession()'s webcam validation: a file that
+// exists and has nonzero size can still be a truncated/corrupt recording
+// with no actual video stream in it. Mirrors the same check duplicated in
+// mainwindowSeparatorMgr.cpp for the non-native build.
+static bool sessionWebcamHasVideoStream(const QString &filePath)
+{
+#ifdef WAKKAQT_FFMPEG_NATIVE
+    return FFmpegNative::hasVideoStream(filePath);
+#else
+    QProcess p;
+    p.start("ffprobe", {"-v", "quiet", "-select_streams", "v:0",
+                        "-show_entries", "stream=codec_type",
+                        "-of", "default=noprint_wrappers=1:nokey=1", filePath});
+    p.waitForFinished(10000);
+    return p.exitCode() == 0 && !p.readAllStandardOutput().trimmed().isEmpty();
+#endif
+}
 
 SessionRepository::SessionRepository() {}
 
@@ -93,6 +117,21 @@ SaveResult SessionRepository::saveSession(const SessionSnapshot &snapshot)
                              && QFileInfo(audioRecorded).size() > 0;
     const bool hasPlaybackWav = QFile::exists(extractedTmpPlayback)
                              && QFileInfo(extractedTmpPlayback).size() > 0;
+
+    // Webcam is genuinely optional (audio-only performances are a supported
+    // mode throughout the app), but audio and playback are the two
+    // ingredients restoreSession() actually requires to produce something
+    // restorable — refusing to save without them here keeps the two halves
+    // of this contract consistent instead of creating a session that looks
+    // saved but that restoreSession() can only ever fail to restore.
+    if (!hasAudio) {
+        abort("recorded vocal audio is missing — cannot save an incomplete session");
+        return result;
+    }
+    if (!hasPlaybackWav) {
+        abort("playback audio is missing — cannot save an incomplete session");
+        return result;
+    }
 
     // Each of these is only attempted if its source actually exists (that's
     // a legitimate "this session has no webcam" case, not a failure) — but
@@ -358,16 +397,30 @@ RestoreResult SessionRepository::restoreSession(const QString &id)
                 snapshot.sysOffset        = off["sysOffset"].toString().toLongLong();
                 snapshot.currentVideoFile = off["playbackFile"].toString();
                 snapshot.currentVideoName = off["playbackName"].toString();
-
-                // The render only needs audio from the playback file; always use
-                // the guaranteed local copy saved inside the session folder so
-                // re-renders work regardless of whether the original file still exists.
-                const QString localCopy = sessionDir + "/playback.wav";
-                if (QFile::exists(localCopy))
-                    snapshot.currentVideoFile = localCopy;
             }
         }
     }
+
+    // Resolved independently of whether offsets.json above parsed
+    // successfully — a session with a perfectly good local playback.wav
+    // must not lose it just because its sidecar offsets metadata was
+    // missing or corrupt. Validated with parseWavPcm() rather than just
+    // existence/size, same reasoning as the audio.wav check below: a
+    // truncated file can still have nonzero size.
+    const QString localPlaybackPath = sessionDir + "/playback.wav";
+    bool localPlaybackOk = false;
+    if (QFile::exists(localPlaybackPath)) {
+        QFile pf(localPlaybackPath);
+        localPlaybackOk = pf.open(QIODevice::ReadOnly) && parseWavPcm(pf.readAll()).isValid();
+        if (!localPlaybackOk)
+            qWarning() << "SessionRepository::restoreSession: playback.wav exists but is not "
+                          "a valid WAV file:" << sessionDir;
+    }
+    // The render only needs audio from the playback file; always prefer the
+    // guaranteed local copy saved inside the session folder so re-renders
+    // work regardless of whether the original file still exists.
+    if (localPlaybackOk)
+        snapshot.currentVideoFile = localPlaybackPath;
 
     // Validate the session's actual file content before trusting it, instead
     // of just checking which files happen to exist. A session whose
@@ -379,11 +432,15 @@ RestoreResult SessionRepository::restoreSession(const QString &id)
     const SessionEntry meta = readMetadata(sessionDir);
 
     const QString audioPath = sessionDir + "/audio.wav";
-    const bool audioOk = QFile::exists(audioPath) && QFileInfo(audioPath).size() > 0;
+    bool audioOk = QFile::exists(audioPath) && QFileInfo(audioPath).size() > 0;
+    if (audioOk) {
+        QFile af(audioPath);
+        audioOk = af.open(QIODevice::ReadOnly) && parseWavPcm(af.readAll()).isValid();
+    }
     if (!audioOk) {
         result.error = meta.hasAudio
             ? "session metadata claims audio was recorded, but audio.wav is "
-              "missing or empty — the session cannot be restored"
+              "missing, empty, or not a valid WAV file — the session cannot be restored"
             : "session has no usable audio.wav — the session cannot be restored";
         qWarning() << "SessionRepository::restoreSession:" << result.error << ":" << sessionDir;
         return result;
@@ -393,12 +450,15 @@ RestoreResult SessionRepository::restoreSession(const QString &id)
     // this is what tells restoreAndRender() apart from "is a camera
     // currently plugged into this machine" (MainWindow::hasCamera), which
     // has nothing to do with what a given past session actually recorded.
+    // Existence/size alone doesn't catch a truncated recording that still
+    // has some bytes but no actual video stream in it.
     const QString webcamPath = sessionDir + "/webcam.mkv";
-    result.hasWebcam = QFile::exists(webcamPath) && QFileInfo(webcamPath).size() > 0;
+    result.hasWebcam = QFile::exists(webcamPath) && QFileInfo(webcamPath).size() > 0
+                     && sessionWebcamHasVideoStream(webcamPath);
     if (meta.hasWebcam && !result.hasWebcam) {
         result.warnings << "This session was recorded with a webcam, but its video file is "
-                            "missing or empty — restoring as audio-only.";
-        qWarning() << "SessionRepository::restoreSession: webcam.mkv missing/empty despite "
+                            "missing, empty, or unreadable — restoring as audio-only.";
+        qWarning() << "SessionRepository::restoreSession: webcam.mkv missing/invalid despite "
                       "hasWebcam=true in metadata:" << sessionDir;
     }
 
@@ -410,6 +470,16 @@ RestoreResult SessionRepository::restoreSession(const QString &id)
                       + "' could not be found — the session cannot be restored";
         qWarning() << "SessionRepository::restoreSession:" << result.error;
         return result;
+    }
+    // A session saved before playback.wav became mandatory (see
+    // saveSession()) can reach here with a valid *external* playback source
+    // but no local copy — flag it so the caller can tell the user why the
+    // live preview's backing-track monitor may end up silent (it needs a
+    // real WAV; AudioAmplifier already degrades gracefully if what lands in
+    // the workspace below isn't one).
+    if (!localPlaybackOk) {
+        result.warnings << "This session predates local playback caching; its preview backing "
+                            "track may be unavailable if the original file isn't a WAV.";
     }
 
     // Copy artefacts into a throwaway directory private to this restore,
@@ -429,9 +499,8 @@ RestoreResult SessionRepository::restoreSession(const QString &id)
 
     struct RestoreItem { const char *srcName; QString *outPath; };
     const RestoreItem items[] = {
-        { "webcam.mkv",   &result.webcamPath },
-        { "audio.wav",    &result.audioPath },
-        { "playback.wav", &result.playbackPath },
+        { "webcam.mkv", &result.webcamPath },
+        { "audio.wav",  &result.audioPath },
     };
     constexpr int kCount = int(sizeof(items) / sizeof(items[0]));
 
@@ -450,6 +519,25 @@ RestoreResult SessionRepository::restoreSession(const QString &id)
         }
         *items[i].outPath = dst;
         qDebug() << "SessionRepository: restored" << items[i].srcName << "->" << dst;
+    }
+
+    // playback.wav: prefer the session's own validated local copy; fall back
+    // to snapshot.currentVideoFile (already confirmed to exist above) for
+    // older sessions saved before playback.wav became mandatory. Without
+    // this fallback, such a session could report a successful restore with
+    // result.playbackPath left empty even though a valid playback source
+    // was found and used for snapshot.currentVideoFile.
+    {
+        const QString playbackSrc = localPlaybackOk ? localPlaybackPath : snapshot.currentVideoFile;
+        const QString dst = workspaceDir + "/playback.wav";
+        if (!QFile::copy(playbackSrc, dst)) {
+            result.error = "failed to stage playback audio";
+            qWarning() << "SessionRepository::restoreSession:" << result.error << "->" << dst;
+            QDir(workspaceDir).removeRecursively();
+            return result;
+        }
+        result.playbackPath = dst;
+        qDebug() << "SessionRepository: restored playback ->" << dst;
     }
     // tuned.wav is not saved/restored — PreviewDialog re-generates it from audio.wav
 

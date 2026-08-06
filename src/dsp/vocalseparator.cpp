@@ -45,6 +45,35 @@ static bool verifyModelHash(const QByteArray &bytes) {
     return QCryptographicHash::hash(bytes, QCryptographicHash::Sha256).toHex() == MODEL_SHA256;
 }
 
+// Waits for the fallback ffmpeg CLI's decode/write process in short slices
+// instead of one big blocking QProcess::waitForFinished(maxMs) call, so a
+// cancellation request is noticed within ~200ms instead of only after the
+// full multi-minute timeout elapses. p lives entirely on the calling
+// (worker) thread, so killing it here needs no cross-thread QProcess
+// access — unlike VocalSeparationJob's export QProcess, which is owned by
+// a QObject job precisely because it DOES need to be reachable from the
+// GUI thread's cancelExport().
+static bool waitForProcessCancellable(QProcess &p, int maxMs, const std::atomic<bool> *cancelled)
+{
+    int elapsedMs = 0;
+    const int sliceMs = 200;
+    while (p.state() != QProcess::NotRunning) {
+        if (cancelled && cancelled->load()) {
+            p.kill();
+            p.waitForFinished(3000);
+            return false;
+        }
+        p.waitForFinished(sliceMs); // returns early once the process actually exits
+        elapsedMs += sliceMs;
+        if (elapsedMs >= maxMs && p.state() != QProcess::NotRunning) {
+            p.kill();
+            p.waitForFinished(3000);
+            return false;
+        }
+    }
+    return true;
+}
+
 // MDX-Net hop is n_fft / 4 — computed after reading model shape, not hardcoded
 
 // ---------- public API ---------------------------------------------------
@@ -91,7 +120,11 @@ static std::vector<float> decodeToFloat(const QString &input, const QString &wor
     p.start("ffmpeg", {"-y", "-i", input,
                        "-vn", "-ar", "44100", "-ac", "2",
                        "-f", "f32le", tmp});
-    p.waitForFinished(600000);
+    if (!waitForProcessCancellable(p, 600000, cancelled)) {
+        QFile::remove(tmp);
+        err = (cancelled && cancelled->load()) ? "Cancelled" : "ffmpeg decode: timed out";
+        return {};
+    }
     if (p.exitCode() != 0) {
         err = "ffmpeg decode: " + QString(p.readAllStandardError()).left(400);
         return {};
@@ -128,8 +161,12 @@ static bool writeFloatWav(const std::vector<float> &pcm,
     QProcess p;
     p.start("ffmpeg", {"-y", "-ar", "44100", "-ac", "2",
                        "-f", "f32le", "-i", tmp, outPath});
-    p.waitForFinished(120000);
+    const bool finishedInTime = waitForProcessCancellable(p, 120000, cancelled);
     QFile::remove(tmp);
+    if (!finishedInTime) {
+        err = (cancelled && cancelled->load()) ? "Cancelled" : "ffmpeg encode: timed out";
+        return false;
+    }
     if (p.exitCode() != 0) {
         err = "ffmpeg encode: " + QString(p.readAllStandardError()).left(400);
         return false;

@@ -75,7 +75,7 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    QString Wakka_versione = "v2.9.4";
+    QString Wakka_versione = "v2.9.5";
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
@@ -288,6 +288,35 @@ private:
     // so it can run either immediately (model already present) or from
     // ModelDownloadJob::finished's success branch (model just downloaded).
     void runVocalSeparation();
+
+    // Everything needed to (re)run or recover a VocalSeparationJob export —
+    // bundled so handleExportFailure()'s recovery choices (Try Again, Save
+    // WAV, Open Folder) don't need a five-parameter signature repeated
+    // across every method that can reach them.
+    struct ExportRecoveryContext {
+        QString tempOut;     // separated instrumental, inside the job's workspace
+        QString inputFile;   // original source (for video muxing)
+        QString savePath;    // the destination the user originally chose
+        bool    saveAsVideo = false;
+    };
+    void startExport(const ExportRecoveryContext &ctx);
+    // Shown when exportResult() fails; the workspace at ctx.tempOut is still
+    // intact (VocalSeparationJob never discards it on failure) so every
+    // choice here — retry, save the raw WAV instead, or just point the user
+    // at the folder — has real data to act on. m_separationJob is only ever
+    // destroyed after the user picks one of these (or Discard), since the
+    // Separating state stays held until then.
+    void handleExportFailure(const ExportRecoveryContext &ctx, const QString &errorMessage);
+    // "Save WAV" recovery path: prompts a WAV-only save dialog for
+    // ctx.tempOut. Falls back to re-showing handleExportFailure() (instead
+    // of silently abandoning the workspace) if the user cancels the dialog.
+    void promptSaveInstrumentalAsWav(const ExportRecoveryContext &ctx, const QString &priorError);
+    // Shared by the normal WAV-output path and the "Save WAV" recovery
+    // choice: streams tempOut into savePath via QSaveFile, discards the
+    // workspace and returns to Idle on success. Returns false (leaving
+    // state/workspace untouched) on failure so callers can decide what to
+    // show/do next.
+    bool finishWavSave(const QString &tempOut, const QString &savePath);
 
     void resetMediaComponents(bool isStarting);
     void configureMediaComponents();

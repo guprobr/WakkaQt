@@ -65,13 +65,31 @@ signals:
     void enhanced(QByteArray tunedPcm);
 
 private:
+    // Fallback (QProcess) path only — the native path folds the equivalent
+    // work into processExtractedFile() below, run on the QtConcurrent worker
+    // thread instead of here on the GUI thread (see extract()'s native branch).
     void onExtractionFinished(bool ok, const QString &destTempFile);
+
+    struct ExtractedAudio {
+        bool ok = false;
+        QByteArray samples;
+        QAudioFormat format;
+        QString error; // only meaningful when !ok
+    };
+    // Reads destTempFile, parses it as WAV, and (native builds only) runs
+    // audio masterization on it — the same steps onExtractionFinished() does
+    // for the fallback path, but called from inside the native extraction's
+    // QtConcurrent worker lambda so this file I/O and filter-graph work runs
+    // off the GUI thread. A heavy masterization chain on a long recording
+    // used to freeze the UI right as extraction hit 100%, since this all
+    // used to run inside the future's GUI-thread finished-callback instead.
+    static ExtractedAudio processExtractedFile(const QString &destTempFile);
 
     QScopedPointer<VocalEnhancer> m_enhancer;
     QAudioFormat m_enhancerFormat;
     bool m_hasEnhancerFormat = false;
 
-    QFutureWatcher<bool> *m_extractWatcher = nullptr; // native path
+    QFutureWatcher<ExtractedAudio> *m_extractWatcher = nullptr; // native path
     QProcess *m_extractProcess = nullptr;              // QProcess fallback path
     // Per-run flag (fresh shared_ptr each extract() call, not reused) so a
     // still-in-flight run's finished-callback can tell whether cancellation

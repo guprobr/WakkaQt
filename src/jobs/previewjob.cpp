@@ -81,32 +81,39 @@ void PreviewJob::extract(const ExtractParams &params)
         m_extractWatcher->deleteLater();
         m_extractWatcher = nullptr;
     }
-    QFutureWatcher<bool> *watcher = new QFutureWatcher<bool>(this);
+    QFutureWatcher<ExtractedAudio> *watcher = new QFutureWatcher<ExtractedAudio>(this);
     m_extractWatcher = watcher;
-    connect(watcher, &QFutureWatcher<bool>::finished, this,
-            [this, watcher, destTempFile, cancelledForThisRun]() {
-        const bool ok = watcher->result();
+    connect(watcher, &QFutureWatcher<ExtractedAudio>::finished, this,
+            [this, watcher, cancelledForThisRun]() {
+        const ExtractedAudio result = watcher->result();
         if (m_extractWatcher == watcher)
             m_extractWatcher = nullptr;
         watcher->deleteLater();
 
-        if (!ok) {
+        if (!result.ok) {
             if (cancelledForThisRun->load()) {
                 emit extractionFailed(QString(), true);
                 return;
             }
-            emit extractionFailed("Native audio extraction failed.", false);
+            emit extractionFailed(
+                result.error.isEmpty() ? "Native audio extraction failed." : result.error, false);
             return;
         }
-        onExtractionFinished(true, destTempFile);
+        emit extracted(result.samples, result.format);
     });
 
     const QString sourceFile = params.sourceFile;
     const qint64 trimOffset  = params.trimOffsetMs;
     std::atomic<bool> *cancelFlag = cancelledForThisRun.get();
-    auto extractFuture = QtConcurrent::run([sourceFile, destTempFile, trimOffset, cancelFlag]() {
-        // Extract stereo (no mono hint — VocalEnhancer handles channel mixing internally)
-        return FFmpegNative::extractAudio(sourceFile, destTempFile, trimOffset, {}, cancelFlag);
+    auto extractFuture = QtConcurrent::run([sourceFile, destTempFile, trimOffset, cancelFlag]() -> ExtractedAudio {
+        // Extract stereo (no mono hint — VocalEnhancer handles channel mixing internally),
+        // then read/parse/masterize it right here on this worker thread too —
+        // see processExtractedFile()'s comment for why that used to run on
+        // the GUI thread instead.
+        const bool ok = FFmpegNative::extractAudio(sourceFile, destTempFile, trimOffset, {}, cancelFlag);
+        if (!ok)
+            return ExtractedAudio{};
+        return processExtractedFile(destTempFile);
     });
     watcher->setFuture(extractFuture);
 #else
@@ -161,14 +168,33 @@ void PreviewJob::extract(const ExtractParams &params)
 
 void PreviewJob::onExtractionFinished(bool /*ok*/, const QString &destTempFile)
 {
-    QFile audioFile(destTempFile);
-    if (!audioFile.exists() || audioFile.size() <= 0) {
-        emit extractionFailed("Audio extraction failed or file is empty.", false);
+    const ExtractedAudio result = processExtractedFile(destTempFile);
+    if (!result.ok) {
+        emit extractionFailed(result.error, false);
         return;
     }
+    emit extracted(result.samples, result.format);
+}
+
+// Static so it can run from inside the native extraction's QtConcurrent
+// worker lambda without touching `this` — file I/O, WAV parsing, and (native
+// builds) the masterization filter graph all happen off the GUI thread that
+// way. The QProcess fallback path calls this too, via onExtractionFinished()
+// above, but stays on the GUI thread there since it has no worker thread of
+// its own to offload onto and doesn't run the filter chain anyway (baked
+// into its ffmpeg invocation instead).
+PreviewJob::ExtractedAudio PreviewJob::processExtractedFile(const QString &destTempFile)
+{
+    ExtractedAudio result;
+
+    QFile audioFile(destTempFile);
+    if (!audioFile.exists() || audioFile.size() <= 0) {
+        result.error = "Audio extraction failed or file is empty.";
+        return result;
+    }
     if (!audioFile.open(QIODevice::ReadOnly)) {
-        emit extractionFailed("Failed to read extracted preview audio.", false);
-        return;
+        result.error = "Failed to read extracted preview audio.";
+        return result;
     }
     const QByteArray wavBytes = audioFile.readAll();
     audioFile.close();
@@ -179,8 +205,8 @@ void PreviewJob::onExtractionFinished(bool /*ok*/, const QString &destTempFile)
     // attached to what everything downstream treats as raw PCM samples.
     PcmBuffer pcm = parseWavPcm(wavBytes);
     if (!pcm.isValid()) {
-        emit extractionFailed("Extracted preview audio could not be parsed.", false);
-        return;
+        result.error = "Extracted preview audio could not be parsed.";
+        return result;
     }
 
 #ifdef WAKKAQT_FFMPEG_NATIVE
@@ -192,7 +218,10 @@ void PreviewJob::onExtractionFinished(bool /*ok*/, const QString &destTempFile)
         _audioMasterization);
 #endif
 
-    emit extracted(pcm.samples, pcm.format);
+    result.ok = true;
+    result.samples = pcm.samples;
+    result.format = pcm.format;
+    return result;
 }
 
 // ── enhance ───────────────────────────────────────────────────────────────

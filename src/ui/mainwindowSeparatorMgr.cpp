@@ -9,8 +9,12 @@
 #include <QVBoxLayout>
 #include <QFileDialog>
 #include <QMessageBox>
+#include <QAbstractButton>
+#include <QDesktopServices>
+#include <QUrl>
 #include <QPointer>
 #include <QProcess>
+#include <QSaveFile>
 
 #ifdef WAKKAQT_FFMPEG_NATIVE
 #  include "ffmpegnative.h"
@@ -264,129 +268,225 @@ void MainWindow::runVocalSeparation() {
                                  !savePath.endsWith(".mp3", Qt::CaseInsensitive);
         const bool saveAsMp3 = savePath.endsWith(".mp3", Qt::CaseInsensitive);
 
-        // WAV: fast rename/copy — no progress dialog or job needed. Staged
-        // through a sibling ".partial" path first so a pre-existing file at
-        // savePath is only ever removed once the new content has actually
-        // landed on disk — previously savePath was removed unconditionally
-        // up front, so a failed rename/copy right after could lose a valid
-        // existing file for nothing.
+        const ExportRecoveryContext ctx{tempOut, inputFile, savePath, saveAsVideo};
+
+        // WAV: fast copy — no progress dialog or job needed. A failure here
+        // gets the same recovery choices (Try Again / Save WAV / Open
+        // Folder / Discard) as a mux/encode failure instead of just an
+        // error box, since the expensive-to-recompute separated instrumental
+        // is just as much at stake.
         if (!saveAsVideo && !saveAsMp3) {
-            const QString partialPath = savePath + ".partial";
-            QFile::remove(partialPath); // clear any leftover from a previous crashed attempt
-
-            bool staged = QFile::rename(tempOut, partialPath);
-            if (!staged && QFile::copy(tempOut, partialPath)) {
-                QFile::remove(tempOut);
-                staged = true;
-            }
-            if (!staged) {
-                trySetState(State::Idle);
-                QMessageBox::critical(this, "Save Failed",
-                                      "Could not write to:\n" + savePath +
-                                      "\n\nTemp file preserved at:\n" + tempOut);
-                return;
-            }
-
-            // tempOut has already been relocated out of the workspace (renamed
-            // or copied to partialPath, next to savePath) by this point in
-            // every remaining branch below, so the workspace itself is no
-            // longer needed regardless of how this finishes.
-            if (m_separationJob) m_separationJob->discardWorkspace();
-
-            if (QFile::exists(savePath) && !QFile::remove(savePath)) {
-                trySetState(State::Idle);
-                QMessageBox::critical(this, "Save Failed",
-                                      "Could not replace existing file at:\n" + savePath +
-                                      "\n\nThe new export was preserved at:\n" + partialPath);
-                return;
-            }
-            if (!QFile::rename(partialPath, savePath)) {
-                trySetState(State::Idle);
-                QMessageBox::critical(this, "Save Failed",
-                                      "Could not finalize output at:\n" + savePath +
-                                      "\n\nThe new export was preserved at:\n" + partialPath);
-                return;
-            }
-
-            trySetState(State::Idle);
-            logUI("Backing track saved: " + savePath);
-            QMessageBox::information(this, "Done",
-                                     "Backing track saved to:\n" + savePath);
+            if (!finishWavSave(tempOut, savePath))
+                handleExportFailure(ctx, "Could not write to:\n" + savePath);
             return;
         }
 
         // Video mux or MP3 encode: run in background via the job, with a progress dialog
-        auto *saveProgDlg = new QDialog(this);
-        saveProgDlg->setWindowTitle("Saving Backing Track");
-        saveProgDlg->setModal(true);
-        saveProgDlg->setMinimumWidth(340);
-
-        auto *saveProgLbl = new QLabel(
-            saveAsVideo ? "Muxing audio into video…" : "Encoding MP3…", saveProgDlg);
-        saveProgLbl->setAlignment(Qt::AlignCenter);
-
-        auto *saveProgBar = new QProgressBar(saveProgDlg);
-#ifdef WAKKAQT_FFMPEG_NATIVE
-        saveProgBar->setRange(0, 100);
-#else
-        saveProgBar->setRange(0, 0); // indeterminate — QProcess gives no sub-step progress
-#endif
-
-        auto *saveCancelBtn = new QPushButton("Abort", saveProgDlg);
-
-        auto *saveLayout = new QVBoxLayout(saveProgDlg);
-        saveLayout->addWidget(saveProgLbl);
-        saveLayout->addWidget(saveProgBar);
-        saveLayout->addWidget(saveCancelBtn);
-        saveProgDlg->setLayout(saveLayout);
-        saveProgDlg->show();
-
-        QPointer<QDialog> saveProgDlgGuard(saveProgDlg);
-
-        connect(saveCancelBtn, &QPushButton::clicked, this, [this]() {
-            if (m_separationJob) m_separationJob->cancelExport();
-        });
-        // Closing the window (X button) is equivalent to Abort
-        connect(saveProgDlg, &QDialog::rejected, this, [this]() {
-            if (m_separationJob) m_separationJob->cancelExport();
-        });
-
-        connect(m_separationJob, &VocalSeparationJob::exportProgress, this,
-                [saveProgBar](int pct) {
-            if (pct < 0) return; // indeterminate fallback path — range already (0,0)
-            saveProgBar->setValue(pct);
-        });
-
-        connect(m_separationJob, &VocalSeparationJob::exported, this,
-                [this, saveProgDlgGuard](QString destPath) {
-            if (saveProgDlgGuard) {
-                saveProgDlgGuard->accept();
-                saveProgDlgGuard->deleteLater();
-            }
-            trySetState(State::Idle);
-            logUI("Backing track saved: " + destPath);
-            QMessageBox::information(this, "Done",
-                                     "Backing track saved to:\n" + destPath);
-        });
-
-        connect(m_separationJob, &VocalSeparationJob::exportFailed, this,
-                [this, saveProgDlgGuard](QString err) {
-            if (saveProgDlgGuard) {
-                saveProgDlgGuard->accept();
-                saveProgDlgGuard->deleteLater();
-            }
-            trySetState(State::Idle);
-            if (err == "Cancelled") return;
-            QMessageBox::critical(this, "Export Failed", err);
-        });
-
-        VocalSeparationJob::ExportParams exportParams;
-        exportParams.tempWavPath = tempOut;
-        exportParams.inputFile = inputFile;
-        exportParams.savePath = savePath;
-        exportParams.saveAsVideo = saveAsVideo;
-        m_separationJob->exportResult(exportParams);
+        startExport(ctx);
     });
 
     m_separationJob->separate(inputFile);
+}
+
+// Streams tempOut into savePath via QSaveFile instead of remove()-then-
+// rename(): QSaveFile::commit() replaces an existing file at savePath
+// atomically at the OS level, so a failed copy or a commit failure never
+// touches (or loses) a pre-existing valid file there — it just leaves it
+// alone. On success, discards the job's workspace and returns to Idle; on
+// failure, leaves both untouched (still Separating, workspace still intact)
+// so the caller can offer recovery instead of losing the result.
+bool MainWindow::finishWavSave(const QString &tempOut, const QString &savePath)
+{
+    QFile src(tempOut);
+    bool copyOk = src.open(QIODevice::ReadOnly);
+    QSaveFile out(savePath);
+    copyOk = copyOk && out.open(QIODevice::WriteOnly);
+    if (copyOk) {
+        char buf[64 * 1024];
+        while (!src.atEnd()) {
+            const qint64 n = src.read(buf, sizeof(buf));
+            if (n < 0 || out.write(buf, n) != n) { copyOk = false; break; }
+        }
+    }
+    src.close();
+    if (!copyOk || !out.commit())
+        return false;
+    QFile::remove(tempOut);
+
+    if (m_separationJob) m_separationJob->discardWorkspace();
+
+    trySetState(State::Idle);
+    logUI("Backing track saved: " + savePath);
+    QMessageBox::information(this, "Done", "Backing track saved to:\n" + savePath);
+    return true;
+}
+
+// Runs (or re-runs, for "Try Again") the mux/MP3-encode export via
+// VocalSeparationJob. Disconnects any previous exportProgress/exported/
+// exportFailed connections first — this can be called more than once on the
+// same m_separationJob instance (retries from handleExportFailure()), and
+// without disconnecting, each retry would stack another set of listeners
+// that all fire on the next export.
+void MainWindow::startExport(const ExportRecoveryContext &ctx)
+{
+    disconnect(m_separationJob, &VocalSeparationJob::exportProgress, this, nullptr);
+    disconnect(m_separationJob, &VocalSeparationJob::exported, this, nullptr);
+    disconnect(m_separationJob, &VocalSeparationJob::exportFailed, this, nullptr);
+
+    auto *saveProgDlg = new QDialog(this);
+    saveProgDlg->setWindowTitle("Saving Backing Track");
+    saveProgDlg->setModal(true);
+    saveProgDlg->setMinimumWidth(340);
+
+    auto *saveProgLbl = new QLabel(
+        ctx.saveAsVideo ? "Muxing audio into video…" : "Encoding MP3…", saveProgDlg);
+    saveProgLbl->setAlignment(Qt::AlignCenter);
+
+    auto *saveProgBar = new QProgressBar(saveProgDlg);
+#ifdef WAKKAQT_FFMPEG_NATIVE
+    saveProgBar->setRange(0, 100);
+#else
+    saveProgBar->setRange(0, 0); // indeterminate — QProcess gives no sub-step progress
+#endif
+
+    auto *saveCancelBtn = new QPushButton("Abort", saveProgDlg);
+
+    auto *saveLayout = new QVBoxLayout(saveProgDlg);
+    saveLayout->addWidget(saveProgLbl);
+    saveLayout->addWidget(saveProgBar);
+    saveLayout->addWidget(saveCancelBtn);
+    saveProgDlg->setLayout(saveLayout);
+    saveProgDlg->show();
+
+    QPointer<QDialog> saveProgDlgGuard(saveProgDlg);
+
+    connect(saveCancelBtn, &QPushButton::clicked, this, [this]() {
+        if (m_separationJob) m_separationJob->cancelExport();
+    });
+    // Closing the window (X button) is equivalent to Abort
+    connect(saveProgDlg, &QDialog::rejected, this, [this]() {
+        if (m_separationJob) m_separationJob->cancelExport();
+    });
+
+    connect(m_separationJob, &VocalSeparationJob::exportProgress, this,
+            [saveProgBar](int pct) {
+        if (pct < 0) return; // indeterminate fallback path — range already (0,0)
+        saveProgBar->setValue(pct);
+    });
+
+    connect(m_separationJob, &VocalSeparationJob::exported, this,
+            [this, saveProgDlgGuard](QString destPath) {
+        if (saveProgDlgGuard) {
+            saveProgDlgGuard->accept();
+            saveProgDlgGuard->deleteLater();
+        }
+        trySetState(State::Idle);
+        logUI("Backing track saved: " + destPath);
+        QMessageBox::information(this, "Done",
+                                 "Backing track saved to:\n" + destPath);
+    });
+
+    connect(m_separationJob, &VocalSeparationJob::exportFailed, this,
+            [this, saveProgDlgGuard, ctx](QString err) {
+        if (saveProgDlgGuard) {
+            saveProgDlgGuard->accept();
+            saveProgDlgGuard->deleteLater();
+        }
+        if (err == "Cancelled") {
+            trySetState(State::Idle);
+            return;
+        }
+        handleExportFailure(ctx, err);
+    });
+
+    VocalSeparationJob::ExportParams exportParams;
+    exportParams.tempWavPath = ctx.tempOut;
+    exportParams.inputFile   = ctx.inputFile;
+    exportParams.savePath    = ctx.savePath;
+    exportParams.saveAsVideo = ctx.saveAsVideo;
+    m_separationJob->exportResult(exportParams);
+}
+
+// The separated instrumental (ctx.tempOut) is the expensive-to-recompute
+// result of the whole ONNX pass, and VocalSeparationJob deliberately never
+// discards its workspace on export failure — so a failed save doesn't have
+// to mean losing it. m_separationJob is only ever destroyed (by the next
+// generateBackingTrack() call) after the user resolves this one way or
+// another, since the Separating state stays held until then.
+void MainWindow::handleExportFailure(const ExportRecoveryContext &ctx, const QString &errorMessage)
+{
+    QMessageBox box(this);
+    box.setIcon(QMessageBox::Critical);
+    box.setWindowTitle("Export Failed");
+    box.setText("Could not save the backing track:\n" + errorMessage);
+    QPushButton *tryAgainBtn   = box.addButton("Try Again", QMessageBox::ActionRole);
+    QPushButton *saveWavBtn    = box.addButton("Save as WAV", QMessageBox::ActionRole);
+    QPushButton *openFolderBtn = box.addButton("Open Folder", QMessageBox::ActionRole);
+    box.addButton("Discard", QMessageBox::DestructiveRole);
+    box.setDefaultButton(tryAgainBtn);
+    box.exec();
+
+    QAbstractButton *clicked = box.clickedButton();
+    if (clicked == tryAgainBtn) {
+        startExport(ctx);
+        return;
+    }
+    if (clicked == saveWavBtn) {
+        promptSaveInstrumentalAsWav(ctx, errorMessage);
+        return;
+    }
+    if (clicked == openFolderBtn) {
+        QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(ctx.tempOut).absolutePath()));
+        // Opening the folder isn't itself a resolution — the user still
+        // needs to pick what happens to the job/workspace next.
+        handleExportFailure(ctx, errorMessage);
+        return;
+    }
+    // "Discard", or the dialog was closed without picking a button — treat
+    // a bare close the same as Discard rather than leaving the job stuck in
+    // Separating with no dialog left to resolve it.
+    if (m_separationJob) m_separationJob->discardWorkspace();
+    trySetState(State::Idle);
+}
+
+// "Save WAV" recovery choice: skips mux/encode entirely and saves
+// ctx.tempOut directly. Backing out of the save dialog re-shows
+// handleExportFailure() (with the same original error) instead of silently
+// abandoning the workspace, so the user always lands on an explicit choice.
+void MainWindow::promptSaveInstrumentalAsWav(const ExportRecoveryContext &ctx, const QString &priorError)
+{
+    QString path;
+    while (true) {
+        QFileDialog saveDlg(this, "Save Backing Track as WAV",
+                            QDir::homePath() + "/" + QFileInfo(ctx.inputFile).completeBaseName()
+                                + "_instrumental.wav",
+                            "WAV Files (*.wav)");
+        saveDlg.setAcceptMode(QFileDialog::AcceptSave);
+        saveDlg.setOption(QFileDialog::DontUseNativeDialog);
+        saveDlg.setDefaultSuffix("wav");
+        if (saveDlg.exec() != QDialog::Accepted) {
+            handleExportFailure(ctx, priorError);
+            return;
+        }
+        path = saveDlg.selectedFiles().value(0);
+        if (path.isEmpty()) {
+            handleExportFailure(ctx, priorError);
+            return;
+        }
+        if (QFileInfo(path).absoluteFilePath() == QFileInfo(ctx.inputFile).absoluteFilePath()) {
+            QMessageBox::warning(this, "Invalid Output Path",
+                "The output file cannot overwrite the input file.\n"
+                "Please choose a different name or location.");
+            continue;
+        }
+        break;
+    }
+
+    if (!finishWavSave(ctx.tempOut, path)) {
+        QMessageBox::critical(this, "Save Failed",
+                              "Could not write to:\n" + path +
+                              "\n\nThe separated instrumental is still available in:\n"
+                              + QFileInfo(ctx.tempOut).absolutePath());
+        handleExportFailure(ctx, priorError);
+    }
 }

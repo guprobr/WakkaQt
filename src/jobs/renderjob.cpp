@@ -1,4 +1,5 @@
 #include "renderjob.h"
+#include "atomicfilecommit.h"
 
 #include <QtConcurrent/QtConcurrentRun>
 #include <QRegularExpression>
@@ -6,6 +7,11 @@
 #ifdef WAKKAQT_FFMPEG_NATIVE
 #include "ffmpegnative.h"
 #endif
+
+static QString partialPathFor(const QString &finalPath)
+{
+    return sidecarPathFor(finalPath, "partial");
+}
 
 RenderJob::RenderJob(QObject *parent) : QObject(parent) {}
 
@@ -72,26 +78,39 @@ void RenderJob::startNative(const Params &params)
     // window and repoint the members before this callback reads them.
     auto cancelledForThisRun = m_cancelled;
     const QString outputPathForThisRun = params.outputPath;
+    // FFmpeg writes here instead of straight to outputPathForThisRun, so a
+    // failed/cancelled render (or a crash mid-write) never touches a
+    // pre-existing valid file at the real destination — only committed onto
+    // it, atomically, once rendering actually succeeds (see below).
+    const QString partialPathForThisRun = partialPathFor(outputPathForThisRun);
+    QFile::remove(partialPathForThisRun); // clear any leftover from a previous crashed attempt
 
     QFutureWatcher<bool> *watcher = new QFutureWatcher<bool>(this);
     m_watcher = watcher;
     connect(watcher, &QFutureWatcher<bool>::finished, this,
-            [this, watcher, cancelledForThisRun, outputPathForThisRun]() {
+            [this, watcher, cancelledForThisRun, outputPathForThisRun, partialPathForThisRun]() {
         const bool ok = watcher->result();
         if (m_watcher == watcher)
             m_watcher = nullptr;
         watcher->deleteLater();
 
         if (cancelledForThisRun->load()) {
+            QFile::remove(partialPathForThisRun);
             emit finished(false, true, QString());
             return;
         }
         if (!ok) {
+            QFile::remove(partialPathForThisRun);
             emit finished(false, false, "Rendering failed. Check the logs.");
             return;
         }
-        if (!QFile::exists(outputPathForThisRun)) {
+        if (!QFile::exists(partialPathForThisRun)) {
             emit finished(false, false, "Output file was not created.");
+            return;
+        }
+        const QString commitErr = commitPartialOverFinal(partialPathForThisRun, outputPathForThisRun);
+        if (!commitErr.isEmpty()) {
+            emit finished(false, false, commitErr);
             return;
         }
         emit finished(true, false, QString());
@@ -102,7 +121,7 @@ void RenderJob::startNative(const Params &params)
     const QString tunedAudioPath   = params.tunedAudioPath;
     const QString webcamPath       = params.webcamPath;
     const QString playbackPath     = params.playbackPath;
-    const QString outputPath       = params.outputPath;
+    const QString partialOutputPath = partialPathForThisRun;
     const QString rawVocalPath     = params.rawVocalPath;
     const QString resolution       = params.resolution;
     const QString videoEffectChain = params.videoEffectChain;
@@ -116,7 +135,7 @@ void RenderJob::startNative(const Params &params)
             tunedAudioPath,
             webcamPath,
             playbackPath,
-            outputPath,
+            partialOutputPath,
             vocalVolume,
             audioOffsetMs,
             videoOffsetMs,
@@ -136,6 +155,11 @@ void RenderJob::startFallback(const Params &params)
 {
     m_cancelled = std::make_shared<std::atomic<bool>>(false);
     m_lastOutputPath = params.outputPath;
+    // See startNative()'s equivalent comment: ffmpeg writes to this sidecar
+    // instead of straight to params.outputPath, only committed atomically
+    // onto the real destination once the process actually succeeds.
+    const QString partialOutputPath = partialPathFor(params.outputPath);
+    QFile::remove(partialOutputPath); // clear any leftover from a previous crashed attempt
 
     const qint64 manualOffset = params.audioOffsetMs; // effectiveAudioOffset == effectiveVideoOffset == manualOffset
     const QString offsetFilter = (manualOffset < 0)
@@ -175,7 +199,7 @@ void RenderJob::startFallback(const Params &params)
               << "-map" << "[wakkamix]";
     if (!videorama.isEmpty())
         arguments << "-map" << "[videorama]";
-    arguments << params.outputPath;
+    arguments << partialOutputPath;
 
     const int totalDuration = static_cast<int>(params.totalDurationSeconds);
 
@@ -202,22 +226,29 @@ void RenderJob::startFallback(const Params &params)
     auto cancelledForThisRun = m_cancelled;
     const QString outputPathForThisRun = params.outputPath;
     connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
-            [this, process, cancelledForThisRun, outputPathForThisRun]
+            [this, process, cancelledForThisRun, outputPathForThisRun, partialOutputPath]
             (int exitCode, QProcess::ExitStatus exitStatus) {
         if (m_process == process)
             m_process = nullptr;
         process->deleteLater();
 
         if (cancelledForThisRun->load()) {
+            QFile::remove(partialOutputPath);
             emit finished(false, true, QString());
             return;
         }
         if (!(exitStatus == QProcess::NormalExit && exitCode == 0)) {
+            QFile::remove(partialOutputPath);
             emit finished(false, false, "Rendering failed. Check the logs.");
             return;
         }
-        if (!QFile::exists(outputPathForThisRun)) {
+        if (!QFile::exists(partialOutputPath)) {
             emit finished(false, false, "Output file was not created.");
+            return;
+        }
+        const QString commitErr = commitPartialOverFinal(partialOutputPath, outputPathForThisRun);
+        if (!commitErr.isEmpty()) {
+            emit finished(false, false, commitErr);
             return;
         }
         emit finished(true, false, QString());

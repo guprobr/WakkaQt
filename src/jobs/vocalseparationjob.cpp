@@ -1,5 +1,6 @@
 #include "vocalseparationjob.h"
 #include "vocalseparator.h"
+#include "atomicfilecommit.h"
 
 #include <QtConcurrent/QtConcurrentRun>
 #include <QDir>
@@ -9,6 +10,11 @@
 #ifdef WAKKAQT_FFMPEG_NATIVE
 #include "ffmpegnative.h"
 #endif
+
+static QString partialPathFor(const QString &finalPath)
+{
+    return sidecarPathFor(finalPath, "partial");
+}
 
 VocalSeparationJob::VocalSeparationJob(QObject *parent) : QObject(parent) {}
 
@@ -170,7 +176,7 @@ void VocalSeparationJob::exportNative(const ExportParams &params)
     const QString tempOut      = params.tempWavPath;
     const bool    saveAsVideo  = params.saveAsVideo;
     const QString workspaceDir = m_workspaceDir;
-    const QString partialPath  = savePath + ".partial";
+    const QString partialPath  = partialPathFor(savePath);
     auto exportCancelledCopy   = m_exportCancelled;
 
     auto future = QtConcurrent::run([this, inputFile, tempOut, savePath, partialPath,
@@ -178,23 +184,19 @@ void VocalSeparationJob::exportNative(const ExportParams &params)
         QFile::remove(partialPath); // clear any leftover from a previous crashed attempt
         const std::atomic<bool> *cancelled = exportCancelledCopy.get();
 
-        // Validates the new file landed on disk, then atomically swaps it
-        // onto savePath (remove-old + rename-new, both on the same
-        // filesystem since partialPath is savePath's own sibling).
+        // Validates the new file landed on disk, then commits it onto
+        // savePath via commitPartialOverFinal() — which backs up any
+        // existing file first, so a rename failure during the swap restores
+        // it instead of leaving savePath missing.
         auto finalizeAtomic = [&]() -> ExportResult {
             if (!QFile::exists(partialPath) || QFileInfo(partialPath).size() <= 0) {
                 QFile::remove(partialPath);
                 return {false, "Export produced no output.\n"
                                "The separated instrumental was preserved in:\n" + workspaceDir};
             }
-            if (QFile::exists(savePath) && !QFile::remove(savePath)) {
-                return {false, "Could not replace existing file at:\n" + savePath +
-                               "\nThe new export was preserved at:\n" + partialPath};
-            }
-            if (!QFile::rename(partialPath, savePath)) {
-                return {false, "Could not finalize output at:\n" + savePath +
-                               "\nThe new export was preserved at:\n" + partialPath};
-            }
+            const QString err = commitPartialOverFinal(partialPath, savePath);
+            if (!err.isEmpty())
+                return {false, err};
             return {true, QString()};
         };
 
@@ -245,7 +247,7 @@ void VocalSeparationJob::exportFallback(const ExportParams &params)
     const QString tempOut      = params.tempWavPath;
     const bool    saveAsVideo  = params.saveAsVideo;
     const QString workspaceDir = m_workspaceDir;
-    const QString partialPath  = savePath + ".partial";
+    const QString partialPath  = partialPathFor(savePath);
     auto exportCancelledCopy   = m_exportCancelled;
 
     QFile::remove(partialPath); // clear any leftover from a previous crashed attempt
@@ -292,14 +294,9 @@ void VocalSeparationJob::exportFallback(const ExportParams &params)
                               "The separated instrumental was preserved in:\n" + workspaceDir);
             return;
         }
-        if (QFile::exists(savePath) && !QFile::remove(savePath)) {
-            emit exportFailed("Could not replace existing file at:\n" + savePath +
-                              "\nThe new export was preserved at:\n" + partialPath);
-            return;
-        }
-        if (!QFile::rename(partialPath, savePath)) {
-            emit exportFailed("Could not finalize output at:\n" + savePath +
-                              "\nThe new export was preserved at:\n" + partialPath);
+        const QString commitErr = commitPartialOverFinal(partialPath, savePath);
+        if (!commitErr.isEmpty()) {
+            emit exportFailed(commitErr);
             return;
         }
 

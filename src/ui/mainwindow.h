@@ -280,6 +280,25 @@ private:
     void mixAndRender(double vocalVolume, qint64 manualOffset, const QString &videoEffectChain = {});
     void renderAgain();
 
+    // Builds the progress dialog/bar UI, wires up m_renderJob's progress/
+    // finished signals, and calls start(). Split out of mixAndRender() so
+    // handleRenderFailure()'s "Try Again" can re-run the same Params without
+    // re-doing the save-destination/resolution/preview-volume dialogs that
+    // produced them — every input (source WAVs, webcam file, playback file)
+    // is a durable file on disk, not a throwaway result, so a retry is just
+    // "run RenderJob again with the same Params". Disconnects any previous
+    // progress/finished listeners first since this can run more than once on
+    // the same m_renderJob instance (a retry) — without disconnecting, each
+    // retry would stack another set of listeners that all fire on the next run.
+    void startRender(const RenderJob::Params &params);
+    // Shown when RenderJob::finished reports failure (not cancellation).
+    // Unlike VocalSeparationJob's export failure, there is no expensive
+    // intermediate result to salvage here — a failed render just leaves
+    // nothing at outputPath (RenderJob's atomic commit only ever touches the
+    // real destination on success) — so the only meaningful recovery choice
+    // is retrying the render itself.
+    void handleRenderFailure(const RenderJob::Params &params, const QString &errorMessage);
+
     void openLibrary();
     void saveCurrentSession();
     void restoreAndRender(const QString &sessionId);

@@ -141,8 +141,55 @@ void MainWindow::renderAgain()
 
 void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset, const QString &videoEffectChain) {
 
+    // effectiveAudioOffset and effectiveVideoOffset are intentionally identical.
+    //
+    // Both audio and video recordings start at the same instant and share the same
+    // pre-roll length (offset ms before the song begins).  The rendered output must
+    // apply the same shift to both streams so their relative timing is preserved:
+    //
+    //   manualOffset > 0  →  trim manualOffset ms from the start of both audio
+    //                        (decodeAudioToFloat skip) and video (avformat_seek_file).
+    //   manualOffset < 0  →  prepend |manualOffset| ms of silence to audio AND delay
+    //                        the video stream by the same |manualOffset| ms.
+    //                        Both files are read from t=0; their pre-roll content lands
+    //                        at the same output time → streams stay in sync.
+    //
+    // The old formula (max(-offset, offset+manualOffset)) was wrong for the negative
+    // case: it produced a delay smaller than |manualOffset|, causing audio to lag video
+    // by (|manualOffset| - |effectiveVideoOffset|) ms.
+    const qint64 effectiveAudioOffset = manualOffset;
+    const qint64 effectiveVideoOffset = manualOffset;
+
+    if (m_renderJob) {
+        m_renderJob->deleteLater();
+        m_renderJob = nullptr;
+    }
+    m_renderJob = new RenderJob(this);
+
+    RenderJob::Params params;
+    params.tunedAudioPath      = tunedRecorded;
+    params.webcamPath          = webcamRecorded;
+    params.playbackPath        = currentVideoFile;
+    params.rawVocalPath        = audioRecorded;
+    params.outputPath          = outputFilePath;
+    params.vocalVolume         = vocalVolume;
+    params.audioOffsetMs       = effectiveAudioOffset;
+    params.videoOffsetMs       = effectiveVideoOffset;
+    params.resolution          = setRez;
+    params.hasWebcam           = recordingHasWebcam;
+    params.videoEffectChain    = videoEffectChain;
+    params.totalDurationSeconds = getMediaDuration(currentVideoFile);
+
+    startRender(params);
+}
+
+void MainWindow::startRender(const RenderJob::Params &params)
+{
     if (!trySetState(State::Rendering))
         return;
+
+    disconnect(m_renderJob, &RenderJob::progress, this, nullptr);
+    disconnect(m_renderJob, &RenderJob::finished, this, nullptr);
 
     videoWidget->hide();
     placeholderLabel->show();
@@ -176,31 +223,6 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset, const QSt
     layout->insertWidget(0, progressBar,   0, Qt::AlignCenter);
     layout->insertWidget(0, progressLabel, 0, Qt::AlignCenter);
 
-    // effectiveAudioOffset and effectiveVideoOffset are intentionally identical.
-    //
-    // Both audio and video recordings start at the same instant and share the same
-    // pre-roll length (offset ms before the song begins).  The rendered output must
-    // apply the same shift to both streams so their relative timing is preserved:
-    //
-    //   manualOffset > 0  →  trim manualOffset ms from the start of both audio
-    //                        (decodeAudioToFloat skip) and video (avformat_seek_file).
-    //   manualOffset < 0  →  prepend |manualOffset| ms of silence to audio AND delay
-    //                        the video stream by the same |manualOffset| ms.
-    //                        Both files are read from t=0; their pre-roll content lands
-    //                        at the same output time → streams stay in sync.
-    //
-    // The old formula (max(-offset, offset+manualOffset)) was wrong for the negative
-    // case: it produced a delay smaller than |manualOffset|, causing audio to lag video
-    // by (|manualOffset| - |effectiveVideoOffset|) ms.
-    const qint64 effectiveAudioOffset = manualOffset;
-    const qint64 effectiveVideoOffset = manualOffset;
-
-    if (m_renderJob) {
-        m_renderJob->deleteLater();
-        m_renderJob = nullptr;
-    }
-    m_renderJob = new RenderJob(this);
-
     connect(abortRenderBtn, &QPushButton::clicked, this, [this]() {
         m_renderJob->cancel();
     });
@@ -211,7 +233,7 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset, const QSt
     });
 
     connect(m_renderJob, &RenderJob::finished, this,
-            [this, progressLabel, abortRenderBtn](bool success, bool cancelled, const QString &errorMessage) {
+            [this, progressLabel, abortRenderBtn, params](bool success, bool cancelled, const QString &errorMessage) {
         delete progressLabel;
         delete this->progressBar;
         delete abortRenderBtn;
@@ -223,13 +245,20 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset, const QSt
             chooseInputAction->setEnabled(true);
             backingTrackButton->setVisible(true);
             if (cancelled) {
+                // No cleanup of outputFilePath here: RenderJob only ever
+                // writes through a sidecar ".partial" file and commits it
+                // onto outputPath atomically on success (see
+                // commitPartialOverFinal()) — on cancellation the partial is
+                // already removed by RenderJob itself, and outputPath was
+                // never touched. Removing it here would delete a
+                // pre-existing valid file if the user was re-rendering over
+                // an existing output and aborted.
                 logUI("Render aborted.");
-                QFile::remove(outputFilePath);
                 return;
             }
             logUI("Render failed.");
-            QMessageBox::critical(this, "Render Error",
-                errorMessage.isEmpty() ? "Rendering failed. Check the logs." : errorMessage);
+            handleRenderFailure(params, errorMessage.isEmpty()
+                ? "Rendering failed. Check the logs." : errorMessage);
             return;
         }
 
@@ -253,21 +282,27 @@ void MainWindow::mixAndRender(double vocalVolume, qint64 manualOffset, const QSt
         logUI(QString("Audio Offset: %1 ms").arg(audioOffset));
     });
 
-    RenderJob::Params params;
-    params.tunedAudioPath      = tunedRecorded;
-    params.webcamPath          = webcamRecorded;
-    params.playbackPath        = currentVideoFile;
-    params.rawVocalPath        = audioRecorded;
-    params.outputPath          = outputFilePath;
-    params.vocalVolume         = vocalVolume;
-    params.audioOffsetMs       = effectiveAudioOffset;
-    params.videoOffsetMs       = effectiveVideoOffset;
-    params.resolution          = setRez;
-    params.hasWebcam           = recordingHasWebcam;
-    params.videoEffectChain    = videoEffectChain;
-    params.totalDurationSeconds = getMediaDuration(currentVideoFile);
-
     m_renderJob->start(params);
+}
+
+// RenderJob never leaves anything expensive-to-recompute behind on failure
+// (unlike VocalSeparationJob's export, there is no already-separated
+// instrumental to salvage) — so the only meaningful recovery choice is
+// retrying with the same Params, which are all durable files already on
+// disk, not throwaway intermediate results.
+void MainWindow::handleRenderFailure(const RenderJob::Params &params, const QString &errorMessage)
+{
+    QMessageBox box(this);
+    box.setIcon(QMessageBox::Critical);
+    box.setWindowTitle("Render Error");
+    box.setText(errorMessage);
+    QPushButton *tryAgainBtn = box.addButton("Try Again", QMessageBox::ActionRole);
+    box.addButton("Discard", QMessageBox::DestructiveRole);
+    box.setDefaultButton(tryAgainBtn);
+    box.exec();
+
+    if (box.clickedButton() == tryAgainBtn)
+        startRender(params);
 }
 
 QString MainWindow::millisecondsToSecondsString(qint64 milliseconds) {

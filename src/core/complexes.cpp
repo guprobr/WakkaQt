@@ -4,6 +4,26 @@
 #include <QAudioFormat>
 #include <cstring>
 
+#ifdef WAKKAQT_FFMPEG_NATIVE
+#include "ffmpegnative.h"
+#else
+#include <QProcess>
+#endif
+
+bool mediaHasVideoStream(const QString &filePath)
+{
+#ifdef WAKKAQT_FFMPEG_NATIVE
+    return FFmpegNative::hasVideoStream(filePath);
+#else
+    QProcess p;
+    p.start("ffprobe", {"-v", "quiet", "-select_streams", "v:0",
+                        "-show_entries", "stream=codec_type",
+                        "-of", "default=noprint_wrappers=1:nokey=1", filePath});
+    p.waitForFinished(10000);
+    return p.exitCode() == 0 && !p.readAllStandardOutput().trimmed().isEmpty();
+#endif
+}
+
 // FFMpeg filter_complexes
     const QString _audioEnhance = "aformat=channel_layouts=mono,";
     const QString _filterEcho = "aecho=0.8:0.7:32|64:0.21|0.13,";

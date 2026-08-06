@@ -7,6 +7,7 @@
 #include <QProcess>
 #include <QPair>
 #include <atomic>
+#include <functional>
 #include <memory>
 
 // Owns the background work behind "Generate Backing Track": running the
@@ -57,6 +58,31 @@ public:
     // costs the user having to re-run the (expensive) separation.
     void discardWorkspace();
 
+    // Test-only seams, same reasoning as RenderJob::setEngineForTesting():
+    // unset in production (falls through to the real VocalSeparator::separate()
+    // / FFmpegNative::muxVideoWithAudio()/transcodeAudio() calls), substituted
+    // by this job's own tests to exercise cancellation/atomic-commit/
+    // signal-shape logic without a real ONNX model or real FFmpeg encode.
+    using SeparateEngine = std::function<QString(const QString &inputFile,
+                                                  const QString &workspaceDir,
+                                                  const std::function<void(int)> &progressFn,
+                                                  QString &errorOut,
+                                                  const std::atomic<bool> *cancelled)>;
+    void setSeparateEngineForTesting(SeparateEngine engine) { m_testSeparateEngine = std::move(engine); }
+
+    // Mirrors exportNative()'s branch on saveAsVideo: the real
+    // implementation calls FFmpegNative::muxVideoWithAudio() when true,
+    // transcodeAudio() when false — this seam stands in for whichever one
+    // would have run. Writes its output to partialOutputPath and must honor
+    // `cancelled` cooperatively, same contract as those two functions.
+    using ExportEngine = std::function<bool(const QString &inputFile,
+                                             const QString &tempWavPath,
+                                             const QString &partialOutputPath,
+                                             bool saveAsVideo,
+                                             const std::function<void(int)> &progressCb,
+                                             const std::atomic<bool> *cancelled)>;
+    void setExportEngineForTesting(ExportEngine engine) { m_testExportEngine = std::move(engine); }
+
 signals:
     void separationProgress(int percentage);
     void separated(QString tempWavPath);
@@ -94,6 +120,9 @@ private:
     // automatically after a successful exportResult(), or explicitly by the
     // caller when the separated result is abandoned before exporting.
     QString m_workspaceDir;
+
+    SeparateEngine m_testSeparateEngine;
+    ExportEngine   m_testExportEngine;
 };
 
 #endif // VOCALSEPARATIONJOB_H

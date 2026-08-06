@@ -120,11 +120,15 @@ void VocalSeparationJob::separate(const QString &inputFile)
 
     auto cancelledCopy = m_cancelled; // shared_ptr, safe to copy across threads
     const QString workspaceDir = m_workspaceDir;
-    auto future = QtConcurrent::run([this, inputFile, workspaceDir, cancelledCopy]() -> SeparateResult {
+    const SeparateEngine engineForThisRun = m_testSeparateEngine;
+    auto future = QtConcurrent::run([this, inputFile, workspaceDir, cancelledCopy, engineForThisRun]() -> SeparateResult {
         QString err;
-        QString path = VocalSeparator::separate(inputFile, workspaceDir, [this](int pct) {
+        std::function<void(int)> progressCb = [this](int pct) {
             emit separationProgress(pct); // emitted from a worker thread; Qt auto-queues to this' thread
-        }, err, cancelledCopy.get());
+        };
+        QString path = engineForThisRun
+            ? engineForThisRun(inputFile, workspaceDir, progressCb, err, cancelledCopy.get())
+            : VocalSeparator::separate(inputFile, workspaceDir, progressCb, err, cancelledCopy.get());
         return {path, err};
     });
     watcher->setFuture(future);
@@ -178,51 +182,42 @@ void VocalSeparationJob::exportNative(const ExportParams &params)
     const QString workspaceDir = m_workspaceDir;
     const QString partialPath  = partialPathFor(savePath);
     auto exportCancelledCopy   = m_exportCancelled;
+    const ExportEngine engineForThisRun = m_testExportEngine;
 
-    auto future = QtConcurrent::run([this, inputFile, tempOut, savePath, partialPath,
-                                      workspaceDir, saveAsVideo, exportCancelledCopy]() -> ExportResult {
+    auto future = QtConcurrent::run([this, inputFile, tempOut, savePath, partialPath, workspaceDir,
+                                      saveAsVideo, exportCancelledCopy, engineForThisRun]() -> ExportResult {
         QFile::remove(partialPath); // clear any leftover from a previous crashed attempt
         const std::atomic<bool> *cancelled = exportCancelledCopy.get();
+        std::function<void(int)> progressCb = [this](int pct) { emit exportProgress(pct); };
+
+        const bool ok = engineForThisRun
+            ? engineForThisRun(inputFile, tempOut, partialPath, saveAsVideo, progressCb, cancelled)
+            : (saveAsVideo
+                   ? FFmpegNative::muxVideoWithAudio(inputFile, tempOut, partialPath, progressCb, cancelled)
+                   : FFmpegNative::transcodeAudio(tempOut, partialPath, progressCb, cancelled));
+        if (!ok) {
+            QFile::remove(partialPath);
+            if (cancelled && cancelled->load())
+                return {false, "Cancelled"};
+            return {false, QString(saveAsVideo
+                    ? "Native video muxing failed. Check console debug log for details.\n"
+                    : "Native MP3 encoding failed. Check log for details.\n") +
+                    "The separated instrumental was preserved in:\n" + workspaceDir};
+        }
 
         // Validates the new file landed on disk, then commits it onto
         // savePath via commitPartialOverFinal() — which backs up any
         // existing file first, so a rename failure during the swap restores
         // it instead of leaving savePath missing.
-        auto finalizeAtomic = [&]() -> ExportResult {
-            if (!QFile::exists(partialPath) || QFileInfo(partialPath).size() <= 0) {
-                QFile::remove(partialPath);
-                return {false, "Export produced no output.\n"
-                               "The separated instrumental was preserved in:\n" + workspaceDir};
-            }
-            const QString err = commitPartialOverFinal(partialPath, savePath);
-            if (!err.isEmpty())
-                return {false, err};
-            return {true, QString()};
-        };
-
-        if (saveAsVideo) {
-            const bool ok = FFmpegNative::muxVideoWithAudio(inputFile, tempOut, partialPath,
-                [this](int pct) { emit exportProgress(pct); }, cancelled);
-            if (!ok) {
-                QFile::remove(partialPath);
-                if (cancelled && cancelled->load())
-                    return {false, "Cancelled"};
-                return {false, "Native video muxing failed. Check console debug log for details.\n"
-                               "The separated instrumental was preserved in:\n" + workspaceDir};
-            }
-            return finalizeAtomic();
-        } else {
-            const bool ok = FFmpegNative::transcodeAudio(tempOut, partialPath,
-                [this](int pct) { emit exportProgress(pct); }, cancelled);
-            if (!ok) {
-                QFile::remove(partialPath);
-                if (cancelled && cancelled->load())
-                    return {false, "Cancelled"};
-                return {false, "Native MP3 encoding failed. Check log for details.\n"
-                               "The separated instrumental was preserved in:\n" + workspaceDir};
-            }
-            return finalizeAtomic();
+        if (!QFile::exists(partialPath) || QFileInfo(partialPath).size() <= 0) {
+            QFile::remove(partialPath);
+            return {false, "Export produced no output.\n"
+                           "The separated instrumental was preserved in:\n" + workspaceDir};
         }
+        const QString err = commitPartialOverFinal(partialPath, savePath);
+        if (!err.isEmpty())
+            return {false, err};
+        return {true, QString()};
     });
     watcher->setFuture(future);
 }

@@ -1,5 +1,5 @@
 #include "sessionrepository.h"
-#include "complexes.h" // webcamRecorded/audioRecorded/extractedTmpPlayback fixed tmp paths + parseWavPcm()
+#include "complexes.h" // webcamRecorded/audioRecorded/extractedTmpPlayback fixed tmp paths + parseWavPcm()/mediaHasVideoStream()
 
 #include <QDir>
 #include <QFile>
@@ -11,30 +11,6 @@
 #include <QDateTime>
 #include <QDebug>
 #include <algorithm>
-
-#ifdef WAKKAQT_FFMPEG_NATIVE
-#include "ffmpegnative.h"
-#else
-#include <QProcess>
-#endif
-
-// Ground-truth check for restoreSession()'s webcam validation: a file that
-// exists and has nonzero size can still be a truncated/corrupt recording
-// with no actual video stream in it. Mirrors the same check duplicated in
-// mainwindowSeparatorMgr.cpp for the non-native build.
-static bool sessionWebcamHasVideoStream(const QString &filePath)
-{
-#ifdef WAKKAQT_FFMPEG_NATIVE
-    return FFmpegNative::hasVideoStream(filePath);
-#else
-    QProcess p;
-    p.start("ffprobe", {"-v", "quiet", "-select_streams", "v:0",
-                        "-show_entries", "stream=codec_type",
-                        "-of", "default=noprint_wrappers=1:nokey=1", filePath});
-    p.waitForFinished(10000);
-    return p.exitCode() == 0 && !p.readAllStandardOutput().trimmed().isEmpty();
-#endif
-}
 
 SessionRepository::SessionRepository() {}
 
@@ -461,7 +437,7 @@ RestoreResult SessionRepository::restoreSession(const QString &id)
     // has some bytes but no actual video stream in it.
     const QString webcamPath = sessionDir + "/webcam.mkv";
     result.hasWebcam = QFile::exists(webcamPath) && QFileInfo(webcamPath).size() > 0
-                     && sessionWebcamHasVideoStream(webcamPath);
+                     && mediaHasVideoStream(webcamPath);
     if (meta.hasWebcam && !result.hasWebcam) {
         result.warnings << "This session was recorded with a webcam, but its video file is "
                             "missing, empty, or unreadable — restoring as audio-only.";

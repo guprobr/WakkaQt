@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 # Project name
-project(WakkaQt VERSION 2.9.5 LANGUAGES CXX)
+project(WakkaQt VERSION 2.9.6 LANGUAGES CXX)
 
 # Set the C++ standard
 set(CMAKE_CXX_STANDARD 17)
@@ -278,6 +278,35 @@ if(FFMPEG_FOUND)
     target_link_libraries(wakkaqt_core PUBLIC wakkaqt_media)
 endif()
 
+# --- wakkaqt_jobs: background-work QObjects (RenderJob, VocalSeparationJob,
+# PreviewJob, ModelDownloadJob) — the orchestration layer that drives
+# wakkaqt_dsp/wakkaqt_media work on QtConcurrent/QProcess worker threads and
+# reports results back via signals. Split out as its own static lib (same
+# reasoning as wakkaqt_core) so tests/ can link RenderJob/VocalSeparationJob
+# directly, including their setXxxEngineForTesting() seams, without pulling
+# in every UI .cpp compiled straight into the executable target. ---
+add_library(wakkaqt_jobs STATIC
+    src/jobs/renderjob.cpp
+    src/jobs/renderjob.h
+    src/jobs/vocalseparationjob.cpp
+    src/jobs/vocalseparationjob.h
+    src/jobs/previewjob.cpp
+    src/jobs/previewjob.h
+    src/jobs/modeldownloadjob.cpp
+    src/jobs/modeldownloadjob.h
+)
+target_include_directories(wakkaqt_jobs PUBLIC ${WAKKA_INCLUDE_DIRS})
+target_link_libraries(wakkaqt_jobs PUBLIC
+    wakkaqt_core
+    wakkaqt_dsp
+    Qt6::Core
+    Qt6::Concurrent
+    Qt6::Network
+)
+if(FFMPEG_FOUND)
+    target_link_libraries(wakkaqt_jobs PUBLIC wakkaqt_media)
+endif()
+
 # Add the executable
 add_executable(${PROJECT_NAME}
     src/main.cpp
@@ -288,10 +317,6 @@ add_executable(${PROJECT_NAME}
     src/ui/mainwindowRenderMgr.cpp
     src/ui/mainwindowLibraryMgr.cpp
     src/ui/mainwindowSeparatorMgr.cpp
-    src/jobs/renderjob.cpp
-    src/jobs/vocalseparationjob.cpp
-    src/jobs/previewjob.cpp
-    src/jobs/modeldownloadjob.cpp
     src/ui/sndwidget.cpp
     src/ui/pitchmonitorwidget.cpp
     src/ui/previewdialog.cpp
@@ -320,6 +345,7 @@ target_link_libraries(${PROJECT_NAME}
     wakkaqt_dsp
     wakkaqt_media
     wakkaqt_core
+    wakkaqt_jobs
     Qt6::Core
     Qt6::Gui
     Qt6::Widgets

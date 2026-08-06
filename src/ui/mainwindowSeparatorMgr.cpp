@@ -1,4 +1,5 @@
 #include "mainwindow.h"
+#include "complexes.h" // mediaHasVideoStream()
 #include "vocalseparator.h"
 #include "vocalseparationjob.h"
 #include "modeldownloadjob.h"
@@ -15,19 +16,6 @@
 #include <QPointer>
 #include <QProcess>
 #include <QSaveFile>
-
-#ifdef WAKKAQT_FFMPEG_NATIVE
-#  include "ffmpegnative.h"
-#else
-static bool hasVideoStream(const QString &filePath) {
-    QProcess p;
-    p.start("ffprobe", {"-v", "quiet", "-select_streams", "v:0",
-                        "-show_entries", "stream=codec_type",
-                        "-of", "default=noprint_wrappers=1:nokey=1", filePath});
-    p.waitForFinished(10000);
-    return p.exitCode() == 0 && !p.readAllStandardOutput().trimmed().isEmpty();
-}
-#endif
 
 void MainWindow::generateBackingTrack() {
     if (currentPlayback.isEmpty()) return;
@@ -147,11 +135,7 @@ void MainWindow::runVocalSeparation() {
 
     // --- Step 3: run separation in the background via VocalSeparationJob ---
     const QString inputFile = currentPlayback;
-#ifdef WAKKAQT_FFMPEG_NATIVE
-    const bool inputHasVideo = FFmpegNative::hasVideoStream(inputFile);
-#else
-    const bool inputHasVideo = hasVideoStream(inputFile);
-#endif
+    const bool inputHasVideo = mediaHasVideoStream(inputFile);
 
     if (m_separationJob) {
         m_separationJob->deleteLater();
@@ -295,6 +279,12 @@ void MainWindow::runVocalSeparation() {
 // alone. On success, discards the job's workspace and returns to Idle; on
 // failure, leaves both untouched (still Separating, workspace still intact)
 // so the caller can offer recovery instead of losing the result.
+//
+// Deliberately not atomicfilecommit.h's commitPartialOverFinal() — see the
+// comment at the top of that header for why: tempOut lives in this job's
+// private /tmp workspace, which the user's chosen savePath may not share a
+// filesystem with, so this needs an actual byte copy (what QSaveFile does)
+// rather than a same-directory sidecar rename (what that helper does).
 bool MainWindow::finishWavSave(const QString &tempOut, const QString &savePath)
 {
     QFile src(tempOut);

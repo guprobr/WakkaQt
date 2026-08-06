@@ -15,7 +15,15 @@ QString sidecarPathFor(const QString &finalPath, const QString &tag)
 QString commitPartialOverFinal(const QString &partialPath, const QString &finalPath)
 {
     const QString backupPath = sidecarPathFor(finalPath, "backup");
-    QFile::remove(backupPath); // clear any leftover from a previous crashed attempt
+    // Checked, not fire-and-forget: if a leftover backup from a previous
+    // crashed attempt can't be removed (permissions, locked by another
+    // process), the rename below would fail too — but with a misleading
+    // "could not move existing file aside" error that hides the real cause
+    // (the stale backup blocking it, not finalPath itself).
+    if (QFile::exists(backupPath) && !QFile::remove(backupPath)) {
+        return "A leftover backup file from a previous attempt could not be removed:\n" +
+               backupPath + "\nThe new output was preserved at:\n" + partialPath;
+    }
 
     const bool hadExisting = QFile::exists(finalPath);
     if (hadExisting && !QFile::rename(finalPath, backupPath)) {

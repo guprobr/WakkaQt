@@ -121,6 +121,32 @@ private slots:
         QCOMPARE(readFile(final_), QByteArray("new content"));
         QVERIFY(!QFile::exists(backup));
     }
+
+    // Regression test: an unremovable leftover backup must fail with a clear
+    // error naming the actual blocker, not the misleading "could not move
+    // existing file aside" message the old rename(finalPath, backupPath)
+    // call would have produced (it would fail too, since backupPath still
+    // exists, but for a reason that message doesn't mention). A directory
+    // at backupPath is a portable way to make QFile::remove() fail deterministically
+    // (it only removes regular files), without relying on permission quirks.
+    void commit_unremovableLeftoverBackup_failsWithClearError()
+    {
+        const QString partial = m_dir.filePath("out.partial.wav");
+        const QString final_  = m_dir.filePath("out.wav");
+        const QString backup  = sidecarPathFor(final_, "backup");
+        QVERIFY(QDir(m_dir.path()).mkpath(backup));
+        QVERIFY(writeFile(final_, "current content"));
+        QVERIFY(writeFile(partial, "new content"));
+
+        const QString err = commitPartialOverFinal(partial, final_);
+
+        QVERIFY(!err.isEmpty());
+        QVERIFY2(err.contains("backup", Qt::CaseInsensitive), qPrintable(err));
+        // Neither file should have been touched: the commit must bail out
+        // before ever moving final_ aside.
+        QCOMPARE(readFile(final_), QByteArray("current content"));
+        QVERIFY(QFile::exists(partial));
+    }
 };
 
 QTEST_MAIN(TestAtomicFileCommit)

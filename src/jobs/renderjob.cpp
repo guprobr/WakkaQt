@@ -129,8 +129,18 @@ void RenderJob::startNative(const Params &params)
     const qint64  audioOffsetMs    = params.audioOffsetMs;
     const qint64  videoOffsetMs    = params.videoOffsetMs;
     auto cancelledCopy = m_cancelled; // shared_ptr, safe to copy across threads
+    // Copied here (on the calling/GUI thread, before QtConcurrent::run spawns
+    // the worker) rather than read from m_testEngine inside the lambda —
+    // same reasoning as cancelledForThisRun above.
+    const Engine engineForThisRun = m_testEngine;
+    const Params paramsForThisRun = params;
 
     auto future = QtConcurrent::run([=]() {
+        std::function<void(double)> progressCb = [this](double p) {
+            emit progress(p); // emitted from a worker thread; Qt auto-queues to this' thread
+        };
+        if (engineForThisRun)
+            return engineForThisRun(paramsForThisRun, partialOutputPath, progressCb, cancelledCopy.get());
         return FFmpegNative::renderVideo(
             tunedAudioPath,
             webcamPath,
@@ -142,9 +152,7 @@ void RenderJob::startNative(const Params &params)
             resolution,
             rawVocalPath,
             cancelledCopy.get(),
-            [this](double p) {
-                emit progress(p); // emitted from a worker thread; Qt auto-queues to this' thread
-            },
+            progressCb,
             videoEffectChain);
     });
     watcher->setFuture(future);

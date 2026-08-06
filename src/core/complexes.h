@@ -46,6 +46,15 @@ extern const QVector<VideoEffectPreset> videoEffectPresets;
 // Use this instead of repeating the four-extension chain everywhere.
 bool isAudioOnlyFile(const QString &path);
 
+// Returns true when `filePath` actually contains a decodable video stream —
+// existence/size alone doesn't catch a truncated/corrupt recording that
+// still has some bytes but no real video track. Uses FFmpegNative when
+// built with WAKKAQT_FFMPEG_NATIVE, otherwise shells out to ffprobe. Single
+// shared implementation for the two call sites that both used to duplicate
+// this exact ffprobe invocation (session-restore webcam validation, and the
+// backing-track separator's video/audio-only save-format decision).
+bool mediaHasVideoStream(const QString &filePath);
+
 extern QString webcamRecorded;
 extern QString audioRecorded;
 extern QString tunedRecorded;

@@ -360,9 +360,16 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
     // Qt 6.7 onward (missing on the Qt 6.4-era qt6-base-dev CI builds
     // against) — stateChanged() has been available since Qt5 and still
     // works everywhere in Qt6, just deprecated (not removed) from 6.7 on.
+
+    #if QT_VERSION < QT_VERSION_CHECK(6, 7, 0)
     connect(playbackMute_option, &QCheckBox::stateChanged, this, [this]() {
         amplifier->setPlaybackVol(!playbackMute_option->isChecked());
+    });    
+    #else
+    connect(playbackMute_option, &QCheckBox::checkStateChanged, this, [this]() {
+        amplifier->setPlaybackVol(!playbackMute_option->isChecked());
     });
+    #endif
 
     chronosTimer = new QTimer(this);
     connect(chronosTimer, &QTimer::timeout, this, &PreviewDialog::updateChronos);

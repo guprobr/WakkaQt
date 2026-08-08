@@ -75,6 +75,14 @@ private slots:
     void onToggleOriginalVocals();
 
 private:
+    // Cancels/waits for previewJob, snippetJob and m_effectWatcher, stops
+    // mediaPlayer and kills child QProcesses. Called from both closeEvent()
+    // (the window-close/X-button path) and the destructor — accept()/reject()
+    // (e.g. the Render Mix button) hide the dialog without ever routing
+    // through closeEvent(), so relying on closeEvent() alone left in-flight
+    // background work able to fire its finished-callback against an
+    // already-destroyed PreviewDialog.
+    void cancelPendingWork();
     void updateChronos();
     void seekForward();
     void seekBackward();
@@ -86,7 +94,7 @@ private:
     QAudioFormat format;
     QScopedPointer<AudioAmplifier> amplifier;
     QScopedPointer<PreviewJob> previewJob;
-    // Separate PreviewJob instance for the 6s snippet preview (see
+    // Separate PreviewJob instance for the 10s snippet preview (see
     // startSnippetPreview()) so it can't collide with previewJob's own
     // enhanced()/extracted() signals when both are relevant at once — each
     // PreviewJob owns its own VocalEnhancer/QFutureWatcher, so a second
@@ -130,6 +138,10 @@ private:
 
     QLabel *volumeLabel = nullptr;
     QLabel *bannerLabel = nullptr;
+    // "position / total duration" clock, updated alongside chronos in
+    // updateChronos() — independent of AudioAmplifier::checkBufferState()'s
+    // own elapsed-time string, which volumeLabel already shows.
+    QLabel *positionClockLabel = nullptr;
     QLabel *offsetLabel = nullptr;
     QLabel *pitchCorrectionLabel = nullptr;
     QLabel *noiseReductionLabel = nullptr;
@@ -139,7 +151,7 @@ private:
     QPushButton *seekBackwardButton = nullptr;
     QPushButton *stopButton = nullptr;
     QPushButton *applyButton = nullptr;
-    // Hidden until a 6s snippet preview finishes; applies the same
+    // Hidden until a 10s snippet preview finishes; applies the same
     // (still-live) slider settings to the whole recording — the pre-existing
     // full-track path, previously triggered directly by applyButton.
     QPushButton *applyFullTrackButton = nullptr;
@@ -168,7 +180,7 @@ private:
     QTimer *volumeChangeTimer = nullptr;
     QTimer *chronosTimer = nullptr;
     QTimer *previewRebuildTimer = nullptr;
-    // Fires ~6s after a snippet preview starts playing, reverting to
+    // Fires ~10s after a snippet preview starts playing, reverting to
     // m_committedAudioData — see startSnippetPreview()/revertSnippetPreview().
     QTimer *snippetRevertTimer = nullptr;
 
@@ -182,6 +194,12 @@ private:
     QByteArray m_committedAudioData;
     qint64 m_snippetStartBytes = 0;
     qint64 m_snippetLengthBytes = 0;
+    // How much lead-in context (immediately before m_snippetStartBytes) was
+    // included in the slice sent to VocalEnhancer, purely so its noise-gate
+    // learning and phase-vocoder reset have real audio to settle on before
+    // the part the user actually asked to hear — trimmed back off the
+    // enhanced result in onSnippetEnhanced() before it's played.
+    qint64 m_snippetLeadInBytes = 0;
     bool m_snippetPreviewActive = false;
     // Which buffer onToggleOriginalVocals() last switched playback to —
     // false == tuned (m_committedAudioData), true == raw original

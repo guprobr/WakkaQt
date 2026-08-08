@@ -16,6 +16,7 @@
 #include <QUrl>
 #include <QFrame>
 #include <QScrollArea>
+#include <QTime>
 
 PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
     : QDialog(parent),
@@ -40,11 +41,11 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
     QLabel *volumeBanner = new QLabel(
         "How to use this window: watch the take below, adjust sync/volume under "
         "\"Preview & Sync\", then open \"Vocal Tuning\" to shape the vocal. Click "
-        "Apply Enhancement to hear a quick 6-second preview of your current "
-        "settings, starting from wherever playback is paused — playback pauses "
-        "automatically while it processes, then plays the preview and continues "
-        "on afterward. Like what you hear? Click Apply to Full Track to process "
-        "the whole recording with those settings. \"Effects\" applies visual "
+        "Tuned Vocals Quick Preview to hear a quick 10-second preview of your "
+        "current settings, starting from wherever playback is paused — playback "
+        "pauses automatically while it processes, then plays the preview and "
+        "continues on afterward. Like what you hear? Click Enhance Full Vocal "
+        "Track to process the whole recording with those settings. \"Effects\" applies visual "
         "filters to the video itself. When it all sounds right, hit Render Mix.",
         this);
     volumeBanner->setToolTip("You can adjust the final volume for the render output.");
@@ -156,23 +157,28 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
     reverbMixSlider->setToolTip("Wet/dry mix: 0 = dry (off), 100 = full reverb");
 
     // Apply button — pauses playback and previews the current settings on
-    // just the next 6 seconds from wherever playback is paused.
-    applyButton = new QPushButton("Apply Enhancement", this);
-    applyButton->setToolTip("Preview all current settings on the next 6 seconds");
+    // just the next 10 seconds from wherever playback is paused.
+    applyButton = new QPushButton("Tuned Vocals Quick Preview", this);
+    applyButton->setToolTip("Preview all current settings on the next 10 seconds");
     applyButton->setFont(QFont("", 11, QFont::Bold));
 
     // Revealed only after a snippet preview finishes — applies the same
     // settings to the whole recording (the previous, immediate behaviour of
     // applyButton itself).
-    applyFullTrackButton = new QPushButton("Apply to Full Track", this);
+    applyFullTrackButton = new QPushButton("Enhance Full Vocal Track", this);
     applyFullTrackButton->setToolTip("Apply all current settings and re-process the whole recording");
     applyFullTrackButton->setFont(QFont("", 11, QFont::Bold));
     applyFullTrackButton->hide();
 
     progressBar = new QProgressBar(this);
     progressBar->setRange(0, 100);
-    progressBar->setFixedSize(QSize(600, 50));
+    progressBar->setFixedHeight(32);
     progressBar->setToolTip("VocalEnhancer progress bar");
+
+    positionClockLabel = new QLabel("00:00 / 00:00", this);
+    positionClockLabel->setAlignment(Qt::AlignCenter);
+    positionClockLabel->setFont(QFont("", 13, QFont::Bold));
+    positionClockLabel->setToolTip("Playback position / total duration");
 
     playbackMute_option = new QCheckBox("Preview vocals only", this);
     playbackMute_option->setToolTip("Check to mute backing track while previewing");
@@ -226,6 +232,7 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
     layout->addWidget(volumeBanner);
     layout->addWidget(bannerLabel);
     layout->addWidget(progressBar);
+    layout->addWidget(positionClockLabel);
     layout->addWidget(videoRama);
     layout->addWidget(vocalVisualizer);
 
@@ -312,8 +319,8 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
     layout->addWidget(tabWidget);
     layout->addWidget(stopButton);
     layout->setAlignment(Qt::AlignHCenter);
-    setMinimumSize(680, 620);
-    resize(1024, 768);
+    setMinimumSize(1000, 900);
+    resize(1360, 1000);
 
     updateEnhancementLabels();
 
@@ -433,21 +440,23 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
             this, &PreviewDialog::revertSnippetPreview);
 }
 
-void PreviewDialog::closeEvent(QCloseEvent *event)
+void PreviewDialog::cancelPendingWork()
 {
     // Cancel any in-flight enhancement future so its finished() callback
-    // doesn't fire against a hidden dialog and pop up stray QMessageBoxes,
-    // then block until both extraction and enhancement are done — enhance()
-    // has to notice the cancellation flag itself (in its hot loops) and
-    // return early, or this would block the GUI thread for however long the
-    // rest of that enhance() call was going to take anyway. extractAudio()
-    // has no cancellation token (it's a single fast decode+resample, not a
-    // long DSP pipeline), so there's nothing to flag for it — just wait.
+    // doesn't fire against a hidden/destroyed dialog and pop up stray
+    // QMessageBoxes or touch freed memory, then block until both extraction
+    // and enhancement are done — enhance() has to notice the cancellation
+    // flag itself (in its hot loops) and return early, or this would block
+    // the GUI thread for however long the rest of that enhance() call was
+    // going to take anyway. extractAudio() has no cancellation token (it's a
+    // single fast decode+resample, not a long DSP pipeline), so there's
+    // nothing to flag for it — just wait.
     previewJob->cancelEnhance();
     previewJob->waitForIdle();
     snippetJob->cancelEnhance();
     snippetJob->waitForIdle();
-    snippetRevertTimer->stop();
+    if (snippetRevertTimer)
+        snippetRevertTimer->stop();
 #ifdef WAKKAQT_FFMPEG_NATIVE
     if (m_effectWatcher && !m_effectWatcher->isFinished())
         m_effectWatcher->waitForFinished();
@@ -456,16 +465,25 @@ void PreviewDialog::closeEvent(QCloseEvent *event)
         mediaPlayer->stop();
     // Children QProcess objects (ffmpegProcess) have this as parent; Qt kills
     // them on destruction, but if one is running right now its finished()
-    // lambda would call slots on a hidden 'this'. Kill all child processes now.
+    // lambda would call slots on a hidden/destroyed 'this'. Kill all child
+    // processes now.
     const auto procs = findChildren<QProcess *>();
     for (QProcess *p : procs)
         p->kill();
+}
 
+void PreviewDialog::closeEvent(QCloseEvent *event)
+{
+    cancelPendingWork();
     QDialog::closeEvent(event);
 }
 
 PreviewDialog::~PreviewDialog()
 {
+    // accept()/reject() (e.g. the Render Mix button, via stopAudioPreview())
+    // hide the dialog without routing through closeEvent() at all, so this
+    // has to run here too — see cancelPendingWork()'s comment.
+    cancelPendingWork();
     if (amplifier)
         amplifier->stop();
 }
@@ -868,7 +886,7 @@ void PreviewDialog::onVocalsEnhanced(QByteArray tunedData)
     }
 }
 
-// Pauses playback and runs VocalEnhancer on just the next 6 seconds from the
+// Pauses playback and runs VocalEnhancer on just the next 10 seconds from the
 // current position, using whatever the sliders currently read — a cheap way
 // to audition tuning changes without waiting for (or committing to) a full
 // re-process of the whole recording. See onSnippetEnhanced()/
@@ -885,7 +903,7 @@ void PreviewDialog::startSnippetPreview()
     snippetRevertTimer->stop();
 
     const qint64 startBytes = amplifier->getPosition();
-    const qint64 wantedBytes = format.bytesForDuration(6LL * 1000 * 1000); // 6s
+    const qint64 wantedBytes = format.bytesForDuration(10LL * 1000 * 1000); // 10s
     const qint64 availableBytes = qMax<qint64>(0, m_committedAudioData.size() - startBytes);
     const qint64 sliceBytes = qMin(wantedBytes, availableBytes);
 
@@ -896,16 +914,27 @@ void PreviewDialog::startSnippetPreview()
         return;
     }
 
+    // A few seconds of real audio immediately before startBytes, included in
+    // what's sent to VocalEnhancer but trimmed back off before playback (see
+    // onSnippetEnhanced()) — a mid-performance cut has no silent lead-in for
+    // the noise gate to learn from and no settled phase-vocoder state, both
+    // of which reset per enhance() call; without this the first few seconds
+    // audibly duck/warble as they mis-calibrate on live vocal content.
+    const qint64 leadInBytes = format.bytesForDuration(2LL * 1000 * 1000); // 2s
+    const qint64 leadInStartBytes = qMax<qint64>(0, startBytes - leadInBytes);
+    const qint64 actualLeadInBytes = startBytes - leadInStartBytes;
+
     m_snippetPreviewActive = true;
     m_snippetStartBytes = startBytes;
     m_snippetLengthBytes = sliceBytes;
+    m_snippetLeadInBytes = actualLeadInBytes;
 
     setPreviewControlsEnabled(false);
     applyFullTrackButton->hide();
     progressBar->setValue(0);
-    bannerLabel->setText("Enhancing 6-second preview…");
+    bannerLabel->setText("Enhancing 10-second preview…");
 
-    const QByteArray slice = m_committedAudioData.mid(startBytes, sliceBytes);
+    const QByteArray slice = m_committedAudioData.mid(leadInStartBytes, actualLeadInBytes + sliceBytes);
 
     const QStringList scaleNames = {"chromatic","major","minor",
                                      "pentatonic_major","pentatonic_minor","blues"};
@@ -943,8 +972,14 @@ void PreviewDialog::onSnippetEnhanced(QByteArray tunedSlice)
     if (tunedSlice.isEmpty())
         return;
 
+    // Drop the lead-in context VocalEnhancer needed to settle on (see
+    // startSnippetPreview()) — best-effort byte offset, since enhance()
+    // doesn't guarantee exact input/output length parity; off by a handful
+    // of samples here is inaudible.
+    const QByteArray tunedKept = tunedSlice.mid(m_snippetLeadInBytes);
+
     QByteArray previewBuffer = m_committedAudioData;
-    previewBuffer.replace(m_snippetStartBytes, m_snippetLengthBytes, tunedSlice);
+    previewBuffer.replace(m_snippetStartBytes, m_snippetLengthBytes, tunedKept);
 
     amplifier->setAudioData(previewBuffer);
     amplifier->seekTo(m_snippetStartBytes);
@@ -955,14 +990,14 @@ void PreviewDialog::onSnippetEnhanced(QByteArray tunedSlice)
         mediaPlayer->play();
 
     progressBar->setValue(100);
-    bannerLabel->setText("🔊 6-second vocal preview playing…");
+    bannerLabel->setText("🔊 10-second vocal preview playing…");
     applyFullTrackButton->show();
 
-    // Revert once the 6s window has played through. A fixed wall-clock timer
+    // Revert once the 10s window has played through. A fixed wall-clock timer
     // (rather than tracking amplifier's byte position) is precise enough for
     // an audition feature — see the class-level decision to auto-resume
     // normal (un-enhanced) playback afterward instead of pausing again.
-    snippetRevertTimer->start(6000);
+    snippetRevertTimer->start(10000);
 }
 
 // Reverts to the committed baseline once the previewed 6s window has played
@@ -1166,11 +1201,37 @@ void PreviewDialog::updateVolume()
                          .arg(chronos));
 }
 
+// hh:mm:ss for anything an hour or longer, mm:ss otherwise — a karaoke take
+// is essentially never long enough to need the hours field.
+static QString formatClock(qint64 microseconds)
+{
+    const qint64 totalSeconds = microseconds / 1000000LL;
+    const int hours   = int(totalSeconds / 3600);
+    const int minutes = int((totalSeconds % 3600) / 60);
+    const int seconds = int(totalSeconds % 60);
+    const QTime t(hours, minutes, seconds);
+    return t.toString(hours > 0 ? "hh:mm:ss" : "mm:ss");
+}
+
 void PreviewDialog::updateChronos()
 {
     chronos = amplifier->checkBufferState();
     volumeLabel->setText(QString("Current Volume: %1% Elapsed Time: %2")
                          .arg(pendingVolumeValue)
                          .arg(chronos));
+
+    // previewInputAudioData (not m_committedAudioData) as the duration
+    // reference: it's set once at extraction and never changes afterward,
+    // so the total shown here doesn't jitter by a few ms as the active
+    // buffer swaps between raw/tuned/snippet-preview versions.
+    if (amplifier && !previewInputAudioData.isEmpty()) {
+        const qint64 posBytes   = qMin<qint64>(amplifier->getPosition(), INT32_MAX);
+        const qint64 totalBytes = qMin<qint64>(previewInputAudioData.size(), INT32_MAX);
+        const qint64 posUs      = format.durationForBytes(qint32(posBytes));
+        const qint64 totalUs    = format.durationForBytes(qint32(totalBytes));
+        positionClockLabel->setText(QString("%1 / %2")
+            .arg(formatClock(posUs), formatClock(totalUs)));
+    }
+
     syncVideoToAudio();
 }

@@ -5,6 +5,42 @@
 
 #include <QDebug>
 
+namespace {
+
+// Sits between QAudioSource and the real output QFile. Every buffer handed
+// to writeData() is silently discarded (counted, not written) until arm()
+// is called — after that it passes straight through. This gives the WAV
+// file zero pre-roll by construction: the capture device is already running
+// (and warmed up) well before the sync mark, we just don't keep any of what
+// it produced before that instant.
+class GatedFileDevice : public QIODevice
+{
+public:
+    explicit GatedFileDevice(QFile *backing, QObject *parent = nullptr)
+        : QIODevice(parent), m_backing(backing) {}
+
+    void arm() { m_armed = true; }
+    qint64 discardedBytes() const { return m_discarded; }
+
+protected:
+    qint64 readData(char *, qint64) override { return -1; } // write-only
+
+    qint64 writeData(const char *data, qint64 len) override {
+        if (!m_armed) {
+            m_discarded += len;
+            return len; // report success — the source shouldn't see a stall
+        }
+        return m_backing->write(data, len);
+    }
+
+private:
+    QFile *m_backing;
+    bool m_armed = false;
+    qint64 m_discarded = 0;
+};
+
+} // namespace
+
 AudioRecorder::AudioRecorder(QAudioDevice selectedDevice, QObject* parent)
     : QObject(parent),
       m_audioSource(nullptr),
@@ -100,10 +136,30 @@ void AudioRecorder::startRecording(const QString& outputFilePath)
     // readAll() + rewrite of potentially hundreds of MB for a long take.
     writeWavHeader(m_outputFile, m_audioFormat, 0, QByteArray());
 
-    // Start recording audio
-    m_audioSource->start(&m_outputFile);
+    // Start recording audio through the gate, closed until armSync(). The
+    // capture device starts pulling data right away (warming up / avoiding
+    // startup underruns), but none of it is kept until the sync mark.
+    m_gate.reset(new GatedFileDevice(&m_outputFile, this));
+    m_gate->open(QIODevice::WriteOnly);
+
+    m_audioSource->start(m_gate.data());
     m_isRecording = true;
-    qWarning() << "AudioRecorder Started";
+    qWarning() << "AudioRecorder Started (gated, awaiting sync mark)";
+}
+
+void AudioRecorder::armSync()
+{
+    if (m_gate)
+        static_cast<GatedFileDevice*>(m_gate.data())->arm();
+}
+
+qint64 AudioRecorder::preRollMs() const
+{
+    if (!m_gate)
+        return 0;
+    const qint64 discarded = static_cast<GatedFileDevice*>(m_gate.data())->discardedBytes();
+    // durationForBytes() takes a qint32 and returns microseconds.
+    return m_audioFormat.durationForBytes(qint32(qMin<qint64>(discarded, INT32_MAX))) / 1000;
 }
 
 void AudioRecorder::stopRecording()

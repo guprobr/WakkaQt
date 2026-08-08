@@ -44,6 +44,13 @@ void MainWindow::startRecording() {
 
         // Set up the house for recording
         offset = 0;
+        // Blocked until right before player->play() below — vizPlayer->seek(0)
+        // a few lines down also fires positionChanged, and if the guard were
+        // already open that seek would consume the one-shot sync mark before
+        // the real recording (and its AudioRecorder gate) even exists, so
+        // playback's real positionChanged would never arm it and the whole
+        // take would get silently discarded.
+        audioSyncArmed = true;
         // Fixes the webcam-having-ness of *this* recording at the moment it
         // starts (the device won't change mid-recording), so later stages
         // (stopRecording()/renderAgain()/mixAndRender()) judge this specific
@@ -81,6 +88,9 @@ void MainWindow::startRecording() {
                 onRecorderStateChanged(QMediaRecorder::RecordingState);
             }
 
+            // Only now is the real gate (created inside startRecording()
+            // above) waiting to be armed by the next positionChanged.
+            audioSyncArmed = false;
             player->play(); // start the show
 
         } else {
@@ -185,25 +195,16 @@ void MainWindow::stopRecording() {
                 // Now video (if any) is ready, proceed safely
                 qWarning() << "Proceeding with finalization...";
 
-                // DETERMINE audioOffset
-                // Pre-roll = how long the recording ran before the song started.
-                // recDuration - pos gives this directly: positive means the file
-                // has pre-roll that must be trimmed; negative means recording
-                // started late and silence must be prepended.
-                // Using the file duration avoids the sysLatency approximation,
-                // which only measures time to the next recorder tick and diverges
-                // from the real pre-roll at above-average system latency.
-                qWarning() << "Recording duration:";
-                qint64 recDuration = 1000 * getMediaDuration(audioRecorded);
-                audioOffset = recDuration - pos;
-
-                // DETERMINE videoOffset (no camera means no webcam file to measure)
-                if (recordingHasWebcam) {
-                    recDuration = 1000 * getMediaDuration(webcamRecorded);
-                    videoOffset = recDuration - pos;
-                } else {
+                // audioOffset is always 0: AudioRecorder gates every captured
+                // buffer until the sync mark (first playback position tick —
+                // see onPlayerPositionChanged), so the WAV file has zero
+                // pre-roll by construction, no post-hoc trim needed.
+                // videoOffset was captured at that same mark, since camera
+                // and mic recording start a couple of lines apart in
+                // startRecording() — negligible skew between them, so the
+                // audio-side pre-roll applies equally to the webcam file.
+                if (!recordingHasWebcam)
                     videoOffset = 0;
-                }
 
                 qWarning() << "System Latency: " << offset << " ms";
                 qWarning() << "Audio Gap: " << audioOffset << " ms";

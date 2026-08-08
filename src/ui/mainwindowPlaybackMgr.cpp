@@ -126,7 +126,28 @@ void MainWindow::onPlayPauseClicked() {
 void MainWindow::onPlayerPositionChanged(qint64 position) {
     if ( m_state == State::Recording ) {
         pos = position;
-        //sysLatency.restart();
+
+        // Sync mark: the first position tick means playback has actually
+        // started producing audio. Un-gate the mic recorder right here so
+        // its file has zero pre-roll by construction, and reuse the exact
+        // amount of audio it discarded up to this instant as videoOffset —
+        // camera and mic are started a couple of lines apart in
+        // startRecording(), so the same pre-roll applies to the webcam file.
+        //
+        // A recDuration-vs-tracked-position residual "correction" was tried
+        // on top of this and made things worse: under system load the
+        // tracked position lags real time (event-loop delivery delay) while
+        // recDuration is read straight off disk and stays accurate, so
+        // they're not comparable — manually zeroing the resulting offset
+        // gave perfect sync in every test, with or without induced latency.
+        // The gate alone is the correction; audioOffset stays 0.
+        if ( !audioSyncArmed && audioRecorder ) {
+            audioSyncArmed = true;
+            audioRecorder->armSync();
+            audioOffset = 0;
+            videoOffset = audioRecorder->preRollMs();
+            logUI(QString("Sync mark: %1 ms of pre-roll discarded.").arg(videoOffset));
+        }
     }
 }
 

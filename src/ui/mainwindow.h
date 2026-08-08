@@ -143,6 +143,10 @@ private:
     qint64 offset = 0;
     qint64 videoOffset = 0;
     qint64 audioOffset = 0;
+    // One-shot guard: on the first QMediaPlayer::positionChanged tick of a
+    // recording session, AudioRecorder::armSync() fires and videoOffset is
+    // set from AudioRecorder::preRollMs() — see onPlayerPositionChanged().
+    bool audioSyncArmed = false;
 
     QAudioDevice selectedDevice;
     QCameraDevice selectedCameraDevice;

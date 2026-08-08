@@ -15,6 +15,7 @@
 #include <QTabWidget>
 #include <QVideoSink>
 #include <QVideoFrame>
+#include <QImage>
 #include <QMediaPlayer>
 #include <QAudioFormat>
 #include <QFile>
@@ -68,6 +69,10 @@ private slots:
     void updateVideoEffectChain();
     void onVocalsExtracted(QByteArray pcmSamples, QAudioFormat pcmFormat);
     void onVocalsEnhanced(QByteArray tunedData);
+    void startSnippetPreview();
+    void onSnippetEnhanced(QByteArray tunedSlice);
+    void revertSnippetPreview();
+    void onToggleOriginalVocals();
 
 private:
     void updateChronos();
@@ -81,6 +86,12 @@ private:
     QAudioFormat format;
     QScopedPointer<AudioAmplifier> amplifier;
     QScopedPointer<PreviewJob> previewJob;
+    // Separate PreviewJob instance for the 6s snippet preview (see
+    // startSnippetPreview()) so it can't collide with previewJob's own
+    // enhanced()/extracted() signals when both are relevant at once — each
+    // PreviewJob owns its own VocalEnhancer/QFutureWatcher, so a second
+    // instance is cheap and fully independent.
+    QScopedPointer<PreviewJob> snippetJob;
 
     PreviewVideoWidget *videoRama = nullptr;
     QVideoSink *videoSink = nullptr;
@@ -88,6 +99,19 @@ private:
     QTabWidget *tabWidget = nullptr;
 #ifdef WAKKAQT_FFMPEG_NATIVE
     QScopedPointer<FFmpegNative::VideoEffectProcessor> videoEffectProcessor;
+    // Runs videoEffectProcessor->process() off the GUI thread (see
+    // onVideoFrame()) — a chain of several effects can take longer than a
+    // frame interval, and running that synchronously on the GUI thread used
+    // to stall the whole UI (and, with it, AudioAmplifier's 25ms data-push
+    // timer, causing audible glitches) for however long it took.
+    QFutureWatcher<QImage> *m_effectWatcher = nullptr;
+    // Sequences frame dispatch: only one frame is ever in flight on the
+    // worker at a time. A new frame arriving while the previous one is still
+    // processing is dropped (the on-screen image just doesn't update for
+    // that tick) rather than queued — under sustained load, a preview that
+    // skips frames stays responsive; one that queues them just delays the
+    // freeze instead of avoiding it.
+    bool m_effectFrameInFlight = false;
 #endif
     // One row per available effect (only ones whose chain actually builds on
     // this machine — see buildEffectsUi()/isChainAvailable). Row i controls
@@ -115,6 +139,14 @@ private:
     QPushButton *seekBackwardButton = nullptr;
     QPushButton *stopButton = nullptr;
     QPushButton *applyButton = nullptr;
+    // Hidden until a 6s snippet preview finishes; applies the same
+    // (still-live) slider settings to the whole recording — the pre-existing
+    // full-track path, previously triggered directly by applyButton.
+    QPushButton *applyFullTrackButton = nullptr;
+    // A/B toggle: swaps the amplifier's active buffer between the raw
+    // extracted vocal (previewInputAudioData) and the current tuned baseline
+    // (m_committedAudioData) — see onToggleOriginalVocals().
+    QPushButton *originalToggleButton = nullptr;
     QCheckBox *playbackMute_option = nullptr;
     QDial *volumeDial = nullptr;
     QSlider *offsetSlider = nullptr;
@@ -136,9 +168,25 @@ private:
     QTimer *volumeChangeTimer = nullptr;
     QTimer *chronosTimer = nullptr;
     QTimer *previewRebuildTimer = nullptr;
+    // Fires ~6s after a snippet preview starts playing, reverting to
+    // m_committedAudioData — see startSnippetPreview()/revertSnippetPreview().
+    QTimer *snippetRevertTimer = nullptr;
 
     QString audioFilePath;
     QByteArray previewInputAudioData;
+    // Current full-track baseline — raw extracted vocals until the first
+    // full enhancement completes, then whatever was last applied to the
+    // whole track. This is what plays outside of an active snippet preview,
+    // and what a snippet preview reverts back to. A snippet preview never
+    // mutates this directly (see startSnippetPreview()/onSnippetEnhanced()).
+    QByteArray m_committedAudioData;
+    qint64 m_snippetStartBytes = 0;
+    qint64 m_snippetLengthBytes = 0;
+    bool m_snippetPreviewActive = false;
+    // Which buffer onToggleOriginalVocals() last switched playback to —
+    // false == tuned (m_committedAudioData), true == raw original
+    // (previewInputAudioData).
+    bool m_showingOriginal = false;
     double volume = 1.0;
     int pendingVolumeValue = 100;
     qint64 audioOffset = 0;

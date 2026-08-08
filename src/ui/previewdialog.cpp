@@ -38,8 +38,14 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
     volumeDial->setFixedSize(200, 100);
 
     QLabel *volumeBanner = new QLabel(
-        "Here you can preview the performance and tweak the recording with effects.\n"
-        "You must press APPLY ENHANCEMENTS before rendering to take effect",
+        "How to use this window: watch the take below, adjust sync/volume under "
+        "\"Preview & Sync\", then open \"Vocal Tuning\" to shape the vocal. Click "
+        "Apply Enhancement to hear a quick 6-second preview of your current "
+        "settings, starting from wherever playback is paused — playback pauses "
+        "automatically while it processes, then plays the preview and continues "
+        "on afterward. Like what you hear? Click Apply to Full Track to process "
+        "the whole recording with those settings. \"Effects\" applies visual "
+        "filters to the video itself. When it all sounds right, hit Render Mix.",
         this);
     volumeBanner->setToolTip("You can adjust the final volume for the render output.");
     volumeBanner->setFont(QFont("", 11));
@@ -149,10 +155,19 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
     reverbMixSlider->setTickInterval(10);
     reverbMixSlider->setToolTip("Wet/dry mix: 0 = dry (off), 100 = full reverb");
 
-    // Apply button — triggers enhancement with current settings
+    // Apply button — pauses playback and previews the current settings on
+    // just the next 6 seconds from wherever playback is paused.
     applyButton = new QPushButton("Apply Enhancement", this);
-    applyButton->setToolTip("Apply all current settings and re-process the vocals");
+    applyButton->setToolTip("Preview all current settings on the next 6 seconds");
     applyButton->setFont(QFont("", 11, QFont::Bold));
+
+    // Revealed only after a snippet preview finishes — applies the same
+    // settings to the whole recording (the previous, immediate behaviour of
+    // applyButton itself).
+    applyFullTrackButton = new QPushButton("Apply to Full Track", this);
+    applyFullTrackButton->setToolTip("Apply all current settings and re-process the whole recording");
+    applyFullTrackButton->setFont(QFont("", 11, QFont::Bold));
+    applyFullTrackButton->hide();
 
     progressBar = new QProgressBar(this);
     progressBar->setRange(0, 100);
@@ -163,6 +178,12 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
     playbackMute_option->setToolTip("Check to mute backing track while previewing");
     playbackMute_option->setChecked(false);
     playbackMute_option->setFont(QFont("", 8));
+
+    // A/B compare: swaps between the raw recorded vocal and the current
+    // tuned version, from wherever playback currently is.
+    originalToggleButton = new QPushButton("✨ Tuned — click for Original", this);
+    originalToggleButton->setToolTip(
+        "Switch between the original recorded vocal and the current tuned version");
 
     vocalVisualizer = new AudioVisualizerWidget(this);
     vocalVisualizer->setToolTip("Vocal Visualizer");
@@ -217,6 +238,7 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
     previewLayout->addWidget(volumeLabel);
     previewLayout->addWidget(startButton);
     previewLayout->addWidget(playbackMute_option);
+    previewLayout->addWidget(originalToggleButton);
     previewLayout->addLayout(controls);
     previewLayout->addWidget(offsetLabel);
     previewLayout->addWidget(offsetSlider);
@@ -257,6 +279,7 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
     tuneLayout->addLayout(reverbRow);
 
     tuneLayout->addWidget(applyButton);
+    tuneLayout->addWidget(applyFullTrackButton);
     tuneLayout->addStretch();
     tabWidget->addTab(tuneTab, "🎚️ Vocal Tuning");
 
@@ -300,8 +323,14 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
 
     amplifier.reset(new AudioAmplifier(format, this));
     previewJob.reset(new PreviewJob(this));
+    snippetJob.reset(new PreviewJob(this));
 #ifdef WAKKAQT_FFMPEG_NATIVE
     videoEffectProcessor.reset(new FFmpegNative::VideoEffectProcessor());
+    m_effectWatcher = new QFutureWatcher<QImage>(this);
+    connect(m_effectWatcher, &QFutureWatcher<QImage>::finished, this, [this]() {
+        m_effectFrameInFlight = false;
+        videoRama->setImage(m_effectWatcher->result());
+    });
 #endif
 
     connect(previewJob.data(), &PreviewJob::extracted, this, &PreviewDialog::onVocalsExtracted);
@@ -317,6 +346,7 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
         setPreviewControlsEnabled(true);
     });
     connect(previewJob.data(), &PreviewJob::enhanced, this, &PreviewDialog::onVocalsEnhanced);
+    connect(snippetJob.data(), &PreviewJob::enhanced, this, &PreviewDialog::onSnippetEnhanced);
 
     connect(amplifier.data(), &AudioAmplifier::vocalPreviewChunk,
             vocalVisualizer, &AudioVisualizerWidget::updateVisualization);
@@ -340,7 +370,11 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
     connect(formantCheckBox, &QCheckBox::toggled,
             this, &PreviewDialog::onFormantPreservationChanged);
     connect(applyButton, &QPushButton::clicked,
+            this, &PreviewDialog::startSnippetPreview);
+    connect(applyFullTrackButton, &QPushButton::clicked,
             this, &PreviewDialog::startEnhancementJob);
+    connect(originalToggleButton, &QPushButton::clicked,
+            this, &PreviewDialog::onToggleOriginalVocals);
     connect(reverbRoomSlider, &QSlider::valueChanged, this, [this](int v) {
         m_reverbRoomSize = v / 100.0;
         reverbLabel->setText(QString("Reverb — Room: %1%  Decay: %2%  Mix: %3%")
@@ -392,6 +426,11 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
     previewRebuildTimer->setSingleShot(true);
     connect(previewRebuildTimer, &QTimer::timeout,
             this, &PreviewDialog::startEnhancementJob);
+
+    snippetRevertTimer = new QTimer(this);
+    snippetRevertTimer->setSingleShot(true);
+    connect(snippetRevertTimer, &QTimer::timeout,
+            this, &PreviewDialog::revertSnippetPreview);
 }
 
 void PreviewDialog::closeEvent(QCloseEvent *event)
@@ -406,6 +445,13 @@ void PreviewDialog::closeEvent(QCloseEvent *event)
     // long DSP pipeline), so there's nothing to flag for it — just wait.
     previewJob->cancelEnhance();
     previewJob->waitForIdle();
+    snippetJob->cancelEnhance();
+    snippetJob->waitForIdle();
+    snippetRevertTimer->stop();
+#ifdef WAKKAQT_FFMPEG_NATIVE
+    if (m_effectWatcher && !m_effectWatcher->isFinished())
+        m_effectWatcher->waitForFinished();
+#endif
     if (mediaPlayer)
         mediaPlayer->stop();
     // Children QProcess objects (ffmpegProcess) have this as parent; Qt kills
@@ -444,6 +490,9 @@ void PreviewDialog::setAudioFile(const QString &filePath)
 void PreviewDialog::onVocalsExtracted(QByteArray pcmSamples, QAudioFormat pcmFormat)
 {
     previewInputAudioData = pcmSamples;
+    // Baseline until the first full enhancement (auto-triggered below)
+    // completes and replaces it — see m_committedAudioData's declaration.
+    m_committedAudioData = pcmSamples;
 
     // Reinitialize audio pipeline if the extracted WAV's rate differs from the
     // current format (e.g. recording at 48000 Hz vs. previous default 44100 Hz).
@@ -710,8 +759,24 @@ void PreviewDialog::onVideoFrame(const QVideoFrame &frame)
     }
 
 #ifdef WAKKAQT_FFMPEG_NATIVE
-    if (!m_videoEffectChain.isEmpty() && videoEffectProcessor)
-        image = videoEffectProcessor->process(image, m_videoEffectChain);
+    if (!m_videoEffectChain.isEmpty() && videoEffectProcessor) {
+        // Offloaded to m_effectWatcher (see its declaration for why) —
+        // dropped instead of queued if the previous frame is still being
+        // filtered. videoEffectProcessor is only ever touched from this one
+        // dispatch site, always waiting for the prior call to finish before
+        // the next one starts, so the single Impl/AVFilterGraph it owns is
+        // never accessed from two threads at once despite living on a
+        // worker thread while in flight.
+        if (!m_effectFrameInFlight) {
+            m_effectFrameInFlight = true;
+            FFmpegNative::VideoEffectProcessor *processor = videoEffectProcessor.data();
+            const QString chain = m_videoEffectChain;
+            m_effectWatcher->setFuture(QtConcurrent::run([processor, image, chain]() {
+                return processor->process(image, chain);
+            }));
+        }
+        return; // display happens in m_effectWatcher's finished callback
+    }
 #endif
 
     videoRama->setImage(image);
@@ -782,6 +847,13 @@ void PreviewDialog::onVocalsEnhanced(QByteArray tunedData)
         amplifier->setPlaybackVol(!playbackMute_option->isChecked());
         syncVideoToAudio();
 
+        // This becomes the new baseline: future snippet previews start from
+        // and revert back to this fully-enhanced version, not the raw extract.
+        m_committedAudioData = tunedData;
+        applyFullTrackButton->hide();
+        m_showingOriginal = false;
+        originalToggleButton->setText("✨ Tuned — click for Original");
+
         progressTimer->stop();
         progressBar->setValue(100);
         bannerLabel->setText(QString("Vocal Enhancement complete!  Pitch %1% · Noise %2%")
@@ -794,6 +866,163 @@ void PreviewDialog::onVocalsEnhanced(QByteArray tunedData)
         pendingPreviewRebuild = false;
         startEnhancementJob();
     }
+}
+
+// Pauses playback and runs VocalEnhancer on just the next 6 seconds from the
+// current position, using whatever the sliders currently read — a cheap way
+// to audition tuning changes without waiting for (or committing to) a full
+// re-process of the whole recording. See onSnippetEnhanced()/
+// revertSnippetPreview() for the rest of the flow, and m_committedAudioData's
+// declaration in previewdialog.h for what this previews on top of.
+void PreviewDialog::startSnippetPreview()
+{
+    if (m_committedAudioData.isEmpty() || m_snippetPreviewActive)
+        return;
+
+    amplifier->stop();
+    if (mediaPlayer)
+        mediaPlayer->pause();
+    snippetRevertTimer->stop();
+
+    const qint64 startBytes = amplifier->getPosition();
+    const qint64 wantedBytes = format.bytesForDuration(6LL * 1000 * 1000); // 6s
+    const qint64 availableBytes = qMax<qint64>(0, m_committedAudioData.size() - startBytes);
+    const qint64 sliceBytes = qMin(wantedBytes, availableBytes);
+
+    // Under half a second of material left isn't worth previewing — there's
+    // nothing meaningful to hear before the track just ends anyway.
+    if (sliceBytes < format.bytesForDuration(500LL * 1000)) {
+        bannerLabel->setText("Not enough track left here to preview — try an earlier position.");
+        return;
+    }
+
+    m_snippetPreviewActive = true;
+    m_snippetStartBytes = startBytes;
+    m_snippetLengthBytes = sliceBytes;
+
+    setPreviewControlsEnabled(false);
+    applyFullTrackButton->hide();
+    progressBar->setValue(0);
+    bannerLabel->setText("Enhancing 6-second preview…");
+
+    const QByteArray slice = m_committedAudioData.mid(startBytes, sliceBytes);
+
+    const QStringList scaleNames = {"chromatic","major","minor",
+                                     "pentatonic_major","pentatonic_minor","blues"};
+    const QString scaleName = (m_scaleIndex >= 0 && m_scaleIndex < scaleNames.size())
+                            ? scaleNames[m_scaleIndex] : "chromatic";
+
+    PreviewJob::EnhanceParams params;
+    params.pitchCorrectionAmount = pitchCorrectionAmount;
+    params.noiseReductionAmount  = noiseReductionAmount;
+    params.retuneSpeedMs         = m_retuneSpeedMs;
+    params.formantPreservation   = m_formantPreservation;
+    params.reverbRoomSize        = m_reverbRoomSize;
+    params.reverbDecay           = m_reverbDecay;
+    params.reverbMix             = m_reverbMix;
+    params.scalePreset           = scaleName;
+    params.keyNote               = m_keyNote;
+
+    // No pendingPreviewRebuild-style queuing: m_snippetPreviewActive plus
+    // setPreviewControlsEnabled(false) already block a second click from
+    // reaching here while this one is in flight.
+    snippetJob->enhance(slice, format, params);
+}
+
+// snippetJob finished processing the 6s slice — splice it into a copy of the
+// committed baseline (at the byte position it was taken from) and start
+// playing from there, same buffer-swap mechanism onVocalsEnhanced() uses for
+// the full-track path. m_committedAudioData itself is never touched, so
+// revertSnippetPreview() can always restore exactly what preceded this.
+void PreviewDialog::onSnippetEnhanced(QByteArray tunedSlice)
+{
+    m_snippetPreviewActive = false;
+    setPreviewControlsEnabled(true);
+
+    // Empty means cancelled (dialog closing) — nothing to play.
+    if (tunedSlice.isEmpty())
+        return;
+
+    QByteArray previewBuffer = m_committedAudioData;
+    previewBuffer.replace(m_snippetStartBytes, m_snippetLengthBytes, tunedSlice);
+
+    amplifier->setAudioData(previewBuffer);
+    amplifier->seekTo(m_snippetStartBytes);
+    amplifier->setPlaybackVol(!playbackMute_option->isChecked());
+    amplifier->start();
+    syncVideoToAudio();
+    if (mediaPlayer)
+        mediaPlayer->play();
+
+    progressBar->setValue(100);
+    bannerLabel->setText("🔊 6-second vocal preview playing…");
+    applyFullTrackButton->show();
+
+    // Revert once the 6s window has played through. A fixed wall-clock timer
+    // (rather than tracking amplifier's byte position) is precise enough for
+    // an audition feature — see the class-level decision to auto-resume
+    // normal (un-enhanced) playback afterward instead of pausing again.
+    snippetRevertTimer->start(6000);
+}
+
+// Reverts to the committed baseline once the previewed 6s window has played
+// through, resuming right where it left off so playback continues seamlessly
+// into the (un-enhanced) rest of the track — applyFullTrackButton stays
+// visible so the settings just auditioned can still be applied to the whole
+// recording at any point after this.
+void PreviewDialog::revertSnippetPreview()
+{
+    if (m_committedAudioData.isEmpty())
+        return;
+
+    const qint64 resumeBytes = m_snippetStartBytes + m_snippetLengthBytes;
+
+    amplifier->setAudioData(m_committedAudioData);
+    amplifier->seekTo(resumeBytes);
+    amplifier->setPlaybackVol(!playbackMute_option->isChecked());
+    amplifier->start();
+    syncVideoToAudio();
+    if (mediaPlayer)
+        mediaPlayer->play();
+
+    bannerLabel->setText("Preview finished — back to the previous audio.");
+}
+
+// A/B compare: swaps between the raw recorded vocal (previewInputAudioData,
+// encoded to the amplifier's format once, at extraction time — see
+// onVocalsExtracted()) and the current tuned baseline (m_committedAudioData),
+// from wherever playback currently is. Always resumes/starts playback of the
+// newly selected version rather than trying to preserve prior play/pause
+// state — AudioAmplifier::isPlaying() is documented unreliable on at least
+// one real backend (see m_lastSyncPosBytes's comment), and every other
+// buffer-swap in this file (onVocalsEnhanced(), revertSnippetPreview())
+// already follows this same always-play convention.
+void PreviewDialog::onToggleOriginalVocals()
+{
+    if (previewInputAudioData.isEmpty() || m_committedAudioData.isEmpty())
+        return;
+
+    // An explicit toggle overrides any pending snippet-preview auto-revert —
+    // otherwise it could fire later and stomp on the user's explicit choice.
+    snippetRevertTimer->stop();
+
+    const qint64 posBytes = amplifier->getPosition();
+    m_showingOriginal = !m_showingOriginal;
+
+    amplifier->setAudioData(m_showingOriginal ? previewInputAudioData : m_committedAudioData);
+    amplifier->seekTo(posBytes);
+    amplifier->setPlaybackVol(!playbackMute_option->isChecked());
+    amplifier->start();
+    syncVideoToAudio();
+    if (mediaPlayer)
+        mediaPlayer->play();
+
+    originalToggleButton->setText(m_showingOriginal
+        ? "🎤 Original — click for Tuned"
+        : "✨ Tuned — click for Original");
+    bannerLabel->setText(m_showingOriginal
+        ? "Now playing the original, un-tuned vocal."
+        : "Now playing the tuned vocal.");
 }
 
 void PreviewDialog::setPreviewControlsEnabled(bool enabled)
@@ -815,6 +1044,8 @@ void PreviewDialog::setPreviewControlsEnabled(bool enabled)
     reverbDecaySlider->setEnabled(enabled);
     reverbMixSlider->setEnabled(enabled);
     applyButton->setEnabled(enabled);
+    applyFullTrackButton->setEnabled(enabled);
+    originalToggleButton->setEnabled(enabled);
 }
 
 void PreviewDialog::onOffsetSliderChanged(int value)

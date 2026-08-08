@@ -207,6 +207,7 @@ void MainWindow::startRender(const RenderJob::Params &params)
     chooseInputButton->setEnabled(false);
     chooseInputAction->setEnabled(false);
     backingTrackButton->setVisible(false);
+    browseYoutubeButton->setEnabled(false);
 
     progressBar = new QProgressBar(this);
     progressBar->setMinimumSize(640, 25);
@@ -244,6 +245,7 @@ void MainWindow::startRender(const RenderJob::Params &params)
             chooseInputButton->setEnabled(true);
             chooseInputAction->setEnabled(true);
             backingTrackButton->setVisible(true);
+            browseYoutubeButton->setEnabled(true);
             if (cancelled) {
                 // No cleanup of outputFilePath here: RenderJob only ever
                 // writes through a sidecar ".partial" file and commits it
@@ -271,6 +273,7 @@ void MainWindow::startRender(const RenderJob::Params &params)
         chooseInputButton->setEnabled(true);
         chooseInputAction->setEnabled(true);
         backingTrackButton->setVisible(true);
+        browseYoutubeButton->setEnabled(true);
         placeholderLabel->hide();
         videoWidget->show();
 

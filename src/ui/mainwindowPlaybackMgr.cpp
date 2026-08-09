@@ -175,17 +175,7 @@ void MainWindow::chooseLast()
         } else
         if ( isPlayback )
             QTimer::singleShot(500, this, [this, lastPos]() {
-
-
-                vizPlayer->seek(lastPos, true);
-                #if QT_VERSION < QT_VERSION_CHECK(6, 6, 2)
-                #ifdef __linux__
-                    player->setAudioOutput(nullptr); // first, detach the audio output
-                    player->setAudioOutput(audioOutput.data()); // now gimme back my sound mon
-                #endif
-                #endif
-                vizPlayer->play();
-                updateVideoVisibility();
+                resumePlaybackAfterSeek(lastPos);
             }); // resume play
 }
 
@@ -221,15 +211,7 @@ void MainWindow::chooseVideo()
     } else
         if ( isPlayback )
             QTimer::singleShot(500, this, [this, lastPos]() {
-                vizPlayer->seek(lastPos, true);
-                #if QT_VERSION < QT_VERSION_CHECK(6, 6, 2)
-                #ifdef __linux__
-                    player->setAudioOutput(nullptr); // first, detach the audio output
-                    player->setAudioOutput(audioOutput.data()); // now gimme back my sound mon
-                #endif
-                #endif
-                vizPlayer->play();
-                updateVideoVisibility();
+                resumePlaybackAfterSeek(lastPos);
             }); // resume play
 
     delete fileDialog;
@@ -261,15 +243,7 @@ void MainWindow::fetchVideo() {
     if (directory.isEmpty()) {
         if (isPlayback) {
             QTimer::singleShot(500, this, [this, lastPos]() {
-                vizPlayer->seek(lastPos, true);
-                #if QT_VERSION < QT_VERSION_CHECK(6, 6, 2)
-                #ifdef __linux__
-                    player->setAudioOutput(nullptr);
-                    player->setAudioOutput(audioOutput.data());
-                #endif
-                #endif
-                vizPlayer->play();
-                updateVideoVisibility();
+                resumePlaybackAfterSeek(lastPos);
             });
         }
         return;

@@ -10,6 +10,35 @@
 #include <QProcess>
 #endif
 
+QStringList allowedRenderExtensions(bool hasWebcam)
+{
+    return hasWebcam
+        ? QStringList{"mp4", "mkv", "webm", "avi", "mp3", "flac", "wav", "opus"}
+        : QStringList{"mp3", "flac", "wav", "opus"};
+}
+
+QString renderSaveFilter(bool hasWebcam)
+{
+    static const QString kRenderFilter =
+        "MP4 Files (*.mp4);;MKV Files (*.mkv);;WebM Files (*.webm);;AVI Files (*.avi);;"
+        "MP3 Files (*.mp3);;FLAC Files (*.flac);;WAV Files (*.wav);;Opus Files (*.opus)";
+    static const QString kAudioOnlyRenderFilter =
+        "MP3 Files (*.mp3);;FLAC Files (*.flac);;WAV Files (*.wav);;Opus Files (*.opus)";
+    return hasWebcam ? kRenderFilter : kAudioOnlyRenderFilter;
+}
+
+void syncDefaultSuffixToFilter(QFileDialog &dlg)
+{
+    QObject::connect(&dlg, &QFileDialog::filterSelected, &dlg,
+        [&dlg](const QString &filter) {
+            const int star = filter.lastIndexOf("*.");
+            if (star < 0) return;
+            const QString ext = filter.mid(star + 2).section(')', 0, 0).trimmed().toLower();
+            if (!ext.isEmpty())
+                dlg.setDefaultSuffix(ext);
+        });
+}
+
 bool mediaHasVideoStream(const QString &filePath)
 {
 #ifdef WAKKAQT_FFMPEG_NATIVE

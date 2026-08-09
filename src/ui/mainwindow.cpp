@@ -3,6 +3,7 @@
 #include <QMap>
 #include <QSet>
 #include <QDir>
+#include <QShortcut>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -114,14 +115,15 @@ MainWindow::MainWindow(QWidget *parent)
     placeholderLabel->setScaledContents(true);
 
     // Create the webcam preview
+    const QSize webcamInlineSize = scaledWebcamPreviewSize(QSize(160, 100));
     webcamScene = new QGraphicsScene(this);
-    webcamScene->setSceneRect(0, 0, 160, 100);
+    webcamScene->setSceneRect(0, 0, webcamInlineSize.width(), webcamInlineSize.height());
     webcamView = new QGraphicsView(webcamScene, this);
-    webcamView->setFixedSize(160, 100);
+    webcamView->setFixedSize(webcamInlineSize);
     webcamView->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     webcamView->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     webcamPreviewItem = new QGraphicsVideoItem();
-    webcamPreviewItem->setSize(QSizeF(160, 100));
+    webcamPreviewItem->setSize(QSizeF(webcamInlineSize));
     webcamPreviewItem->setToolTip("Click to open large preview");
     webcamScene->addItem(webcamPreviewItem);
     webcamPreviewLayout = new QHBoxLayout();
@@ -161,10 +163,10 @@ MainWindow::MainWindow(QWidget *parent)
     chooseLastButton->setToolTip("Load last playback");
     singButton = new QPushButton("🎤 SING", this);
     singButton->setFont(QApplication::font());
-    singButton->setToolTip("Start/Stop recording");
+    singButton->setToolTip("Start/Stop recording (Ctrl+R)");
     abortButton = new QPushButton("⛔ ABORT", this);
     abortButton->setFont(QApplication::font());
-    abortButton->setToolTip("TRASH recording");
+    abortButton->setToolTip("TRASH recording (Ctrl+Shift+Backspace)");
     chooseInputButton = new QPushButton("🎛️ Input Devices", this);
     chooseInputButton->setToolTip("Choose microphone and camera");
     libraryButton = new QPushButton("📚 Library", this);
@@ -186,12 +188,9 @@ MainWindow::MainWindow(QWidget *parent)
     vizCheckbox->setToolTip("Toggle Audio Visualizer");
     vizCheckbox->setChecked(true);
     
-    QHBoxLayout *indicatorLayout = new QHBoxLayout();
-    indicatorLayout->addStretch();
-    indicatorLayout->addWidget(recordingIndicator, 0, Qt::AlignCenter);
-    indicatorLayout->addWidget(vizCheckbox, 0, Qt::AlignRight);
-    indicatorLayout->addWidget(previewCheckbox, 0, Qt::AlignRight);
-    //indicatorLayout->addStretch();
+    // Rec indicator + toggles ride along the pitch monitor's row instead of
+    // claiming a full-width row of their own.
+    QHBoxLayout *pitchRow = new QHBoxLayout();
 
     // Instantiate SndWidget
     soundLevelWidget = new SndWidget(this);
@@ -204,6 +203,11 @@ MainWindow::MainWindow(QWidget *parent)
     pitchMonitor->setMaximumHeight(64);
     connect(soundLevelWidget, &SndWidget::audioChunkReady,
             pitchMonitor,     &PitchMonitorWidget::onAudioChunk);
+
+    pitchRow->addWidget(pitchMonitor, 1);
+    pitchRow->addWidget(recordingIndicator, 0, Qt::AlignCenter);
+    pitchRow->addWidget(vizCheckbox, 0, Qt::AlignRight);
+    pitchRow->addWidget(previewCheckbox, 0, Qt::AlignRight);
 
     // Device label
     deviceLabel = new QLabel("Selected Device: None", this);
@@ -225,7 +229,8 @@ MainWindow::MainWindow(QWidget *parent)
     downloadStatusLabel->setFont(QApplication::font());
     downloadStatusLabel->setToolTip("Several URL besides YouTube will work");
     QHBoxLayout *fetchLayout = new QHBoxLayout;
-    fetchLayout->addWidget(urlInput);
+    fetchLayout->addWidget(deviceLabel);
+    fetchLayout->addWidget(urlInput, 1);
     fetchLayout->addWidget(fetchButton);
     fetchLayout->addWidget(browseYoutubeButton);
     fetchLayout->addWidget(downloadStatusLabel);
@@ -262,11 +267,10 @@ MainWindow::MainWindow(QWidget *parent)
     QWidget *containerWidget = new QWidget(this);
     QVBoxLayout *layout = new QVBoxLayout(containerWidget);
 
-    layout->addWidget(soundLevelWidget, 1);    
-    layout->addWidget(pitchMonitor);
-    layout->addLayout(indicatorLayout);
-    
-    layout->addWidget(placeholderLabel);  
+    layout->addWidget(soundLevelWidget, 1);
+    layout->addLayout(pitchRow);
+
+    layout->addWidget(placeholderLabel);
     layout->addWidget(videoWidget);
     layout->addWidget(banner);
     layout->addLayout(vizLayout);
@@ -275,10 +279,10 @@ MainWindow::MainWindow(QWidget *parent)
     playPauseButton = new QPushButton("▶", this);
     stopButton      = new QPushButton("⏹", this);
     seekFwdButton   = new QPushButton("▶▶", this);
-    seekBackButton ->setToolTip("Seek backward 10 seconds");
-    playPauseButton->setToolTip("Play / Pause");
+    seekBackButton ->setToolTip("Seek backward 10 seconds (Left)");
+    playPauseButton->setToolTip("Play / Pause (Space)");
     stopButton     ->setToolTip("Stop and rewind to beginning");
-    seekFwdButton  ->setToolTip("Seek forward 10 seconds");
+    seekFwdButton  ->setToolTip("Seek forward 10 seconds (Right)");
     QHBoxLayout *transportLayout = new QHBoxLayout();
     transportLayout->addWidget(seekBackButton);
     transportLayout->addWidget(playPauseButton);
@@ -288,33 +292,28 @@ MainWindow::MainWindow(QWidget *parent)
     transportWidget->setLayout(transportLayout);
     transportWidget->hide();   // shown only once media starts playing
 
-    layout->addWidget(progressView);
-    layout->addWidget(transportWidget);
-    // Row 1 — file / navigation
-    QHBoxLayout *fileRow = new QHBoxLayout();
-    fileRow->addWidget(chooseVideoButton);
-    fileRow->addWidget(chooseLastButton);
-    fileRow->addWidget(libraryButton);
-    layout->addLayout(fileRow);
+    // Progress bar + transport controls share one row instead of stacking.
+    QHBoxLayout *progressRow = new QHBoxLayout();
+    progressRow->addWidget(progressView, 1);
+    progressRow->addWidget(transportWidget);
+    layout->addLayout(progressRow);
 
-    // Row 2 — recording (SING and ABORT share the same row)
-    QHBoxLayout *recRow = new QHBoxLayout();
-    recRow->addWidget(singButton);
-    recRow->addWidget(abortButton);
-    layout->addLayout(recRow);
+    // Primary actions — everything reached for while setting up a take.
+    QHBoxLayout *primaryActionsRow = new QHBoxLayout();
+    primaryActionsRow->addWidget(chooseVideoButton);
+    primaryActionsRow->addWidget(chooseLastButton);
+    primaryActionsRow->addWidget(libraryButton);
+    primaryActionsRow->addWidget(singButton);
+    primaryActionsRow->addWidget(abortButton);
+    layout->addLayout(primaryActionsRow);
 
-    // Row 3 — post-processing tools
-    QHBoxLayout *postRow = new QHBoxLayout();
-    postRow->addWidget(backingTrackButton);
-    layout->addLayout(postRow);
+    // Secondary actions — reached for less often.
+    QHBoxLayout *secondaryActionsRow = new QHBoxLayout();
+    secondaryActionsRow->addWidget(backingTrackButton);
+    secondaryActionsRow->addWidget(chooseInputButton);
+    secondaryActionsRow->addWidget(exitButton);
+    layout->addLayout(secondaryActionsRow);
 
-    // Row 4 — system / rarely visible
-    QHBoxLayout *sysRow = new QHBoxLayout();
-    sysRow->addWidget(chooseInputButton);
-    sysRow->addWidget(exitButton);
-    layout->addLayout(sysRow);
-
-    layout->addWidget(deviceLabel);
     layout->addLayout(fetchLayout);
     layout->addWidget(logTextEdit);
 
@@ -375,6 +374,24 @@ MainWindow::MainWindow(QWidget *parent)
                                         : player->position() + 10000;
         vizPlayer->seek(newPos, true);
     });
+
+    // Keyboard shortcuts (only fire while the main window is active, so they
+    // don't steal keys from modal dialogs; QLineEdit/etc. still get first
+    // refusal on the keys they use for editing, e.g. Space/Left/Right).
+    auto *playPauseShortcut = new QShortcut(QKeySequence(Qt::Key_Space), this);
+    connect(playPauseShortcut, &QShortcut::activated, playPauseButton, &QPushButton::click);
+
+    auto *seekBackShortcut = new QShortcut(QKeySequence(Qt::Key_Left), this);
+    connect(seekBackShortcut, &QShortcut::activated, seekBackButton, &QPushButton::click);
+
+    auto *seekFwdShortcut = new QShortcut(QKeySequence(Qt::Key_Right), this);
+    connect(seekFwdShortcut, &QShortcut::activated, seekFwdButton, &QPushButton::click);
+
+    auto *singShortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_R), this);
+    connect(singShortcut, &QShortcut::activated, singButton, &QPushButton::click);
+
+    auto *abortShortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Backspace), this);
+    connect(abortShortcut, &QShortcut::activated, abortButton, &QPushButton::click);
 
     // Cover most clickable widgets at once:
     setDefaultFontForClass("QAbstractButton", 10); // QPushButton/QToolButton/etc inherit this
@@ -490,18 +507,8 @@ bool MainWindow::eventFilter(QObject *object, QEvent *event) {
                     // Set the new position based on the click
                         qint64 newPosition = static_cast<qint64>(progress * player->duration());
 
-                        vizPlayer->seek(newPosition, true); // Seek the media player to the clicked position
-
-#if QT_VERSION < QT_VERSION_CHECK(6, 6, 2)
-#ifdef __linux__
-                    // Avoid breaking sound when seeking (~Qt6.4 bug? on Linux only..)
-                        player->pause(); // Pause for a smooth workaround
-                        player->setAudioOutput(nullptr); // first, detach the audio output 
-                        player->setAudioOutput(audioOutput.data()); // now gimme back my sound mon
-#endif
-#endif
-                        vizPlayer->play();
-                        updateVideoVisibility();
+                        // Seek the media player to the clicked position
+                        resumePlaybackAfterSeek(newPosition, true);
 
                         return true;  // Event handled
                     }
@@ -543,6 +550,116 @@ void MainWindow::onVizCheckboxToggled(bool enable) {
 
 }
 
+QSize MainWindow::scaledWebcamPreviewSize(const QSize &baseSize) const {
+    QScreen *screen = this->screen() ? this->screen() : QGuiApplication::primaryScreen();
+    if (!screen)
+        return baseSize;
+
+    // Base sizes were tuned for a standard 96 DPI display; scale them to the
+    // screen's actual DPI so the preview stays a consistent physical size.
+    const qreal dpiScale = screen->logicalDotsPerInch() / 96.0;
+    QSize scaled = baseSize * dpiScale;
+
+    // Never let the scaled preview outgrow the usable screen area (e.g. small,
+    // very high-DPI laptop panels).
+    const QSize maxSize = screen->availableGeometry().size() * 0.9;
+    return scaled.boundedTo(maxSize);
+}
+
+// Shared by renderAgain()'s and the library restore flow's output-file
+// pickers: checks the chosen path has an allowed extension and doesn't
+// collide with any of the current session's input files. Shows a warning
+// and returns false if either check fails.
+bool MainWindow::validateRenderOutputPath(const QString &outputFilePath,
+                                           const QStringList &allowedExtensions,
+                                           bool recordingHasWebcamFlag)
+{
+    if (!allowedExtensions.contains(QFileInfo(outputFilePath).suffix().toLower())) {
+        QMessageBox::warning(this, "Invalid File Extension",
+            "Please choose a file with one of the following extensions:\n"
+            + (recordingHasWebcamFlag ? QString(".mp4, .mkv, .webm, .avi, .mp3, .flac, .wav, .opus")
+                                       : QString(".mp3, .flac, .wav, .opus (no camera was used — audio-only)")));
+        return false;
+    }
+
+    const QString outAbs = QFileInfo(outputFilePath).absoluteFilePath();
+    for (const QString &inp : {audioRecorded, webcamRecorded, currentVideoFile,
+                               tunedRecorded, extractedTmpPlayback}) {
+        if (!inp.isEmpty() && QFileInfo(inp).absoluteFilePath() == outAbs) {
+            QMessageBox::warning(this, "Invalid Output Path",
+                "The output file cannot overwrite one of the input files.\n"
+                "Please choose a different name or location.");
+            return false;
+        }
+    }
+    return true;
+}
+
+// Asks the user 1080p vs 480p and sets `setRez` accordingly. Shared by the
+// live-record and library-restore render flows.
+void MainWindow::promptRenderResolution()
+{
+    const int response = QMessageBox::question(
+        this, "Resolution",
+        "Do you want 1920x1080 high-resolution video?\n"
+        "Low resolution 640x480 renders much faster.",
+        QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+    setRez = (response == QMessageBox::Yes) ? "1920x1080" : "640x480";
+}
+
+// Shows the PreviewDialog and, on accept, calls mixAndRender() with the
+// chosen volume/offset/effect chain. Shared by the live-record and
+// library-restore render flows, which differ only in what happens if the
+// user cancels — onCancelled runs whatever state-reset/messaging fits the
+// caller's context.
+void MainWindow::showPreviewAndRender(std::function<void()> onCancelled)
+{
+    previewDialog.reset(new PreviewDialog(audioOffset, this));
+    previewDialog->setAudioFile(audioRecorded);
+    previewDialog->setVideoFile(webcamRecorded, videoOffset);
+
+    if (previewDialog->exec() == QDialog::Accepted) {
+        const double vocalVolume = previewDialog->getVolume();
+        const qint64 manualOffset = previewDialog->getOffset();
+        const QString videoEffectChain = previewDialog->getVideoEffectChain();
+        previewDialog.reset();
+        mixAndRender(vocalVolume, manualOffset, videoEffectChain);
+    } else {
+        previewDialog.reset();
+        onCancelled();
+    }
+}
+
+// Works around a Qt6.4-era Linux bug where seeking breaks audio unless the
+// QMediaPlayer's audio output is detached and reattached. Single shared
+// implementation for the several call sites that used to duplicate this
+// exact version/platform-gated block. pauseFirst matters only for the
+// progress-bar seek path, which needs the player paused before the
+// detach/reattach for a smooth transition.
+void MainWindow::reattachAudioOutputWorkaround(bool pauseFirst)
+{
+#if QT_VERSION < QT_VERSION_CHECK(6, 6, 2)
+#ifdef __linux__
+    if (pauseFirst)
+        player->pause();
+    player->setAudioOutput(nullptr); // first, detach the audio output
+    player->setAudioOutput(audioOutput.data()); // now gimme back my sound mon
+#endif
+#endif
+}
+
+// Seeks to `position`, applies the audio-output workaround above, and
+// resumes playback. Shared by the various "load cancelled, resume where we
+// left off" branches (chooseLast/chooseVideo/fetchVideo) and the progress
+// bar's click-to-seek handler.
+void MainWindow::resumePlaybackAfterSeek(qint64 position, bool pauseFirst)
+{
+    vizPlayer->seek(position, true);
+    reattachAudioOutputWorkaround(pauseFirst);
+    vizPlayer->play();
+    updateVideoVisibility();
+}
+
 void MainWindow::addVideoDisplayWidgetInDialog() {
     if (webcamDialog && webcamDialog->isVisible()) {
         webcamDialog->raise();
@@ -555,9 +672,10 @@ void MainWindow::addVideoDisplayWidgetInDialog() {
     ///placeholderLabel->show();
 
     // Create and configure the dialog
+    const QSize webcamLargeSize = scaledWebcamPreviewSize(QSize(640, 480));
     webcamDialog = new QDialog(this);
     webcamDialog->setWindowTitle("WakkaQt - Webcam Preview");
-    webcamDialog->setFixedSize(640, 480); 
+    webcamDialog->setFixedSize(webcamLargeSize);
     webcamPreviewLayout->removeWidget(webcamView);
 
     // Add webcamView to the dialog's layout
@@ -566,8 +684,8 @@ void MainWindow::addVideoDisplayWidgetInDialog() {
     webcamDialog->setLayout(layout);
 
     // Set the size of the view and the preview item
-    webcamView->setFixedSize(640, 480);
-    webcamPreviewItem->setSize(QSizeF(640, 480));
+    webcamView->setFixedSize(webcamLargeSize);
+    webcamPreviewItem->setSize(QSizeF(webcamLargeSize));
 
     // Set the scene size based on the view size
     webcamView->scene()->setSceneRect(0, 0, webcamView->width(), webcamView->height());
@@ -579,10 +697,11 @@ void MainWindow::addVideoDisplayWidgetInDialog() {
         webcamDialog = nullptr;
         if (webcamPreviewLayout) {
             // Put back the view in its original place
+            const QSize webcamInlineSize = scaledWebcamPreviewSize(QSize(160, 100));
             layout->removeWidget(webcamView);
             webcamPreviewLayout->addWidget(webcamView);
-            webcamView->setFixedSize(160, 100);  // Set the original size
-            webcamPreviewItem->setSize(QSizeF(160, 100));
+            webcamView->setFixedSize(webcamInlineSize);  // Set the original size
+            webcamPreviewItem->setSize(QSizeF(webcamInlineSize));
             webcamPreviewItem->setPos(0, 0);  // Reset position to (0, 0)
             webcamView->scene()->setSceneRect(webcamView->rect());
         }

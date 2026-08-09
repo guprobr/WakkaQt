@@ -3,7 +3,9 @@
 
 #include <QFile>
 #include <QAudioFormat>
+#include <QFileDialog>
 #include <QString>
+#include <QStringList>
 #include <QUrlQuery>
 #include <QStringView>
 #include <QVector>
@@ -54,6 +56,21 @@ bool isAudioOnlyFile(const QString &path);
 // this exact ffprobe invocation (session-restore webcam validation, and the
 // backing-track separator's video/audio-only save-format decision).
 bool mediaHasVideoStream(const QString &filePath);
+
+// Keeps a save-mode QFileDialog's default suffix in sync with whichever
+// filter the user picks, so typing a bare filename (no extension) saves with
+// the extension matching the currently selected filter. Single shared
+// implementation for the output-path pickers that used to duplicate this
+// exact filterSelected lambda (render-again and library-restore).
+void syncDefaultSuffixToFilter(QFileDialog &dlg);
+
+// The extension whitelist and QFileDialog filter string for the mix/render
+// output-path pickers, keyed on whether the session has webcam footage. No
+// camera means no video track to mux, so the choice is restricted to
+// audio-only containers. Single shared implementation for the render-again
+// and library-restore flows, which used to duplicate these exact literals.
+QStringList allowedRenderExtensions(bool hasWebcam);
+QString renderSaveFilter(bool hasWebcam);
 
 extern QString webcamRecorded;
 extern QString audioRecorded;

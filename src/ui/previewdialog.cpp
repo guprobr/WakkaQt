@@ -349,7 +349,7 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
         // either way, so there is nothing useful to show the user here.
         if (wasCancelled)
             return;
-        QMessageBox::critical(this, "Extraction failed", reason);
+        QMessageBox::critical(this, "Extraction Failed", reason);
         setPreviewControlsEnabled(true);
     });
     connect(previewJob.data(), &PreviewJob::enhanced, this, &PreviewDialog::onVocalsEnhanced);

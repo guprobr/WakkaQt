@@ -16,6 +16,47 @@
 #include <QPointer>
 #include <QProcess>
 #include <QSaveFile>
+#include <functional>
+
+namespace {
+
+struct ProgressDialogHandle {
+    QPointer<QDialog> dialog;
+    QProgressBar *bar = nullptr;
+};
+
+// Builds the "label + progress bar + Abort button" modal dialog shared by the
+// model download, separation, and export steps below, and wires both the
+// Abort button and the window's [X] close button to the same cancel callback.
+ProgressDialogHandle makeAbortableProgressDialog(QWidget *parent, const QString &title,
+                                                  const QString &message, int minWidth,
+                                                  std::function<void()> onCancel)
+{
+    auto *dlg = new QDialog(parent);
+    dlg->setWindowTitle(title);
+    dlg->setModal(true);
+    dlg->setMinimumWidth(minWidth);
+
+    auto *label = new QLabel(message, dlg);
+    label->setAlignment(Qt::AlignCenter);
+    auto *bar = new QProgressBar(dlg);
+    auto *cancelBtn = new QPushButton("Abort", dlg);
+
+    auto *layout = new QVBoxLayout(dlg);
+    layout->addWidget(label);
+    layout->addWidget(bar);
+    layout->addWidget(cancelBtn);
+    dlg->setLayout(layout);
+    dlg->show();
+
+    QObject::connect(cancelBtn, &QPushButton::clicked, parent, onCancel);
+    // Closing the window (X button) is equivalent to Abort
+    QObject::connect(dlg, &QDialog::rejected, parent, onCancel);
+
+    return { QPointer<QDialog>(dlg), bar };
+}
+
+} // namespace
 
 void MainWindow::generateBackingTrack() {
     if (currentPlayback.isEmpty()) return;
@@ -45,43 +86,23 @@ void MainWindow::generateBackingTrack() {
         return;
     }
 
-    auto *dlDlg = new QDialog(this);
-    dlDlg->setWindowTitle("Downloading MDX-Net model…");
-    dlDlg->setModal(true);
-    dlDlg->setMinimumWidth(420);
-
-    auto *dlLbl = new QLabel("Downloading UVR-MDX-NET-Inst_HQ_3.onnx from GitHub…", dlDlg);
-    dlLbl->setAlignment(Qt::AlignCenter);
-    auto *dlBar = new QProgressBar(dlDlg);
-    dlBar->setRange(0, 100);
-    auto *dlCancelBtn = new QPushButton("Abort", dlDlg);
-
-    auto *dlLayout = new QVBoxLayout(dlDlg);
-    dlLayout->addWidget(dlLbl);
-    dlLayout->addWidget(dlBar);
-    dlLayout->addWidget(dlCancelBtn);
-    dlDlg->setLayout(dlLayout);
-    dlDlg->show();
-
     if (m_modelDownloadJob) {
         m_modelDownloadJob->deleteLater();
         m_modelDownloadJob = nullptr;
     }
     m_modelDownloadJob = new ModelDownloadJob(this);
 
-    connect(dlCancelBtn, &QPushButton::clicked, this, [this]() {
-        if (m_modelDownloadJob) m_modelDownloadJob->cancel();
-    });
-    connect(dlDlg, &QDialog::rejected, this, [this]() {
-        if (m_modelDownloadJob) m_modelDownloadJob->cancel();
-    });
+    auto dl = makeAbortableProgressDialog(this, "Downloading MDX-Net model…",
+        "Downloading UVR-MDX-NET-Inst_HQ_3.onnx from GitHub…", 420,
+        [this]() { if (m_modelDownloadJob) m_modelDownloadJob->cancel(); });
+    dl.bar->setRange(0, 100);
 
-    connect(m_modelDownloadJob, &ModelDownloadJob::progress, this, [dlBar](int pct) {
+    connect(m_modelDownloadJob, &ModelDownloadJob::progress, this, [bar = dl.bar](int pct) {
         if (pct < 0) return;
-        dlBar->setValue(pct);
+        bar->setValue(pct);
     });
 
-    QPointer<QDialog> dlDlgGuard(dlDlg);
+    QPointer<QDialog> dlDlgGuard(dl.dialog);
     connect(m_modelDownloadJob, &ModelDownloadJob::finished, this,
             [this, dlDlgGuard](bool success, bool cancelled, QString errorMessage) {
         if (dlDlgGuard) {
@@ -110,30 +131,7 @@ void MainWindow::generateBackingTrack() {
 // present, either immediately (generateBackingTrack() found it already
 // downloaded) or from the download job's finished-signal handler above.
 void MainWindow::runVocalSeparation() {
-    // --- Step 2: progress dialog for separation ---
-    auto *progDlg = new QDialog(this);
-    progDlg->setWindowTitle("Generating Backing Track");
-    progDlg->setModal(true);
-    progDlg->setMinimumWidth(380);
-
-    auto *progLbl = new QLabel(
-        "Separating vocals with UVR-MDX-NET-Inst_HQ_3…\n"
-        "This may take a few minutes depending on song length.", progDlg);
-    progLbl->setAlignment(Qt::AlignCenter);
-
-    auto *progBar = new QProgressBar(progDlg);
-    progBar->setRange(0, 100);
-
-    auto *cancelBtn = new QPushButton("Abort", progDlg);
-
-    auto *progLayout = new QVBoxLayout(progDlg);
-    progLayout->addWidget(progLbl);
-    progLayout->addWidget(progBar);
-    progLayout->addWidget(cancelBtn);
-    progDlg->setLayout(progLayout);
-    progDlg->show();
-
-    // --- Step 3: run separation in the background via VocalSeparationJob ---
+    // --- Step 2/3: run separation in the background via VocalSeparationJob ---
     const QString inputFile = currentPlayback;
     const bool inputHasVideo = mediaHasVideoStream(inputFile);
 
@@ -143,23 +141,21 @@ void MainWindow::runVocalSeparation() {
     }
     m_separationJob = new VocalSeparationJob(this);
 
-    connect(cancelBtn, &QPushButton::clicked, this, [this]() {
-        if (m_separationJob) m_separationJob->cancelSeparate();
-    });
-    // Closing the window (X button) is equivalent to Abort
-    connect(progDlg, &QDialog::rejected, this, [this]() {
-        if (m_separationJob) m_separationJob->cancelSeparate();
-    });
+    auto prog = makeAbortableProgressDialog(this, "Generating Backing Track",
+        "Separating vocals with UVR-MDX-NET-Inst_HQ_3…\n"
+        "This may take a few minutes depending on song length.", 380,
+        [this]() { if (m_separationJob) m_separationJob->cancelSeparate(); });
+    prog.bar->setRange(0, 100);
 
-    connect(m_separationJob, &VocalSeparationJob::separationProgress, this, [progBar](int pct) {
-        progBar->setValue(pct);
+    connect(m_separationJob, &VocalSeparationJob::separationProgress, this, [bar = prog.bar](int pct) {
+        bar->setValue(pct);
     });
 
     // Guard with QPointer: if the user closed the dialog before the job
     // finished, progDlgGuard will still be non-null (dialog is just hidden,
     // not deleted), but using it explicitly signals our intent and is safe
     // even if WA_DeleteOnClose were ever added.
-    QPointer<QDialog> progDlgGuard(progDlg);
+    QPointer<QDialog> progDlgGuard(prog.dialog);
 
     connect(m_separationJob, &VocalSeparationJob::separationFailed, this,
             [this, progDlgGuard](QString err, bool wasCancelled) {
@@ -323,45 +319,21 @@ void MainWindow::startExport(const ExportRecoveryContext &ctx)
     disconnect(m_separationJob, &VocalSeparationJob::exported, this, nullptr);
     disconnect(m_separationJob, &VocalSeparationJob::exportFailed, this, nullptr);
 
-    auto *saveProgDlg = new QDialog(this);
-    saveProgDlg->setWindowTitle("Saving Backing Track");
-    saveProgDlg->setModal(true);
-    saveProgDlg->setMinimumWidth(340);
-
-    auto *saveProgLbl = new QLabel(
-        ctx.saveAsVideo ? "Muxing audio into video…" : "Encoding MP3…", saveProgDlg);
-    saveProgLbl->setAlignment(Qt::AlignCenter);
-
-    auto *saveProgBar = new QProgressBar(saveProgDlg);
+    auto save = makeAbortableProgressDialog(this, "Saving Backing Track",
+        ctx.saveAsVideo ? "Muxing audio into video…" : "Encoding MP3…", 340,
+        [this]() { if (m_separationJob) m_separationJob->cancelExport(); });
 #ifdef WAKKAQT_FFMPEG_NATIVE
-    saveProgBar->setRange(0, 100);
+    save.bar->setRange(0, 100);
 #else
-    saveProgBar->setRange(0, 0); // indeterminate — QProcess gives no sub-step progress
+    save.bar->setRange(0, 0); // indeterminate — QProcess gives no sub-step progress
 #endif
 
-    auto *saveCancelBtn = new QPushButton("Abort", saveProgDlg);
-
-    auto *saveLayout = new QVBoxLayout(saveProgDlg);
-    saveLayout->addWidget(saveProgLbl);
-    saveLayout->addWidget(saveProgBar);
-    saveLayout->addWidget(saveCancelBtn);
-    saveProgDlg->setLayout(saveLayout);
-    saveProgDlg->show();
-
-    QPointer<QDialog> saveProgDlgGuard(saveProgDlg);
-
-    connect(saveCancelBtn, &QPushButton::clicked, this, [this]() {
-        if (m_separationJob) m_separationJob->cancelExport();
-    });
-    // Closing the window (X button) is equivalent to Abort
-    connect(saveProgDlg, &QDialog::rejected, this, [this]() {
-        if (m_separationJob) m_separationJob->cancelExport();
-    });
+    QPointer<QDialog> saveProgDlgGuard(save.dialog);
 
     connect(m_separationJob, &VocalSeparationJob::exportProgress, this,
-            [saveProgBar](int pct) {
+            [bar = save.bar](int pct) {
         if (pct < 0) return; // indeterminate fallback path — range already (0,0)
-        saveProgBar->setValue(pct);
+        bar->setValue(pct);
     });
 
     connect(m_separationJob, &VocalSeparationJob::exported, this,

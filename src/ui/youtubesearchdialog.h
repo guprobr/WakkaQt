@@ -38,6 +38,7 @@ protected:
 
 private:
     YtVideoInfo m_info;
+    QSize       m_thumbSize;
     QLabel     *m_thumb    = nullptr;
     QLabel     *m_title    = nullptr;
     QLabel     *m_channel  = nullptr;

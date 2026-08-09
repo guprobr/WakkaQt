@@ -15,7 +15,7 @@ void MainWindow::abortRecording() {
 void MainWindow::startRecording() {
     try {
         if (currentVideoFile.isEmpty()) {
-            QMessageBox::warning(this, "No playback set", "No playback loaded! Please load a playback to sing.");
+            QMessageBox::warning(this, "No Playback Set", "No playback loaded! Please load a playback to sing.");
             singButton->setEnabled(false);
             singAction->setEnabled(false);
             return;
@@ -71,12 +71,7 @@ void MainWindow::startRecording() {
             vizPlayer->seek(0, true);
             player->pause();
 
-#if QT_VERSION < QT_VERSION_CHECK(6, 6, 2)
-    #ifdef __linux__
-            player->setAudioOutput(nullptr);
-            player->setAudioOutput(audioOutput.data());
-    #endif
-#endif
+            reattachAudioOutputWorkaround();
             audioRecorder->startRecording(audioRecorded); // start audio recorder
             if (hasCamera && mediaRecorder) {
                 mediaRecorder->record(); // start recording video
@@ -137,8 +132,8 @@ void MainWindow::stopRecording() {
     try {
         if (m_state != State::Recording && m_state != State::Aborting) {
             qWarning() << "Not recording.";
-            logUI("Tried to stop Recording, but we are not recording. ERROR.");
-            QMessageBox::critical(this, "ERROR.", "Tried to stop Recording, but we are not recording. ERROR.");
+            logUI("Tried to stop recording, but no recording is in progress.");
+            QMessageBox::critical(this, "Not Recording", "Tried to stop recording, but no recording is in progress.");
             return;
         }
         setBanner(".. .Finishing VIDEO.. .");
@@ -272,7 +267,7 @@ void MainWindow::stopRecording() {
             singAction->setEnabled(false);
             
             //(false);
-            QMessageBox::critical(this, "SORRY: mediaRecorder ERROR", "File size is zero.");
+            QMessageBox::critical(this, "Recording Error", "The recorded file is empty (0 bytes).");
         }
 
     } catch (const std::exception &e) {

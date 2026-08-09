@@ -169,7 +169,8 @@ void PitchMonitorWidget::paintEvent(QPaintEvent *)
 {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing);
-    p.fillRect(rect(), QColor(18, 18, 18));
+    p.fillRect(rect(), palette().color(QPalette::Window));
+    const QColor textColor = palette().color(QPalette::WindowText);
 
     NoteInfo note;
     double smoothedCents;
@@ -191,7 +192,8 @@ void PitchMonitorWidget::paintEvent(QPaintEvent *)
     p.setFont(noteFont);
 
     // Colour: green ±15 c, yellow ±30 c, red beyond
-    QColor noteColor = Qt::darkGray;
+    QColor noteColor = textColor;
+    noteColor.setAlpha(140);
     if (note.valid) {
         const double absCents = std::abs(smoothedCents);
         if (absCents <= 15.0)       noteColor = QColor(60, 220, 60);
@@ -211,12 +213,16 @@ void PitchMonitorWidget::paintEvent(QPaintEvent *)
     const int barY = (H - barH) / 2;
 
     // Track outline
-    p.setPen(QColor(60, 60, 60));
-    p.setBrush(QColor(30, 30, 30));
+    QColor trackOutline = textColor;
+    trackOutline.setAlpha(90);
+    p.setPen(trackOutline);
+    p.setBrush(palette().color(QPalette::Base));
     p.drawRoundedRect(barX, barY, barW, barH, 4, 4);
 
     // Centre tick
-    p.setPen(QColor(100, 100, 100));
+    QColor centerTick = textColor;
+    centerTick.setAlpha(110);
+    p.setPen(centerTick);
     p.drawLine(barX + barW/2, barY + 2, barX + barW/2, barY + barH - 2);
 
     // Filled region
@@ -236,14 +242,18 @@ void PitchMonitorWidget::paintEvent(QPaintEvent *)
     // Cents label
     QFont smallFont("Monospace", 9);
     p.setFont(smallFont);
-    p.setPen(QColor(160, 160, 160));
+    QColor centsLabelColor = textColor;
+    centsLabelColor.setAlpha(180);
+    p.setPen(centsLabelColor);
     const QString centsStr = note.valid
         ? QString("%1%2¢").arg(smoothedCents >= 0 ? "+" : "").arg(int(smoothedCents))
         : "";
     p.drawText(barX + barW + 2, barY + barH - 3, centsStr);
 
     // Labels
-    p.setPen(QColor(80, 80, 80));
+    QColor tinyLabelColor = textColor;
+    tinyLabelColor.setAlpha(130);
+    p.setPen(tinyLabelColor);
     QFont tinyFont("Monospace", 7);
     p.setFont(tinyFont);
     p.drawText(barX + 2,       barY + barH + 11, "-50¢");

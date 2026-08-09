@@ -7,6 +7,7 @@
 #include <QJsonArray>
 #include <QMouseEvent>
 #include <QNetworkRequest>
+#include <QScreen>
 #include <QScrollBar>
 #include <QSizePolicy>
 #include <QSpacerItem>
@@ -14,19 +15,34 @@
 #include <algorithm>
 
 // ── Constants ─────────────────────────────────────────────────────────────────
+// Base sizes tuned for a standard 96 DPI display; scaled() below adapts them
+// to the primary screen's actual DPI so cards/thumbnails stay a consistent
+// physical size on high-DPI displays.
 static constexpr int kCardW      = 186;
 static constexpr int kCardH      = 172;
 static constexpr int kThumbW     = 180;
 static constexpr int kThumbH     = 101; // 16:9
 static constexpr int kPageSize   = 8;
 
+static qreal dpiScaleFactor()
+{
+    QScreen *screen = QGuiApplication::primaryScreen();
+    return screen ? screen->logicalDotsPerInch() / 96.0 : 1.0;
+}
+
+static int scaled(int px) { return qRound(px * dpiScaleFactor()); }
+static QSize scaledSize(int w, int h) { return QSize(scaled(w), scaled(h)); }
+
 // ── VideoCardWidget ───────────────────────────────────────────────────────────
 VideoCardWidget::VideoCardWidget(const YtVideoInfo &info, QWidget *parent)
     : QFrame(parent), m_info(info)
 {
-    setFixedSize(kCardW, kCardH);
+    m_thumbSize = scaledSize(kThumbW, kThumbH);
+
+    setFixedSize(scaledSize(kCardW, kCardH));
     setFrameShape(QFrame::StyledPanel);
     setCursor(Qt::PointingHandCursor);
+    setToolTip("Click to preview and select");
     setStyleSheet("VideoCardWidget { background: #1e1e2e; border: 1px solid #333355; border-radius: 6px; }"
                   "VideoCardWidget:hover { border: 1px solid #6666cc; }");
 
@@ -35,7 +51,7 @@ VideoCardWidget::VideoCardWidget(const YtVideoInfo &info, QWidget *parent)
     vl->setSpacing(3);
 
     m_thumb = new QLabel(this);
-    m_thumb->setFixedSize(kThumbW, kThumbH);
+    m_thumb->setFixedSize(m_thumbSize);
     m_thumb->setAlignment(Qt::AlignCenter);
     m_thumb->setStyleSheet("background: #2a2a3e; border-radius: 4px;");
     m_thumb->setText("…");
@@ -43,23 +59,23 @@ VideoCardWidget::VideoCardWidget(const YtVideoInfo &info, QWidget *parent)
 
     m_title = new QLabel(this);
     m_title->setWordWrap(true);
-    m_title->setFixedWidth(kThumbW);
-    m_title->setMaximumHeight(34);
+    m_title->setFixedWidth(m_thumbSize.width());
+    m_title->setMaximumHeight(scaled(34));
     m_title->setStyleSheet("color: #ddddff; font-size: 11px; font-weight: bold;");
     // Two-line elided title
     const QFontMetrics fm(m_title->font());
-    m_title->setText(fm.elidedText(info.title, Qt::ElideRight, kThumbW * 2));
+    m_title->setText(fm.elidedText(info.title, Qt::ElideRight, m_thumbSize.width() * 2));
     vl->addWidget(m_title);
 
     m_channel = new QLabel(this);
-    m_channel->setFixedWidth(kThumbW);
+    m_channel->setFixedWidth(m_thumbSize.width());
     m_channel->setStyleSheet("color: #8888aa; font-size: 10px;");
     m_channel->setText(info.channel.isEmpty() ? "Unknown" : info.channel);
-    m_channel->setMaximumHeight(14);
+    m_channel->setMaximumHeight(scaled(14));
     vl->addWidget(m_channel);
 
     m_duration = new QLabel(this);
-    m_duration->setFixedWidth(kThumbW);
+    m_duration->setFixedWidth(m_thumbSize.width());
     m_duration->setStyleSheet("color: #6666aa; font-size: 10px;");
     if (info.durationSec > 0) {
         const int m = info.durationSec / 60, s = info.durationSec % 60;
@@ -70,7 +86,8 @@ VideoCardWidget::VideoCardWidget(const YtVideoInfo &info, QWidget *parent)
 
 void VideoCardWidget::setThumbnail(const QPixmap &px)
 {
-    m_thumb->setPixmap(px.scaled(kThumbW, kThumbH, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    m_thumb->setPixmap(px.scaled(m_thumbSize.width(), m_thumbSize.height(),
+                                  Qt::KeepAspectRatio, Qt::SmoothTransformation));
 }
 
 void VideoCardWidget::mousePressEvent(QMouseEvent *)   { emit cardClicked(this); }
@@ -101,7 +118,7 @@ static QScrollArea *wrapInScrollArea(QWidget *container, QWidget *parent)
     sa->setWidgetResizable(false);
     sa->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     sa->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    sa->setFixedHeight(kCardH + 20);
+    sa->setFixedHeight(scaled(kCardH) + scaled(20));
     sa->setStyleSheet("QScrollArea { background: #12121e; border: 1px solid #222233; border-radius: 4px; }"
                       "QScrollBar:horizontal { height: 8px; background: #222233; border-radius: 4px; }"
                       "QScrollBar::handle:horizontal { background: #555577; border-radius: 4px; min-width: 30px; }");
@@ -133,8 +150,10 @@ YoutubeSearchDialog::YoutubeSearchDialog(QWidget *parent)
     auto *searchRow = new QHBoxLayout;
     m_searchEdit = new QLineEdit(this);
     m_searchEdit->setPlaceholderText("Search for a song or artist…");
+    m_searchEdit->setToolTip("Press Enter or click Search");
     m_searchButton = new QPushButton("Search", this);
     m_searchButton->setFixedWidth(80);
+    m_searchButton->setToolTip("Search YouTube for karaoke and original videos");
     searchRow->addWidget(m_searchEdit, 1);
     searchRow->addWidget(m_searchButton);
     root->addLayout(searchRow);
@@ -150,7 +169,7 @@ YoutubeSearchDialog::YoutubeSearchDialog(QWidget *parent)
     root->addWidget(m_karaokeLabel);
 
     auto *karaokeContainer = new QWidget;
-    karaokeContainer->setMinimumHeight(kCardH + 8);
+    karaokeContainer->setMinimumHeight(scaled(kCardH) + scaled(8));
     m_karaokeLayout = makeScrollRow();
     karaokeContainer->setLayout(m_karaokeLayout);
     m_karaokeScroll = wrapInScrollArea(karaokeContainer, this);
@@ -162,7 +181,7 @@ YoutubeSearchDialog::YoutubeSearchDialog(QWidget *parent)
     root->addWidget(m_originalsLabel);
 
     auto *originalsContainer = new QWidget;
-    originalsContainer->setMinimumHeight(kCardH + 8);
+    originalsContainer->setMinimumHeight(scaled(kCardH) + scaled(8));
     m_originalsLayout = makeScrollRow();
     originalsContainer->setLayout(m_originalsLayout);
     m_originalsScroll = wrapInScrollArea(originalsContainer, this);
@@ -179,7 +198,7 @@ YoutubeSearchDialog::YoutubeSearchDialog(QWidget *parent)
     previewLayout->setSpacing(14);
 
     m_previewThumb = new QLabel(m_preview);
-    m_previewThumb->setFixedSize(240, 135);
+    m_previewThumb->setFixedSize(scaledSize(240, 135));
     m_previewThumb->setStyleSheet("background: #2a2a3e; border-radius: 4px;");
     m_previewThumb->setAlignment(Qt::AlignCenter);
     previewLayout->addWidget(m_previewThumb);
@@ -203,6 +222,7 @@ YoutubeSearchDialog::YoutubeSearchDialog(QWidget *parent)
     infoCol->addStretch();
 
     m_downloadBtn = new QPushButton("⬇  Download this video", m_preview);
+    m_downloadBtn->setToolTip("Download and load this video as your karaoke playback");
     m_downloadBtn->setStyleSheet("QPushButton { background: #225522; color: #aaffaa; border: 1px solid #44aa44;"
                                  "              border-radius: 4px; padding: 8px 18px; font-size: 12px; }"
                                  "QPushButton:hover { background: #336633; }");
@@ -354,7 +374,7 @@ void YoutubeSearchDialog::parseResults(const QByteArray &data, QHBoxLayout *layo
         ? m_karaokeScroll->widget()
         : m_originalsScroll->widget();
     // +1 slot reserved for the "Load more" button
-    container->setMinimumWidth(std::max(1, offset + 1) * (kCardW + 8) + 16);
+    container->setMinimumWidth(std::max(1, offset + 1) * (scaled(kCardW) + scaled(8)) + scaled(16));
     container->adjustSize();
 
     if (newCards > 0) {
@@ -366,7 +386,8 @@ void YoutubeSearchDialog::parseResults(const QByteArray &data, QHBoxLayout *layo
 QPushButton *YoutubeSearchDialog::makeMoreButton(bool isKaraoke)
 {
     auto *btn = new QPushButton("Load more  ▶", nullptr);
-    btn->setFixedSize(kCardW, kCardH);
+    btn->setFixedSize(scaledSize(kCardW, kCardH));
+    btn->setToolTip("Fetch more results");
     btn->setStyleSheet(
         "QPushButton { background: #1a1a3a; color: #8888cc; border: 1px dashed #444466;"
         "              border-radius: 6px; font-size: 12px; }"
@@ -463,7 +484,7 @@ void YoutubeSearchDialog::onCardClicked(VideoCardWidget *card)
         QPixmap px;
         if (px.loadFromData(reply->readAll()) && !px.isNull())
             m_previewThumb->setPixmap(
-                px.scaled(240, 135, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+                px.scaled(scaledSize(240, 135), Qt::KeepAspectRatio, Qt::SmoothTransformation));
     });
 
     setPreviewVisible(true);

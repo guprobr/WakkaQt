@@ -182,33 +182,19 @@ void MainWindow::restoreAndRender(const QString &sessionId)
     // Restricted to audio-only containers when the restored session itself
     // has no webcam footage — mirrors renderAgain()'s handling for a live
     // recording, driven by the same recordingHasWebcam flag set above.
-    static const QString kRenderFilter =
-        "MP4 Files (*.mp4);;MKV Files (*.mkv);;WebM Files (*.webm);;AVI Files (*.avi);;"
-        "MP3 Files (*.mp3);;FLAC Files (*.flac);;WAV Files (*.wav);;Opus Files (*.opus)";
-    static const QString kAudioOnlyRenderFilter =
-        "MP3 Files (*.mp3);;FLAC Files (*.flac);;WAV Files (*.wav);;Opus Files (*.opus)";
-    const QStringList kAllowedExts = recordingHasWebcam
-        ? QStringList{"mp4", "mkv", "webm", "avi", "mp3", "flac", "wav", "opus"}
-        : QStringList{"mp3", "flac", "wav", "opus"};
+    const QStringList kAllowedExts = allowedRenderExtensions(recordingHasWebcam);
     const QString &defaultRestoreSuffix = kAllowedExts.first();
 
     QString restoredOutput;
     while (true) {
         QFileDialog outDlg(this, "Mix destination (default ." + defaultRestoreSuffix.toUpper() + ")",
-                           restoredOutput, recordingHasWebcam ? kRenderFilter : kAudioOnlyRenderFilter);
+                           restoredOutput, renderSaveFilter(recordingHasWebcam));
         outDlg.setAcceptMode(QFileDialog::AcceptSave);
         outDlg.setOption(QFileDialog::DontUseNativeDialog);
         // Only used when the user types a filename with no extension at all —
         // an extension the user does type (in any filter) is always kept as-is.
         outDlg.setDefaultSuffix(kAllowedExts.first());
-        QObject::connect(&outDlg, &QFileDialog::filterSelected, &outDlg,
-            [&outDlg](const QString &filter) {
-                const int star = filter.lastIndexOf("*.");
-                if (star < 0) return;
-                const QString ext = filter.mid(star + 2).section(')', 0, 0).trimmed().toLower();
-                if (!ext.isEmpty())
-                    outDlg.setDefaultSuffix(ext);
-            });
+        syncDefaultSuffixToFilter(outDlg);
         restoredOutput = (outDlg.exec() == QDialog::Accepted)
                          ? outDlg.selectedFiles().value(0) : QString{};
 
@@ -223,62 +209,21 @@ void MainWindow::restoreAndRender(const QString &sessionId)
             return;
         }
 
-        if (!kAllowedExts.contains(QFileInfo(restoredOutput).suffix().toLower())) {
-            QMessageBox::warning(this, "Invalid File Extension",
-                "Please choose a file with one of the following extensions:\n"
-                + (recordingHasWebcam ? QString(".mp4, .mkv, .webm, .avi, .mp3, .flac, .wav, .opus")
-                                      : QString(".mp3, .flac, .wav, .opus (this session has no webcam footage — audio-only)")));
+        if (!validateRenderOutputPath(restoredOutput, kAllowedExts, recordingHasWebcam))
             continue;
-        }
-
-        {
-            const QString outAbs = QFileInfo(restoredOutput).absoluteFilePath();
-            bool collides = false;
-            for (const QString &inp : {audioRecorded, webcamRecorded, currentVideoFile,
-                                       tunedRecorded, extractedTmpPlayback}) {
-                if (!inp.isEmpty() && QFileInfo(inp).absoluteFilePath() == outAbs) {
-                    collides = true;
-                    break;
-                }
-            }
-            if (collides) {
-                QMessageBox::warning(this, "Invalid Output Path",
-                    "The output file cannot overwrite one of the input files.\n"
-                    "Please choose a different name or location.");
-                continue;
-            }
-        }
 
         break; // valid extension and no collision with inputs
     }
 
     // ── Resolution choice — identical to renderAgain() ────────────────────
-    const int rezResponse = QMessageBox::question(
-        this,
-        "Resolution",
-        "Do you want 1920x1080 high-resolution video?\n"
-        "Low resolution 640x480 renders much faster.",
-        QMessageBox::Yes | QMessageBox::No,
-        QMessageBox::No);
-    setRez = (rezResponse == QMessageBox::Yes) ? "1920x1080" : "640x480";
+    promptRenderResolution();
     qDebug() << "Restored session will render at:" << setRez;
 
     // ── PreviewDialog — volume / offset / pitch adjustment ────────────────
     outputFilePath = restoredOutput;
 
-    previewDialog.reset(new PreviewDialog(audioOffset, this));
-    previewDialog->setAudioFile(audioRecorded);
-    previewDialog->setVideoFile(webcamRecorded, videoOffset);
-
-    if (previewDialog->exec() == QDialog::Accepted) {
-        const double vocalVolume  = previewDialog->getVolume();
-        const qint64 manualOffset = previewDialog->getOffset();
-        const QString videoEffectChain = previewDialog->getVideoEffectChain();
-        previewDialog.reset();
-        mixAndRender(vocalVolume, manualOffset, videoEffectChain);
-    } else {
+    showPreviewAndRender([this]() {
         trySetState(State::Idle);
-        previewDialog.reset();
         logUI("Library: restore cancelled during preview/adjustment.");
         enable_playback(true);
         chooseInputButton->setEnabled(true);
@@ -288,5 +233,5 @@ void MainWindow::restoreAndRender(const QString &sessionId)
         QMessageBox::warning(this, "Restore Cancelled",
             "Session restore cancelled during volume adjustment.\n"
             "Open the Library again to try once more.");
-    }
+    });
 }

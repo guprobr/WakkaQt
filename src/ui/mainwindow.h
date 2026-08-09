@@ -66,6 +66,7 @@
 #include <QAudioFormat>
 #include <QApplication>
 #include <QFontDatabase>
+#include <QScreen>
 
 #include <QDebug>
 
@@ -75,11 +76,19 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    QString Wakka_versione = "v2.9.9";
+    QString Wakka_versione = "v3.0.0";
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
     void addVideoDisplayWidgetInDialog(); // Method to add a VideoDisplayWidget in a dialog
+    QSize scaledWebcamPreviewSize(const QSize &baseSize) const;
+    bool validateRenderOutputPath(const QString &outputFilePath,
+                                   const QStringList &allowedExtensions,
+                                   bool recordingHasWebcamFlag);
+    void promptRenderResolution();
+    void showPreviewAndRender(std::function<void()> onCancelled);
+    void reattachAudioOutputWorkaround(bool pauseFirst = false);
+    void resumePlaybackAfterSeek(qint64 position, bool pauseFirst = false);
     void logUI(const QString &msg);
 
 private slots:

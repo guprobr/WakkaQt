@@ -815,16 +815,27 @@ void MainWindow::resizeEvent(QResizeEvent* event) {
     qreal sceneWidth = progressView->scene()->width();
     
     if ( this->progressSongFull ) {
+        // Capture the fill's progress as a fraction of the OLD full-bar width
+        // before we resize it — positionChanged only updates progressSong
+        // while actually playing, so once playback has stopped (e.g. the
+        // song ended) its width would otherwise be left stale in absolute
+        // pixels, drifting out of proportion with the freshly resized frame.
+        const qreal oldWidth = progressSongFull->rect().width();
+        qreal fillFraction = 0.0;
+        if ( this->progressSong && oldWidth > 0 )
+            fillFraction = progressSong->rect().width() / oldWidth;
+
         // Resize the full bar to match the new view width
         const qreal newWidth = progressBarDisplayWidth();
         const qreal barHeight = progressSongFull->rect().height();
         progressSongFull->setRect(0, 0, newWidth, barHeight);
         progressSongFull->setX((sceneWidth - newWidth) / 2.0);
-    }
-    if ( this->progressSong && this->progressSongFull ) {
-        // Reposition the progress fill bar to match the full bar's X
-        progressSong->setX(progressSongFull->x());
-        // Width of progressSong is managed by the positionChanged signal lambda
+
+        if ( this->progressSong ) {
+            // Reposition and proportionally rescale the fill to match
+            progressSong->setRect(0, 0, fillFraction * newWidth, progressSong->rect().height());
+            progressSong->setX(progressSongFull->x());
+        }
     }
     
     durationTextItem->setTextWidth(durationTextItem->boundingRect().width());

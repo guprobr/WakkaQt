@@ -94,6 +94,17 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
 
     if ( QMediaPlayer::PlayingState == state ) {
 
+        // Showing transportWidget reflows progressRow (it shares that row
+        // with the progress bar) — do this, and force the layout to settle
+        // immediately rather than waiting for the next event loop pass,
+        // BEFORE addProgressSong() below reads progressView->width(). Doing
+        // it after left the bar sized for the wider pre-transport layout,
+        // clipped against the now-narrower view.
+        transportWidget->show();
+        if (QWidget *rowHost = progressView->parentWidget())
+            if (QLayout *rowLayout = rowHost->layout())
+                rowLayout->activate();
+
         if ( !isPlayback ) {
             addProgressSong(progressScene, static_cast<int>(getMediaDuration(currentPlayback)));
         }
@@ -103,7 +114,6 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
 
         isPlayback = true; // enable seeking now
 
-        transportWidget->show();
         playPauseButton->setText("⏸");
     }
 

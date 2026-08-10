@@ -1,5 +1,41 @@
 #include "mainwindow.h"
 
+bool MainWindow::isAudioDeviceStillAvailable(const QAudioDevice &device)
+{
+    if (device.isNull())
+        return false;
+    const auto inputs = QMediaDevices::audioInputs();
+    for (const QAudioDevice &d : inputs)
+        if (d.id() == device.id())
+            return true;
+    return false;
+}
+
+bool MainWindow::isCameraDeviceStillAvailable(const QCameraDevice &device)
+{
+    if (device.isNull())
+        return false;
+    const auto inputs = QMediaDevices::videoInputs();
+    for (const QCameraDevice &d : inputs)
+        if (d.id() == device.id())
+            return true;
+    return false;
+}
+
+void MainWindow::connectAudioRecorderSignals()
+{
+    connect(audioRecorder.data(),
+            &AudioRecorder::deviceLabelChanged,
+            this,
+            &MainWindow::updateDeviceLabel,
+            Qt::UniqueConnection);
+    connect(audioRecorder.data(),
+            &AudioRecorder::captureError,
+            this,
+            &MainWindow::handleAudioCaptureError,
+            Qt::UniqueConnection);
+}
+
 void MainWindow::resetMediaComponents(bool isStarting)
 {
     qDebug() << "Resetting media components";
@@ -90,11 +126,7 @@ void MainWindow::configureMediaComponents()
         return;
     }
 
-    connect(audioRecorder.data(),
-            &AudioRecorder::deviceLabelChanged,
-            this,
-            &MainWindow::updateDeviceLabel,
-            Qt::UniqueConnection);
+    connectAudioRecorderSignals();
 
     audioRecorder->initialize();
 
@@ -279,6 +311,11 @@ void MainWindow::configureMediaComponents()
             this,
             &MainWindow::handleRecorderError,
             Qt::UniqueConnection);
+    connect(camera.data(),
+            &QCamera::errorOccurred,
+            this,
+            &MainWindow::handleCameraError,
+            Qt::UniqueConnection);
     } // hasCamera
 
     connect(player.data(),
@@ -413,7 +450,7 @@ void MainWindow::chooseInputDevice() {
         } else {
             // Set up audio recording
             audioRecorder.reset(new AudioRecorder(selectedDevice, this));
-            connect(audioRecorder.data(), &AudioRecorder::deviceLabelChanged, this, &MainWindow::updateDeviceLabel);
+            connectAudioRecorderSignals();
             audioRecorder->initialize();
             soundLevelWidget->setInputDevice(selectedDevice);
         }
@@ -425,6 +462,7 @@ void MainWindow::chooseInputDevice() {
             // Set up Video recording
             mediaCaptureSession.reset(new QMediaCaptureSession(this));  // Set up media session
             camera.reset(new QCamera(selectedCameraDevice, this));  // Set up camera
+            connect(camera.data(), &QCamera::errorOccurred, this, &MainWindow::handleCameraError, Qt::UniqueConnection);
             mediaCaptureSession->setVideoOutput(this->webcamPreviewItem);
             mediaCaptureSession->setCamera(camera.data());
             mediaCaptureSession->setAudioInput(nullptr);
@@ -454,4 +492,42 @@ void MainWindow::updateDeviceLabel(const QString &deviceLabelText) {
                         // I could not figure a way to detect changes in the system default input src
         deviceLabel->setText(QString("Audio Input Device: %1").arg(deviceLabelText));
     }
+}
+
+// Fired whenever the OS's audio input list changes (device plugged/unplugged
+// on either end). Only reacts if the device THIS session has selected is the
+// one that disappeared — a mic being lost while nothing has been selected
+// yet, or while a different, still-present mic is selected, is not our
+// concern here.
+void MainWindow::onAudioInputsChanged() {
+    if (selectedDevice.isNull())
+        return;
+    if (isAudioDeviceStillAvailable(selectedDevice))
+        return;
+
+    qWarning() << "Selected microphone disconnected:" << selectedDevice.description();
+    logUI("Selected microphone disconnected: " + selectedDevice.description());
+    if (deviceLabel)
+        deviceLabel->setText("Audio Input Device: DISCONNECTED — choose another (File → Choose Input Devices)");
+
+    // A recording already in progress is caught by AudioRecorder::captureError
+    // (handleAudioCaptureError) instead — this slot only keeps idle-time UI
+    // honest and lets the next startRecording() pre-flight check do its job.
+}
+
+void MainWindow::onVideoInputsChanged() {
+    if (selectedCameraDevice.isNull() || !hasCamera)
+        return;
+    if (isCameraDeviceStillAvailable(selectedCameraDevice))
+        return;
+
+    qWarning() << "Selected camera disconnected:" << selectedCameraDevice.description();
+    logUI("Selected camera disconnected — falling back to audio-only.");
+    setBanner("Camera disconnected — continuing audio-only.");
+    hasCamera = false;
+    previewCheckbox->setChecked(false);
+    previewCheckbox->setEnabled(false);
+    webcamView->hide();
+    if (camera && camera->isActive())
+        camera->stop();
 }

@@ -2,6 +2,7 @@
 
 #include <QPainter>
 #include <QPaintEvent>
+#include <QMediaDevices>
 
 #include <algorithm>
 
@@ -34,6 +35,7 @@ void SndWidget::setInputDevice(const QAudioDevice &device)
         m_pullDevice  = nullptr;
     }
 
+    m_device = device;
     audioSource = new QAudioSource(device, format, this);
 
     connect(audioSource, &QAudioSource::stateChanged,
@@ -111,11 +113,22 @@ void SndWidget::onAudioStateChanged(QAudio::State state)
     // On Windows (WASAPI) IdleState fires whenever the capture buffer
     // momentarily drains — that is normal and must not stop the source.
     // Only react to a hard stop caused by an actual device error.
-    if (state == QAudio::StoppedState
-        && audioSource
-        && audioSource->error() != QAudio::NoError)
-    {
-        // Device error: try to recover by restarting
+    if (state != QAudio::StoppedState
+        || !audioSource
+        || audioSource->error() == QAudio::NoError)
+        return;
+
+    // Only worth restarting if the device is actually still there — e.g. a
+    // transient underrun. If it's gone (unplugged), retrying in a loop
+    // against a dead device achieves nothing; leave it stopped and let
+    // MainWindow's device-hotplug handling notice the mic is gone and
+    // eventually call setInputDevice() again once the user picks a new one.
+    const auto inputs = QMediaDevices::audioInputs();
+    const bool stillPresent = std::any_of(inputs.begin(), inputs.end(),
+        [this](const QAudioDevice &d) { return d.id() == m_device.id(); });
+
+    if (stillPresent)
         m_pullDevice = audioSource->start();
-    }
+    else
+        m_pullDevice = nullptr;
 }

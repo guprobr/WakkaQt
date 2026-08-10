@@ -34,6 +34,7 @@ private:
     QTimer *timer;
 
     QAudioFormat format;
+    QAudioDevice  m_device;                 // kept so onAudioStateChanged can re-check availability
     QAudioSource *audioSource = nullptr;
     QIODevice    *m_pullDevice = nullptr;   // pull-mode device owned by audioSource
 

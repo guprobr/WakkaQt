@@ -98,6 +98,20 @@ if ( m_audioFormat.sampleFormat() == QAudioFormat::SampleFormat::Float ) // a bu
     m_audioSource = new QAudioSource(m_selectedDevice, m_audioFormat, this);
     m_audioSource->setVolume(1.0f);
 
+    // Same pattern SndWidget already uses for its own QAudioSource: a lost
+    // device surfaces as stateChanged(StoppedState) with a non-NoError code,
+    // not an exception. Only report it if we were actually mid-recording —
+    // the same transition happens harmlessly on a normal stopRecording().
+    connect(m_audioSource, &QAudioSource::stateChanged, this, [this](QAudio::State state) {
+        if (state != QAudio::StoppedState || !m_isRecording)
+            return;
+        if (m_audioSource->error() == QAudio::NoError)
+            return;
+
+        qWarning() << "AudioRecorder: capture device stopped with error:" << m_audioSource->error();
+        emit captureError("Microphone input error (" + audioErrorToString(m_audioSource->error())
+                           + ") — it may have been disconnected.");
+    });
 }
 
 void AudioRecorder::initialize() {
@@ -223,5 +237,22 @@ QString AudioRecorder::sampleFormatToString(QAudioFormat::SampleFormat format) {
             return "Float";
         default:
             return "Unknown";
+    }
+}
+
+QString AudioRecorder::audioErrorToString(QAudio::Error error) {
+    switch (error) {
+        case QAudio::NoError:
+            return "no error";
+        case QAudio::OpenError:
+            return "could not open device";
+        case QAudio::IOError:
+            return "I/O error";
+        case QAudio::UnderrunError:
+            return "buffer underrun";
+        case QAudio::FatalError:
+            return "fatal device error";
+        default:
+            return "unknown error";
     }
 }

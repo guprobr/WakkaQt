@@ -37,9 +37,15 @@ public:
 
 signals:
     void deviceLabelChanged(const QString &label);
+    // Fired when the capture device fails *while actively recording* (e.g.
+    // unplugged mid-take) — QAudioSource surfaces this as a stateChanged()
+    // to StoppedState with a non-NoError code, not an exception, so nothing
+    // upstream would otherwise notice the take has gone silent.
+    void captureError(const QString &message);
 
 private:
     QString sampleFormatToString(QAudioFormat::SampleFormat format);
+    static QString audioErrorToString(QAudio::Error error);
 
     QAudioSource* m_audioSource;
     QAudioFormat m_audioFormat;

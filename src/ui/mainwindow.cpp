@@ -16,6 +16,14 @@ MainWindow::MainWindow(QWidget *parent)
     QPalette palette = this->palette();
     highlightColor = palette.color(QPalette::Highlight);
 
+    // Hotplug monitor — the only place in the app notified when the OS's
+    // audio/video device lists change. Keeps hasCamera/deviceLabel honest
+    // while idle; startRecording() does its own just-in-time check rather
+    // than depending on these having already fired.
+    m_deviceMonitor = new QMediaDevices(this);
+    connect(m_deviceMonitor, &QMediaDevices::audioInputsChanged, this, &MainWindow::onAudioInputsChanged);
+    connect(m_deviceMonitor, &QMediaDevices::videoInputsChanged, this, &MainWindow::onVideoInputsChanged);
+
     QMenuBar *menuBar = new QMenuBar(this);
     QMenu *helpMenu = new QMenu("About", this);
     QMenu *fileMenu = new QMenu("File", this);

@@ -98,6 +98,18 @@ private slots:
     void onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status);
     void onPlayerPositionChanged(qint64 position);
     void handleRecorderError(QMediaRecorder::Error error);
+    // Camera-level errors (as opposed to QMediaRecorder-level ones, handled
+    // above) — e.g. the webcam being unplugged. Distinct signal in Qt6
+    // Multimedia, previously never connected anywhere in this codebase.
+    void handleCameraError(QCamera::Error error, const QString &errorString);
+    // AudioRecorder::captureError — the mic disappearing mid-recording.
+    void handleAudioCaptureError(const QString &message);
+    // QMediaDevices hotplug notifications — only used to keep hasCamera/
+    // deviceLabel honest while idle; startRecording() does its own
+    // just-in-time validity check rather than relying on these having fired
+    // in time.
+    void onAudioInputsChanged();
+    void onVideoInputsChanged();
     void onPreviewCheckboxToggled(bool checked);
     void onVizCheckboxToggled(bool enable);
     void onPlayPauseClicked();
@@ -159,6 +171,11 @@ private:
 
     QAudioDevice selectedDevice;
     QCameraDevice selectedCameraDevice;
+    // Long-lived instance whose signals reflect the OS-global device list —
+    // the only place audioInputsChanged()/videoInputsChanged() (actual
+    // hotplug notifications) are connected in this codebase. Constructed
+    // once in MainWindow's constructor; never needs recreating.
+    QMediaDevices *m_deviceMonitor = nullptr;
     // False when no camera was selected/available (empty video-input list, or
     // the user picked audio only) — gates every camera/mediaRecorder codepath
     // so WakkaQt can record, preview, and render audio-only performances.
@@ -355,6 +372,17 @@ private:
     void chooseInputDevice();
     void updateDeviceLabel(const QString &deviceLabelText);
     void enable_playback(bool flag);
+    // Wires audioRecorder's deviceLabelChanged + captureError — shared by
+    // configureMediaComponents() and chooseInputDevice()'s picker dialog,
+    // which both construct a fresh AudioRecorder but previously duplicated
+    // (and, for captureError, would have had to duplicate) this wiring.
+    void connectAudioRecorderSignals();
+    // True if `device` (by id) is still present in the OS's current input
+    // list — used both as startRecording()'s just-in-time guard and by the
+    // hotplug slots above to decide whether anything actually changed for
+    // the device this session cares about.
+    static bool isAudioDeviceStillAvailable(const QAudioDevice &device);
+    static bool isCameraDeviceStillAvailable(const QCameraDevice &device);
 
     void disconnectAllSignals();
     void resizeEvent(QResizeEvent* event) override;

@@ -27,6 +27,24 @@ void MainWindow::startRecording() {
             return;
         }
 
+        // Just-in-time device check — the real safety net against a device
+        // that vanished sometime between selection and now. A missing mic
+        // blocks starting outright; a missing camera just degrades this take
+        // to audio-only, the same as if the user had never selected one.
+        if (!isAudioDeviceStillAvailable(selectedDevice)) {
+            QMessageBox::warning(this, "No Microphone",
+                "The selected microphone is no longer available.\n"
+                "Choose an input device (File → Choose Input Devices) and try again.");
+            return;
+        }
+        if (hasCamera && !isCameraDeviceStillAvailable(selectedCameraDevice)) {
+            logUI("Selected camera is no longer available — recording audio-only.");
+            hasCamera = false;
+            previewCheckbox->setChecked(false);
+            previewCheckbox->setEnabled(false);
+            webcamView->hide();
+        }
+
         if (!trySetState(State::Recording))
             return;
 
@@ -148,14 +166,14 @@ void MainWindow::stopRecording() {
             playbackTimer->stop();
         }
 
-        if ( mediaRecorder->isAvailable() ) {
+        if ( mediaRecorder && mediaRecorder->isAvailable() ) {
             mediaRecorder->stop();
         }
 
-        if ( audioRecorder->isRecording() )
+        if ( audioRecorder && audioRecorder->isRecording() )
             audioRecorder->stopRecording();
 
-        if ( camera->isAvailable() && camera->isActive() )
+        if ( camera && camera->isAvailable() && camera->isActive() )
             camera->stop();
 
         qWarning() << "Recording stopped.";
@@ -278,17 +296,59 @@ void MainWindow::stopRecording() {
 }
 
 void MainWindow::handleRecorderError(QMediaRecorder::Error error) {
+    if (!mediaRecorder) return;
 
-    qWarning() << "Detected camera error:" << error << mediaRecorder->errorString();
-    logUI("Camera Error: " + mediaRecorder->errorString());
+    const QString errorString = mediaRecorder->errorString();
+    qWarning() << "Detected camera error:" << error << errorString;
+    logUI("Camera Error: " + errorString);
 
     if ( m_state != State::Recording ) {
         return;
     }
 
     handleRecordingError();
-    QMessageBox::critical(this, "Recording Error", "An error occurred while recording: " + mediaRecorder->errorString());
+    QMessageBox::critical(this, "Recording Error", "An error occurred while recording: " + errorString);
 
+}
+
+// QCamera-level errors — distinct from QMediaRecorder's own errorOccurred
+// above. The most common real-world trigger is the webcam being unplugged.
+void MainWindow::handleCameraError(QCamera::Error error, const QString &errorString) {
+    qWarning() << "Detected camera device error:" << error << errorString;
+    logUI("Camera Error: " + errorString);
+
+    if ( m_state == State::Recording ) {
+        handleRecordingError();
+        QMessageBox::critical(this, "Recording Error", "The camera reported an error: " + errorString);
+        return;
+    }
+
+    // Not recording — WakkaQt already treats "no camera" as a fully
+    // supported mode throughout, so losing the camera while just idling or
+    // previewing is a graceful degrade into that same mode, not a failure
+    // worth interrupting the user with a dialog for.
+    logUI("Camera unavailable — falling back to audio-only.");
+    setBanner("Camera unavailable — continuing audio-only.");
+    hasCamera = false;
+    previewCheckbox->setChecked(false);
+    previewCheckbox->setEnabled(false);
+    webcamView->hide();
+    if (camera && camera->isActive())
+        camera->stop();
+}
+
+// AudioRecorder::captureError — the mic disappearing mid-recording. This is
+// the one failure mode that previously had zero detection: QMediaRecorder's
+// errorOccurred only covers the video/camera side of the capture graph.
+void MainWindow::handleAudioCaptureError(const QString &message) {
+    qWarning() << "Detected audio capture error:" << message;
+    logUI("Audio Error: " + message);
+
+    if ( m_state != State::Recording )
+        return;
+
+    handleRecordingError();
+    QMessageBox::critical(this, "Recording Error", message);
 }
 
 void MainWindow::handleRecordingError() {
@@ -303,7 +363,7 @@ void MainWindow::handleRecordingError() {
     if ( vizPlayer && player )
         vizPlayer->stop();
 
-    if ( audioRecorder->isRecording() )
+    if ( audioRecorder && audioRecorder->isRecording() )
         audioRecorder->stopRecording();
 
     recordingIndicator->hide();

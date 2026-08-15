@@ -270,6 +270,7 @@ private:
     QCheckBox *vizCheckbox;
 
     // yt-dlp
+    void checkYtDlpUpdate();
     QLineEdit   *urlInput;
     QPushButton *fetchButton;
     QPushButton *browseYoutubeButton;

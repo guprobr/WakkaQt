@@ -4,6 +4,8 @@
 #include <QSet>
 #include <QDir>
 #include <QShortcut>
+#include <QSettings>
+#include <QDateTime>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -420,6 +422,37 @@ MainWindow::MainWindow(QWidget *parent)
     chooseInputDevice();
     resetMediaComponents(true);
 
+    checkYtDlpUpdate();
+}
+
+void MainWindow::checkYtDlpUpdate()
+{
+    // Throttled to once/day: YouTube changes break yt-dlp's extractor often
+    // enough that a stale binary silently fails downloads, but shelling out
+    // to "yt-dlp -U" on every launch would be wasteful and add startup lag
+    // waiting on network I/O (start() itself is async and non-blocking).
+    QSettings settings;
+    const QDateTime lastCheck = settings.value("ytdlp/lastUpdateCheck").toDateTime();
+    if (lastCheck.isValid() && lastCheck.secsTo(QDateTime::currentDateTime()) < 24 * 3600)
+        return;
+    settings.setValue("ytdlp/lastUpdateCheck", QDateTime::currentDateTime());
+
+    auto *proc = new QProcess(this);
+    proc->setProcessChannelMode(QProcess::MergedChannels);
+    connect(proc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            proc, [proc](int exitCode, QProcess::ExitStatus) {
+        const QString output = QString::fromUtf8(proc->readAll()).trimmed();
+        if (exitCode == 0)
+            qInfo() << "yt-dlp self-update:" << output;
+        else
+            qWarning() << "yt-dlp self-update exited with code" << exitCode << ":" << output;
+        proc->deleteLater();
+    });
+    connect(proc, &QProcess::errorOccurred, proc, [proc](QProcess::ProcessError) {
+        qWarning() << "yt-dlp self-update could not start:" << proc->errorString();
+        proc->deleteLater();
+    });
+    proc->start("yt-dlp", {"-U"});
 }
 
 void MainWindow::addProgressSong(QGraphicsScene *scene, qint64 duration) {

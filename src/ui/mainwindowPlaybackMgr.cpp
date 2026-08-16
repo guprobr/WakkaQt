@@ -306,7 +306,15 @@ void MainWindow::openYoutubeBrowser()
     connect(&dlg, &YoutubeSearchDialog::downloadRequested,
             this, [this](const QString &url, const QString &) {
                 urlInput->setText(url);
-                fetchVideo();
+                // Deferred: fetchVideo() opens its own directory picker and
+                // a second application-modal DownloadDialog. downloadRequested
+                // fires synchronously from within dlg's still-active exec()
+                // event loop (before its accept() runs), so starting that
+                // chain here would nest three modal dialogs at once — a
+                // reentrancy that KDE/Wayland's portal-backed file dialog
+                // doesn't handle reliably. Posting to the next event loop
+                // iteration lets dlg finish closing first.
+                QTimer::singleShot(0, this, [this]() { fetchVideo(); });
             });
     dlg.exec();
 }

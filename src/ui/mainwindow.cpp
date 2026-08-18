@@ -429,12 +429,12 @@ void MainWindow::checkYtDlpUpdate()
 {
     // Throttled to once/day: YouTube changes break yt-dlp's extractor often
     // enough that a stale binary silently fails downloads, but shelling out
-    // to "yt-dlp -U" on every launch would be wasteful and add startup lag
+    // to "yt-dlp --update-to nightly" on every launch would be wasteful and add startup lag
     // waiting on network I/O (start() itself is async and non-blocking).
     QSettings settings;
     const QDateTime lastCheck = settings.value("ytdlp/lastUpdateCheck").toDateTime();
-    if (lastCheck.isValid() && lastCheck.secsTo(QDateTime::currentDateTime()) < 24 * 3600)
-        return;
+    //if (lastCheck.isValid() && lastCheck.secsTo(QDateTime::currentDateTime()) < 24 * 3600)
+        //return;
     settings.setValue("ytdlp/lastUpdateCheck", QDateTime::currentDateTime());
 
     auto *proc = new QProcess(this);
@@ -452,7 +452,7 @@ void MainWindow::checkYtDlpUpdate()
         qWarning() << "yt-dlp self-update could not start:" << proc->errorString();
         proc->deleteLater();
     });
-    proc->start("yt-dlp", {"-U"});
+    proc->start("yt-dlp", {"--update-to", "nightly"});
 }
 
 void MainWindow::addProgressSong(QGraphicsScene *scene, qint64 duration) {

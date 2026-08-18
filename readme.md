@@ -186,6 +186,18 @@ sudo apt install ffmpeg yt-dlp   # Debian/Ubuntu
 sudo dnf install ffmpeg yt-dlp   # Fedora
 ```
 
+#### or even better, use the nightly yt-dlp so you get early fixes:
+
+```
+mkdir -p ~/.local/bin
+
+curl -L \
+  https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp \
+  -o ~/.local/bin/yt-dlp
+
+chmod +x ~/.local/bin/yt-dlp
+```
+
 ### Configure and Build
 
 ```bash

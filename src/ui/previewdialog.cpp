@@ -920,7 +920,7 @@ void PreviewDialog::startSnippetPreview()
     // the noise gate to learn from and no settled phase-vocoder state, both
     // of which reset per enhance() call; without this the first few seconds
     // audibly duck/warble as they mis-calibrate on live vocal content.
-    const qint64 leadInBytes = format.bytesForDuration(2LL * 1000 * 1000); // 2s
+    const qint64 leadInBytes = format.bytesForDuration(6LL * 1000 * 1000); // 6s
     const qint64 leadInStartBytes = qMax<qint64>(0, startBytes - leadInBytes);
     const qint64 actualLeadInBytes = startBytes - leadInStartBytes;
 

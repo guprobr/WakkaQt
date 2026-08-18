@@ -500,65 +500,53 @@ void MainWindow::addProgressSong(QGraphicsScene *scene, qint64 duration) {
 
 
 bool MainWindow::eventFilter(QObject *object, QEvent *event) {
+    if (event->type() != QEvent::GraphicsSceneMousePress)
+        return QMainWindow::eventFilter(object, event);
 
-    // Ensure the event is related to webcamScene and is a mouse press event
-    if (object == webcamScene && event->type() == QEvent::GraphicsSceneMousePress) {
-        QGraphicsSceneMouseEvent *mouseEvent = static_cast<QGraphicsSceneMouseEvent *>(event);
+    QGraphicsSceneMouseEvent *mouseEvent = static_cast<QGraphicsSceneMouseEvent *>(event);
 
-        // Check which item was clicked
-        QGraphicsItem *clickedItem = webcamScene->itemAt(mouseEvent->scenePos(), QTransform());
-        
-        if (clickedItem == webcamPreviewItem) {  // Check if it's the webcam preview item
-            QPointF clickPos = mouseEvent->scenePos();
+    if (object == webcamScene && handleWebcamPreviewClick(mouseEvent))
+        return true;
 
-            addVideoDisplayWidgetInDialog();
+    if (object == progressScene && handleProgressBarClick(mouseEvent))
+        return true;
 
-            return true; 
-        }
-    }
-
-    // Check if the event is a mouse press event in a QGraphicsScene
-    if (event->type() == QEvent::GraphicsSceneMousePress) {
-        // Type already confirmed — static_cast is correct and safe here
-        QGraphicsSceneMouseEvent *mouseEvent = static_cast<QGraphicsSceneMouseEvent *>(event);
-        if (mouseEvent) {
-            
-            QPointF clickPos = mouseEvent->scenePos();  // Get the mouse click position in scene coordinates
-            
-            if ( progressSong && progressSongFull ) {
-                if ( m_state != State::Recording && isPlayback ) {
-                    // Get progress bar position and dimensions from the actual items
-                    qreal progressBarX     = progressSong->pos().x();
-                    qreal progressBarY     = progressSong->pos().y();
-                    qreal progressBarWidth = progressSongFull->rect().width();
-                    qreal progressBarHeight = progressSong->rect().height();
-                    // SEEKABLE SONG PROGRESS BAR
-                    // Check if the click was within the progress bar's area (both x and y boundaries)
-                    if (clickPos.y() >= progressBarY && clickPos.y() <= progressBarY + progressBarHeight &&
-                        clickPos.x() >= progressBarX && clickPos.x() <= progressBarX + progressBarWidth) {
-                        
-                        // Calculate the relative progress based on the click position
-                        qreal clickPosition = clickPos.x() - progressBarX;  // Offset click position by the progress bar's X position
-                        qreal progress = clickPosition / progressBarWidth;
-
-                        // Ensure the progress is within valid range [0, 1]
-                        if (progress < 0) progress = 0;
-                        if (progress > 1) progress = 1;
-
-                    // Set the new position based on the click
-                        qint64 newPosition = static_cast<qint64>(progress * player->duration());
-
-                        // Seek the media player to the clicked position
-                        resumePlaybackAfterSeek(newPosition, true);
-
-                        return true;  // Event handled
-                    }
-                }
-            }
-        }
-    }
-    // Pass the event on to the parent class if it was not handled
     return QMainWindow::eventFilter(object, event);
+}
+
+// Returns true (and opens the detached preview dialog) only when the click landed on the webcam preview item.
+bool MainWindow::handleWebcamPreviewClick(QGraphicsSceneMouseEvent *mouseEvent) {
+    QGraphicsItem *clickedItem = webcamScene->itemAt(mouseEvent->scenePos(), QTransform());
+    if (clickedItem != webcamPreviewItem)
+        return false;
+
+    addVideoDisplayWidgetInDialog();
+    return true;
+}
+
+// Returns true (and seeks) only when the click landed inside the song progress bar while it's seekable.
+bool MainWindow::handleProgressBarClick(QGraphicsSceneMouseEvent *mouseEvent) {
+    if (!progressSong || !progressSongFull)
+        return false;
+    if (m_state == State::Recording || !isPlayback)
+        return false;
+
+    const qreal progressBarX = progressSong->pos().x();
+    const qreal progressBarY = progressSong->pos().y();
+    const qreal progressBarWidth = progressSongFull->rect().width();
+    const qreal progressBarHeight = progressSong->rect().height();
+
+    const QPointF clickPos = mouseEvent->scenePos();
+    if (clickPos.y() < progressBarY || clickPos.y() > progressBarY + progressBarHeight ||
+        clickPos.x() < progressBarX || clickPos.x() > progressBarX + progressBarWidth)
+        return false;
+
+    const qreal clickPosition = clickPos.x() - progressBarX;
+    const qreal progress = qBound(0.0, clickPosition / progressBarWidth, 1.0);
+    const qint64 newPosition = static_cast<qint64>(progress * player->duration());
+
+    resumePlaybackAfterSeek(newPosition, true);
+    return true;
 }
 
 void MainWindow::onPreviewCheckboxToggled(bool enable) {

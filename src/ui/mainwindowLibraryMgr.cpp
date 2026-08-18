@@ -53,7 +53,12 @@ void MainWindow::openLibrary()
     enable_playback(true);
     chooseInputButton->setEnabled(true);
     chooseInputAction->setEnabled(true);
-    // singButton stays disabled unless a video is already loaded
+    // Re-enable SING only if a playback was already loaded before the dialog
+    // opened — same gating startRecording() itself uses.
+    if (!currentVideoFile.isEmpty()) {
+        singButton->setEnabled(true);
+        singAction->setEnabled(true);
+    }
 
     // ── Resume playback if it was running when the dialog was opened ───────
     if (wasPlaying) {

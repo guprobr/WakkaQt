@@ -392,6 +392,8 @@ private:
     void toggleLogVisibility();
     void setBanner(const QString &msg);
     bool eventFilter(QObject *object, QEvent *event) override;
+    bool handleWebcamPreviewClick(QGraphicsSceneMouseEvent *mouseEvent);
+    bool handleProgressBarClick(QGraphicsSceneMouseEvent *mouseEvent);
 
     void setDefaultFontForClass(const char* className, qreal pt);
     qreal progressBarDisplayWidth() const;

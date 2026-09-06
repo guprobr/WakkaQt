@@ -47,14 +47,6 @@ void MainWindow::updateVideoVisibility() {
 
     videoWidget->setVisible(showVideo);
     placeholderLabel->setVisible(!showVideo);
-
-    // Called on every relevant player status/state change, and once a second
-    // via updatePlaybackDuration()'s self-healing timer while playing — re-
-    // clamp on the same cadence so a video whose decoded frames make the
-    // multimedia backend grow videoWidget's effective minimum size (seen
-    // with some AV1 content) can't drag the top-level window past the
-    // screen's available area.
-    clampWindowToAvailableScreen();
 }
 
   void MainWindow::onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status) {

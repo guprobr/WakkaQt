@@ -453,12 +453,28 @@ void MainWindow::clampWindowToAvailableScreen() {
     if (!screen)
         return;
 
+    // Diagnostic: only logs when there's actually something to report (the
+    // window is already bigger than this screen's available area before we
+    // clamp it), so it stays quiet in normal operation. Tells us whether
+    // this function runs at all when the runaway resize happens, and whether
+    // setMaximumSize() actually shrinks the window back down. Remove once
+    // the "window grows past the screen on video load" report is root-caused.
+    const QSize avail = screen->availableGeometry().size();
+    const QSize before = this->size();
+    if (before.width() > avail.width() || before.height() > avail.height())
+        logUI(QString("[geometry] clamp: MainWindow was %1x%2, screen available %3x%4")
+                  .arg(before.width()).arg(before.height()).arg(avail.width()).arg(avail.height()));
+
     // The window itself must never be asked to occupy more than the visible
     // desktop — whatever grew the layout's minimum size (e.g. QVideoWidget's
     // size hint tracking a newly-loaded video's native resolution) can still
     // squeeze its own contents, but the top-level window's geometry stays
     // on-screen instead of Windows silently clamping/repositioning it.
-    setMaximumSize(screen->availableGeometry().size());
+    setMaximumSize(avail);
+
+    if (before.width() > avail.width() || before.height() > avail.height())
+        logUI(QString("[geometry] clamp: MainWindow now %1x%2 after setMaximumSize")
+                  .arg(this->size().width()).arg(this->size().height()));
 
     // videoWidget only ever needs to fill whatever space the layout gives
     // it — it letterboxes video content to fit regardless of the actual
@@ -884,6 +900,31 @@ void MainWindow::enable_playback(bool flag) {
 void MainWindow::resizeEvent(QResizeEvent* event) {
 
     QMainWindow::resizeEvent(event);
+
+    // Diagnostic for the "window grows past the screen on video load" report:
+    // only fires when the new size actually overflows the current screen's
+    // available area, so it stays quiet during normal use but pinpoints the
+    // exact moment/size of the runaway resize when it happens. Remove once
+    // that's root-caused.
+    if (QScreen *diagScreen = this->screen() ? this->screen() : QGuiApplication::primaryScreen()) {
+        const QSize avail = diagScreen->availableGeometry().size();
+        if (event->size().width() > avail.width() || event->size().height() > avail.height()) {
+            const QSize vwMin = videoWidget ? videoWidget->minimumSize() : QSize();
+            const QSize vwSizeHint = videoWidget ? videoWidget->sizeHint() : QSize();
+            const QSize vwCur = videoWidget ? videoWidget->size() : QSize();
+            logUI(QString("[geometry] MainWindow resized to %1x%2, exceeds screen available %3x%4 "
+                          "(was %5x%6). videoWidget size=%7x%8 min=%9x%10 sizeHint=%11x%12. "
+                          "devicePixelRatio=%13 logicalDPI=%14")
+                      .arg(event->size().width()).arg(event->size().height())
+                      .arg(avail.width()).arg(avail.height())
+                      .arg(event->oldSize().width()).arg(event->oldSize().height())
+                      .arg(vwCur.width()).arg(vwCur.height())
+                      .arg(vwMin.width()).arg(vwMin.height())
+                      .arg(vwSizeHint.width()).arg(vwSizeHint.height())
+                      .arg(diagScreen->devicePixelRatio())
+                      .arg(diagScreen->logicalDotsPerInch()));
+        }
+    }
 
     // Update the scene size to match the view size
     QRectF sceneRect = progressView->rect(); 

@@ -67,6 +67,7 @@
 #include <QApplication>
 #include <QFontDatabase>
 #include <QScreen>
+#include <QWindow>
 
 #include <QDebug>
 
@@ -90,6 +91,14 @@ public:
     void reattachAudioOutputWorkaround(bool pauseFirst = false);
     void resumePlaybackAfterSeek(qint64 position, bool pauseFirst = false);
     void logUI(const QString &msg);
+    // Hard cap on the window's size at whatever screen it's currently on —
+    // a safety net against the layout ever requesting a geometry bigger than
+    // the visible desktop (seen when videoWidget's size hint grows once a
+    // video starts decoding), which otherwise surfaces as a "some computers"
+    // Windows-only "Unable to set geometry" clamp/misplacement. Called once
+    // at startup and again whenever the window's screen or that screen's
+    // available area changes.
+    void clampWindowToAvailableScreen();
 
 private slots:
     void onRecorderDurationChanged(qint64 currentDuration);
@@ -165,7 +174,11 @@ private:
     bool trySetState(State next);
 
     bool isPlayback = false;
-    
+    // Guards the one-time screenChanged/availableGeometryChanged wiring in
+    // showEvent() — windowHandle() only exists once the window has been
+    // shown, so it can't be set up in the constructor.
+    bool m_screenClampWired = false;
+
     qint64 pos = 0;
     qint64 offset = 0;
     qint64 videoOffset = 0;
@@ -393,6 +406,7 @@ private:
 
     void disconnectAllSignals();
     void resizeEvent(QResizeEvent* event) override;
+    void showEvent(QShowEvent *event) override;
     void closeEvent(QCloseEvent *event) override;
 
     void toggleLogVisibility();

@@ -4,6 +4,22 @@
 #include <QRegularExpression>
 #include <QDebug>
 
+// yt-dlp's default format selection picks YouTube's best available
+// video+audio, which for most non-ancient uploads means an AV1 stream (often
+// 10-bit above 1080p) — a codec/bit-depth combination that some older/
+// integrated GPUs' Qt Multimedia FFmpeg backend fails to decode correctly on
+// Windows, rendering a black frame with audio still playing and no error
+// surfaced anywhere Qt-side (this lives entirely below QMediaPlayer's error
+// reporting). Constraining to H.264 (avc1) video + AAC (mp4a) audio trades a
+// little file size/quality for playback that works on every machine this app
+// targets, which matters far more for a karaoke player than encoding
+// efficiency. Falls back progressively if a given video has no avc1 stream
+// at all, rather than failing the download outright.
+static const QStringList kFormatArgs = {
+    "-f", "bestvideo[vcodec^=avc1]+bestaudio[acodec^=mp4a]/best[vcodec^=avc1]/bestvideo+bestaudio/best",
+    "--merge-output-format", "mp4",
+};
+
 DownloadDialog::DownloadDialog(QWidget* parent)
     : QDialog(parent)
 {
@@ -50,6 +66,7 @@ void DownloadDialog::startFilenameProbe() {
     args << "--print" << "filename"
          << "--output" << outputTemplate
          << "--no-playlist"          // força single video
+         << kFormatArgs
          << m_url;
 
     connect(m_filenameProc, &QProcess::readyReadStandardOutput,
@@ -109,6 +126,7 @@ void DownloadDialog::startDownload() {
     args << "--output" << m_predictedPath
          << "--no-playlist"    // garante single video mesmo que link tenha params
          << "--newline"        // progresso linha a linha no stderr
+         << kFormatArgs
          << m_url;
 
     connect(m_downloadProc, &QProcess::readyRead,

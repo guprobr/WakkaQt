@@ -425,6 +425,50 @@ MainWindow::MainWindow(QWidget *parent)
     checkYtDlpUpdate();
 }
 
+// windowHandle() doesn't exist yet in the constructor (no native window until
+// first shown), so the screenChanged wiring for clampWindowToAvailableScreen()
+// happens here instead, guarded to run only once.
+void MainWindow::showEvent(QShowEvent *event) {
+    QMainWindow::showEvent(event);
+
+    if (!m_screenClampWired) {
+        m_screenClampWired = true;
+
+        connect(this->windowHandle(), &QWindow::screenChanged, this, [this](QScreen *newScreen) {
+            clampWindowToAvailableScreen();
+            if (newScreen)
+                connect(newScreen, &QScreen::availableGeometryChanged, this,
+                        &MainWindow::clampWindowToAvailableScreen, Qt::UniqueConnection);
+        });
+        if (QScreen *initialScreen = this->screen()) {
+            connect(initialScreen, &QScreen::availableGeometryChanged, this,
+                    &MainWindow::clampWindowToAvailableScreen, Qt::UniqueConnection);
+        }
+        clampWindowToAvailableScreen();
+    }
+}
+
+void MainWindow::clampWindowToAvailableScreen() {
+    QScreen *screen = this->screen() ? this->screen() : QGuiApplication::primaryScreen();
+    if (!screen)
+        return;
+
+    // The window itself must never be asked to occupy more than the visible
+    // desktop — whatever grew the layout's minimum size (e.g. QVideoWidget's
+    // size hint tracking a newly-loaded video's native resolution) can still
+    // squeeze its own contents, but the top-level window's geometry stays
+    // on-screen instead of Windows silently clamping/repositioning it.
+    setMaximumSize(screen->availableGeometry().size());
+
+    // videoWidget only ever needs to fill whatever space the layout gives
+    // it — it letterboxes video content to fit regardless of the actual
+    // widget size — so re-assert its intended floor in case something
+    // (e.g. the multimedia backend, on some platforms) bumped its minimum
+    // size to match a newly-loaded video's native resolution.
+    if (videoWidget)
+        videoWidget->setMinimumSize(320, 248);
+}
+
 void MainWindow::checkYtDlpUpdate()
 {
     // Throttled to once/day: YouTube changes break yt-dlp's extractor often

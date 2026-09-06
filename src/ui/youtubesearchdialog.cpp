@@ -7,7 +7,6 @@
 #include <QJsonArray>
 #include <QMouseEvent>
 #include <QNetworkRequest>
-#include <QScreen>
 #include <QScrollBar>
 #include <QSizePolicy>
 #include <QSpacerItem>
@@ -15,23 +14,20 @@
 #include <algorithm>
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-// Base sizes tuned for a standard 96 DPI display; scaled() below adapts them
-// to the primary screen's actual DPI so cards/thumbnails stay a consistent
-// physical size on high-DPI displays.
+// Base sizes are given in device-independent pixels. Qt's automatic high-DPI
+// scaling (always on since Qt6) already maps these to the OS scale factor,
+// so they render at a consistent physical size on their own — an earlier
+// version of scaled() also multiplied by logicalDotsPerInch()/96.0 on top of
+// that, double-applying the scale factor. See scaledWebcamPreviewSize() in
+// mainwindow.cpp for the same fix and the fuller rationale.
 static constexpr int kCardW      = 186;
 static constexpr int kCardH      = 172;
 static constexpr int kThumbW     = 180;
 static constexpr int kThumbH     = 101; // 16:9
 static constexpr int kPageSize   = 8;
 
-static qreal dpiScaleFactor()
-{
-    QScreen *screen = QGuiApplication::primaryScreen();
-    return screen ? screen->logicalDotsPerInch() / 96.0 : 1.0;
-}
-
-static int scaled(int px) { return qRound(px * dpiScaleFactor()); }
-static QSize scaledSize(int w, int h) { return QSize(scaled(w), scaled(h)); }
+static int scaled(int px) { return px; }
+static QSize scaledSize(int w, int h) { return QSize(w, h); }
 
 // ── VideoCardWidget ───────────────────────────────────────────────────────────
 VideoCardWidget::VideoCardWidget(const YtVideoInfo &info, QWidget *parent)

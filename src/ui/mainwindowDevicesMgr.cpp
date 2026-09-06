@@ -328,6 +328,11 @@ void MainWindow::configureMediaComponents()
             this,
             &MainWindow::onPlaybackStateChanged,
             Qt::UniqueConnection);
+    connect(player.data(),
+            &QMediaPlayer::errorOccurred,
+            this,
+            &MainWindow::handlePlayerError,
+            Qt::UniqueConnection);
 
     if (hasCamera)
         camera->start();

@@ -65,6 +65,10 @@ void MainWindow::updateVideoVisibility() {
 
     }
 
+    if ( QMediaPlayer::MediaStatus::InvalidMedia == status ) {
+        logUI("Playback error: could not decode \"" + currentVideoName + "\" (" + player->errorString() + ")");
+    }
+
     if ( QMediaPlayer::MediaStatus::EndOfMedia == status ) {
 
         // mediaRecorder->duration() is a sanity check that real recording has
@@ -122,6 +126,18 @@ void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
     }
 
     updateVideoVisibility();
+}
+
+// QMediaPlayer-level playback errors — e.g. the FFmpeg backend failing to
+// decode a codec/profile it can't handle on this machine (seen with some AV1
+// content on older/integrated GPUs). Without this connected, such a failure
+// was otherwise silent: no log line, no message, just a black video frame
+// with audio still playing, since neither onPlayerMediaStatusChanged nor
+// onPlaybackStateChanged treat a decode failure as anything but a normal
+// status change.
+void MainWindow::handlePlayerError(QMediaPlayer::Error error, const QString &errorString) {
+    qWarning() << "Playback error on" << currentVideoName << ":" << error << errorString;
+    logUI("Playback error on \"" + currentVideoName + "\": " + errorString);
 }
 
 void MainWindow::onPlayPauseClicked() {

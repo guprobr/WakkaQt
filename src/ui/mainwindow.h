@@ -97,6 +97,12 @@ private slots:
     void onPlaybackStateChanged(QMediaPlayer::PlaybackState state);
     void onPlayerMediaStatusChanged(QMediaPlayer::MediaStatus status);
     void onPlayerPositionChanged(qint64 position);
+    // Playback-side QMediaPlayer errors (as opposed to QMediaRecorder's own
+    // errorOccurred, handled below) — e.g. a codec/decode failure such as an
+    // AV1 stream the FFmpeg backend can't decode on a given machine, which
+    // otherwise surfaces only as a silent black frame with audio still
+    // playing.
+    void handlePlayerError(QMediaPlayer::Error error, const QString &errorString);
     void handleRecorderError(QMediaRecorder::Error error);
     // Camera-level errors (as opposed to QMediaRecorder-level ones, handled
     // above) — e.g. the webcam being unplugged. Distinct signal in Qt6

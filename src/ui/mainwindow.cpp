@@ -584,15 +584,17 @@ QSize MainWindow::scaledWebcamPreviewSize(const QSize &baseSize) const {
     if (!screen)
         return baseSize;
 
-    // Base sizes were tuned for a standard 96 DPI display; scale them to the
-    // screen's actual DPI so the preview stays a consistent physical size.
-    const qreal dpiScale = screen->logicalDotsPerInch() / 96.0;
-    QSize scaled = baseSize * dpiScale;
-
-    // Never let the scaled preview outgrow the usable screen area (e.g. small,
-    // very high-DPI laptop panels).
+    // Qt's automatic high-DPI scaling (always on since Qt6) already maps
+    // sizes given in device-independent pixels to the OS scale factor, so
+    // baseSize already renders at a consistent physical size on its own.
+    // This used to also multiply by screen->logicalDotsPerInch()/96.0 on
+    // top of that, double-applying the scale factor (e.g. ~1.56x instead of
+    // 1.25x at Windows' common 125% scaling) — invisible on a 100%-scaled
+    // dev display, but on a small 1366x768 panel at 125%/150% it was enough
+    // to blow past the available screen height and distort MainWindow's
+    // geometry. Keep only the safety clamp against the usable screen area.
     const QSize maxSize = screen->availableGeometry().size() * 0.9;
-    return scaled.boundedTo(maxSize);
+    return baseSize.boundedTo(maxSize);
 }
 
 // Shared by renderAgain()'s and the library restore flow's output-file
@@ -800,6 +802,7 @@ void MainWindow::disconnectAllSignals() {
         disconnect(player.data(), &QMediaPlayer::mediaStatusChanged, this, &MainWindow::onPlayerMediaStatusChanged);
         disconnect(player.data(), &QMediaPlayer::playbackStateChanged, this, &MainWindow::onPlaybackStateChanged);
         disconnect(player.data(), &QMediaPlayer::positionChanged, this, &MainWindow::onPlayerPositionChanged);
+        disconnect(player.data(), &QMediaPlayer::errorOccurred, this, &MainWindow::handlePlayerError);
     }
 
 }

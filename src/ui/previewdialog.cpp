@@ -1,6 +1,7 @@
 #include "complexes.h"
 #include "previewdialog.h"
 #include "audioamplifier.h"
+#include "playbackbleedfilter.h"
 #ifdef WAKKAQT_FFMPEG_NATIVE
 #include "ffmpegnative.h"
 #endif
@@ -100,6 +101,15 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
     noiseReductionSlider->setTickPosition(QSlider::TicksBelow);
     noiseReductionSlider->setTickInterval(10);
     noiseReductionSlider->setToolTip("How aggressively the preview removes steady background noise.");
+
+    m_bleedAvailable = PlaybackBleedFilter::isAvailable();
+    playbackBleedCheckBox = new QCheckBox("Remove speaker playback from microphones", this);
+    playbackBleedCheckBox->setChecked(m_bleedAvailable);
+    playbackBleedCheckBox->setToolTip("Use the backing track to reduce speaker sound captured by the microphones before noise reduction and tuning.");
+    cleanupStatusLabel = new QLabel(m_bleedAvailable
+        ? "Speaker playback removal runs first, followed by noise reduction, tuning and mastering."
+        : "Speaker playback removal is unavailable. Install the SpeexDSP runtime library to enable it.", this);
+    cleanupStatusLabel->setWordWrap(true);
 
     // Key selector
     keyCombo = new QComboBox(this);
@@ -256,6 +266,8 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
     // tucked out of the way by default. ────────────────────────────────────
     QWidget *tuneTab = new QWidget(this);
     QVBoxLayout *tuneLayout = new QVBoxLayout(tuneTab);
+    tuneLayout->addWidget(playbackBleedCheckBox);
+    tuneLayout->addWidget(cleanupStatusLabel);
     tuneLayout->addWidget(pitchCorrectionLabel);
     tuneLayout->addWidget(pitchCorrectionSlider);
     tuneLayout->addWidget(noiseReductionLabel);
@@ -354,6 +366,26 @@ PreviewDialog::PreviewDialog(qint64 offset, QWidget *parent)
     });
     connect(previewJob.data(), &PreviewJob::enhanced, this, &PreviewDialog::onVocalsEnhanced);
     connect(snippetJob.data(), &PreviewJob::enhanced, this, &PreviewDialog::onSnippetEnhanced);
+    connect(playbackBleedCheckBox, &QCheckBox::toggled, this, [this]() {
+        if (previewInputAudioData.isEmpty()) return;
+        applyFullTrackButton->show();
+        stopButton->setEnabled(canRenderProcessedVocal());
+        bannerLabel->setText("Apply Enhance Full Vocal Track to use the new playback removal setting in the mix.");
+    });
+    for (PreviewJob *job : {previewJob.data(), snippetJob.data()}) {
+        connect(job, &PreviewJob::cleanupStatus, this, [this](const QString &message) {
+            cleanupStatusLabel->setText(m_bleedAvailable ? message
+                : "Speaker playback removal is unavailable. Install the SpeexDSP runtime library to enable it.");
+        });
+        connect(job, &PreviewJob::enhancementFailed, this, [this](const QString &reason) {
+            progressTimer->stop();
+            m_snippetPreviewActive = false;
+            bannerLabel->setText(reason);
+            setPreviewControlsEnabled(true);
+            stopButton->setEnabled(canRenderProcessedVocal());
+            QMessageBox::warning(this, "Vocal Processing Failed", reason);
+        });
+    }
 
     connect(amplifier.data(), &AudioAmplifier::vocalPreviewChunk,
             vocalVisualizer, &AudioVisualizerWidget::updateVisualization);
@@ -488,9 +520,10 @@ PreviewDialog::~PreviewDialog()
         amplifier->stop();
 }
 
-void PreviewDialog::setAudioFile(const QString &filePath)
+void PreviewDialog::setAudioFile(const QString &filePath, const QString &playbackReference)
 {
     audioFilePath = filePath;
+    m_hasProcessedVocal = false;
     qDebug() << "Audio file set to:" << audioFilePath;
 
     setPreviewControlsEnabled(false);
@@ -502,22 +535,27 @@ void PreviewDialog::setAudioFile(const QString &filePath)
     params.sourceFile   = audioFilePath;
     params.destTempFile = tunedRecorded;
     params.trimOffsetMs = audioOffset;
+    params.playbackFile = playbackReference;
     previewJob->extract(params);
 }
 
-void PreviewDialog::onVocalsExtracted(QByteArray pcmSamples, QAudioFormat pcmFormat)
+void PreviewDialog::onVocalsExtracted(QByteArray pcmSamples, QAudioFormat pcmFormat, QByteArray playbackPcm)
 {
+    m_playbackReferencePcm = playbackPcm;
+    if (playbackPcm.isEmpty()) {
+        playbackBleedCheckBox->setChecked(false);
+        cleanupStatusLabel->setText("No playback reference is available for this take.");
+    }
     previewInputAudioData = pcmSamples;
     // Baseline until the first full enhancement (auto-triggered below)
     // completes and replaces it — see m_committedAudioData's declaration.
     m_committedAudioData = pcmSamples;
 
-    // Reinitialize audio pipeline if the extracted WAV's rate differs from the
-    // current format (e.g. recording at 48000 Hz vs. previous default 44100 Hz).
+    // Use the decoded format throughout cleanup, preview, and saving.
     if (pcmFormat.sampleRate() != format.sampleRate() ||
-        pcmFormat.channelCount() != format.channelCount()) {
-        format.setSampleRate(pcmFormat.sampleRate());
-        format.setChannelCount(pcmFormat.channelCount());
+        pcmFormat.channelCount() != format.channelCount() ||
+        pcmFormat.sampleFormat() != format.sampleFormat()) {
+        format = pcmFormat;
         amplifier.reset(new AudioAmplifier(format, this));
         connect(amplifier.data(), &AudioAmplifier::vocalPreviewChunk,
                 vocalVisualizer, &AudioVisualizerWidget::updateVisualization);
@@ -830,6 +868,8 @@ void PreviewDialog::startEnhancementJob()
     params.reverbMix             = m_reverbMix;
     params.scalePreset           = scaleName;
     params.keyNote               = m_keyNote;
+    params.removePlaybackBleed   = playbackBleedCheckBox->isChecked();
+    params.playbackPcm           = m_playbackReferencePcm;
 
     progressTimer->start(55);
     if (!previewJob->enhance(previewInputAudioData, format, params)) {
@@ -848,13 +888,13 @@ void PreviewDialog::onVocalsEnhanced(QByteArray tunedData)
     const bool wasCancelled = tunedData.isEmpty();
 
     if (!wasCancelled) {
-        QFile audioFile(tunedRecorded);
-        if (!audioFile.open(QIODevice::WriteOnly)) {
-            qWarning() << "Failed to reopen PreviewDialog output file for writing header.";
-        } else {
-            const qint64 dataSize = tunedData.size();
-            writeWavHeader(audioFile, format, dataSize, tunedData);
-            audioFile.close();
+        const QString saveError = savePcmWavAtomically(tunedRecorded, format, tunedData);
+        if (!saveError.isEmpty()) {
+            qWarning() << saveError;
+            progressTimer->stop();
+            bannerLabel->setText(saveError);
+            setPreviewControlsEnabled(true);
+            return;
         }
 
         amplifier->setAudioData(tunedData);
@@ -868,6 +908,8 @@ void PreviewDialog::onVocalsEnhanced(QByteArray tunedData)
         // This becomes the new baseline: future snippet previews start from
         // and revert back to this fully-enhanced version, not the raw extract.
         m_committedAudioData = tunedData;
+        m_committedBleedRemoval = playbackBleedCheckBox->isChecked();
+        m_hasProcessedVocal = true;
         applyFullTrackButton->hide();
         m_showingOriginal = false;
         originalToggleButton->setText("✨ Tuned — click for Original");
@@ -934,7 +976,8 @@ void PreviewDialog::startSnippetPreview()
     progressBar->setValue(0);
     bannerLabel->setText("Enhancing 10-second preview…");
 
-    const QByteArray slice = m_committedAudioData.mid(leadInStartBytes, actualLeadInBytes + sliceBytes);
+    // Always process the raw take so cleanup/tuning/mastering never compound.
+    const QByteArray slice = previewInputAudioData.mid(leadInStartBytes, actualLeadInBytes + sliceBytes);
 
     const QStringList scaleNames = {"chromatic","major","minor",
                                      "pentatonic_major","pentatonic_minor","blues"};
@@ -951,6 +994,9 @@ void PreviewDialog::startSnippetPreview()
     params.reverbMix             = m_reverbMix;
     params.scalePreset           = scaleName;
     params.keyNote               = m_keyNote;
+    params.removePlaybackBleed   = playbackBleedCheckBox->isChecked();
+    params.playbackPcm           = m_playbackReferencePcm;
+    params.referenceStartFrame  = leadInStartBytes / format.bytesPerFrame();
 
     // No pendingPreviewRebuild-style queuing: m_snippetPreviewActive plus
     // setPreviewControlsEnabled(false) already block a second click from
@@ -1060,16 +1106,23 @@ void PreviewDialog::onToggleOriginalVocals()
         : "Now playing the tuned vocal.");
 }
 
+bool PreviewDialog::canRenderProcessedVocal() const
+{
+    return m_hasProcessedVocal && QFile::exists(tunedRecorded) &&
+        m_committedBleedRemoval == playbackBleedCheckBox->isChecked();
+}
+
 void PreviewDialog::setPreviewControlsEnabled(bool enabled)
 {
     startButton->setEnabled(enabled);
-    stopButton->setEnabled(enabled);
+    stopButton->setEnabled(enabled && canRenderProcessedVocal());
     seekBackwardButton->setEnabled(enabled);
     seekForwardButton->setEnabled(enabled);
     volumeDial->setEnabled(enabled);
     offsetSlider->setEnabled(enabled);
     pitchCorrectionSlider->setEnabled(enabled);
     noiseReductionSlider->setEnabled(enabled);
+    playbackBleedCheckBox->setEnabled(enabled && m_bleedAvailable && !m_playbackReferencePcm.isEmpty());
     playbackMute_option->setEnabled(enabled);
     keyCombo->setEnabled(enabled);
     scaleCombo->setEnabled(enabled);

@@ -8,7 +8,6 @@
 #include <QByteArray>
 #include <QAudioFormat>
 #include <QFutureWatcher>
-#include <QProcess>
 #include <QScopedPointer>
 #include <atomic>
 #include <memory>
@@ -25,6 +24,7 @@ public:
         QString sourceFile;
         QString destTempFile; // scratch WAV path, caller-owned (e.g. tunedRecorded)
         qint64  trimOffsetMs = 0;
+        QString playbackFile; // unprocessed backing track for bleed removal
     };
     struct EnhanceParams {
         double  pitchCorrectionAmount = 0.45;
@@ -36,6 +36,10 @@ public:
         double  reverbMix = 0.0;
         QString scalePreset = "chromatic";
         int     keyNote = 0;
+        bool    removePlaybackBleed = false;
+        QByteArray playbackPcm; // same format as vocal PCM, full song timeline
+        qint64  referenceStartFrame = 0; // snippets' position in the full song
+        bool    masterAudio = true;
     };
 
     explicit PreviewJob(QObject *parent = nullptr);
@@ -56,41 +60,32 @@ public:
     VocalEnhancer *enhancer() const { return m_enhancer.data(); }
 
 signals:
-    void extracted(QByteArray pcmSamples, QAudioFormat format);
+    void extracted(QByteArray pcmSamples, QAudioFormat format, QByteArray playbackPcm);
     // wasCancelled distinguishes a deliberate cancel (extract() replacing a
     // still-running extraction, or waitForIdle() during shutdown/dialog
     // close) from a real decode error — mirrors RenderJob::finished()'s
     // (success, cancelled, errorMessage) shape. reason is empty when cancelled.
     void extractionFailed(QString reason, bool wasCancelled);
     void enhanced(QByteArray tunedPcm);
+    void enhancementFailed(QString reason);
+    void cleanupStatus(QString message);
 
 private:
-    // Fallback (QProcess) path only — the native path folds the equivalent
-    // work into processExtractedFile() below, run on the QtConcurrent worker
-    // thread instead of here on the GUI thread (see extract()'s native branch).
-    void onExtractionFinished(bool ok, const QString &destTempFile);
-
     struct ExtractedAudio {
         bool ok = false;
         QByteArray samples;
         QAudioFormat format;
         QString error; // only meaningful when !ok
+        QByteArray playbackSamples;
     };
-    // Reads destTempFile, parses it as WAV, and (native builds only) runs
-    // audio masterization on it — the same steps onExtractionFinished() does
-    // for the fallback path, but called from inside the native extraction's
-    // QtConcurrent worker lambda so this file I/O and filter-graph work runs
-    // off the GUI thread. A heavy masterization chain on a long recording
-    // used to freeze the UI right as extraction hit 100%, since this all
-    // used to run inside the future's GUI-thread finished-callback instead.
+    // Reads raw PCM. Mastering belongs after bleed removal and denoising.
     static ExtractedAudio processExtractedFile(const QString &destTempFile);
 
     QScopedPointer<VocalEnhancer> m_enhancer;
     QAudioFormat m_enhancerFormat;
     bool m_hasEnhancerFormat = false;
 
-    QFutureWatcher<ExtractedAudio> *m_extractWatcher = nullptr; // native path
-    QProcess *m_extractProcess = nullptr;              // QProcess fallback path
+    QFutureWatcher<ExtractedAudio> *m_extractWatcher = nullptr;
     // Per-run flag (fresh shared_ptr each extract() call, not reused) so a
     // still-in-flight run's finished-callback can tell whether cancellation
     // was requested for THAT run specifically, even after a later extract()

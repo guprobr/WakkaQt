@@ -1,4 +1,5 @@
 #include "vocalseparator.h"
+#include "fftwplannerlock.h"
 
 #include <QDir>
 #include <QFile>
@@ -213,7 +214,11 @@ static MdxSpec computeSTFT(const std::vector<float> &stereo, int n_fft, int hop,
     std::vector<double> inBuf(n_fft, 0.0);
     fftw_complex *outBuf =
         reinterpret_cast<fftw_complex *>(fftw_malloc(sizeof(fftw_complex) * bins));
-    fftw_plan plan = fftw_plan_dft_r2c_1d(n_fft, inBuf.data(), outBuf, FFTW_ESTIMATE);
+    fftw_plan plan;
+    {
+        std::lock_guard<std::mutex> lock(wakkaFftwPlannerMutex());
+        plan = fftw_plan_dft_r2c_1d(n_fft, inBuf.data(), outBuf, FFTW_ESTIMATE);
+    }
 
     MdxSpec spec(bins, frames);
 
@@ -239,7 +244,10 @@ static MdxSpec computeSTFT(const std::vector<float> &stereo, int n_fft, int hop,
         }
     }
 
-    fftw_destroy_plan(plan);
+    {
+        std::lock_guard<std::mutex> lock(wakkaFftwPlannerMutex());
+        fftw_destroy_plan(plan);
+    }
     fftw_free(outBuf);
     return spec;
 }
@@ -263,7 +271,11 @@ static std::vector<float> computeISTFT(const MdxSpec &spec, int n_fft, int hop, 
     fftw_complex *inBuf =
         reinterpret_cast<fftw_complex *>(fftw_malloc(sizeof(fftw_complex) * bins));
     std::vector<double> outBuf(n_fft);
-    fftw_plan plan = fftw_plan_dft_c2r_1d(n_fft, inBuf, outBuf.data(), FFTW_ESTIMATE);
+    fftw_plan plan;
+    {
+        std::lock_guard<std::mutex> lock(wakkaFftwPlannerMutex());
+        plan = fftw_plan_dft_c2r_1d(n_fft, inBuf, outBuf.data(), FFTW_ESTIMATE);
+    }
 
     std::vector<float> audio(totalSamples * 2, 0.f);
     std::vector<float> norm(totalSamples, 0.f);
@@ -294,7 +306,10 @@ static std::vector<float> computeISTFT(const MdxSpec &spec, int n_fft, int hop, 
         }
     }
 
-    fftw_destroy_plan(plan);
+    {
+        std::lock_guard<std::mutex> lock(wakkaFftwPlannerMutex());
+        fftw_destroy_plan(plan);
+    }
     fftw_free(inBuf);
 
     // The caller discards this result outright when cancelled (checked right

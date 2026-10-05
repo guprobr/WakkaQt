@@ -83,7 +83,10 @@ extern QString extractedTmpPlayback;
 // restore's per-session workspace (see SessionRepository::restoreSession()).
 void resetRecordingTempPaths();
 
-void writeWavHeader(QFile &file, const QAudioFormat &format, qint64 dataSize, const QByteArray &pcmData);
+bool writeWavHeader(QIODevice &file, const QAudioFormat &format, qint64 dataSize, const QByteArray &pcmData);
+// Saves a finished vocal track without truncating a previous valid result.
+// Returns an error message on failure, empty on success.
+QString savePcmWavAtomically(const QString &path, const QAudioFormat &format, const QByteArray &pcmData);
 static bool isYouTubeHost(const QString& host);
 bool isSingleYouTubeVideoUrl(const QUrl& url);
 

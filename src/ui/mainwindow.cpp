@@ -646,7 +646,7 @@ void MainWindow::promptRenderResolution()
 void MainWindow::showPreviewAndRender(std::function<void()> onCancelled)
 {
     previewDialog.reset(new PreviewDialog(audioOffset, this));
-    previewDialog->setAudioFile(audioRecorded);
+    previewDialog->setAudioFile(audioRecorded, extractedTmpPlayback);
     previewDialog->setVideoFile(webcamRecorded, videoOffset);
 
     if (previewDialog->exec() == QDialog::Accepted) {

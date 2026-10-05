@@ -18,6 +18,10 @@ add_executable(test_vocalenhancer test_vocalenhancer.cpp)
 target_link_libraries(test_vocalenhancer PRIVATE wakkaqt_dsp Qt6::Test)
 add_test(NAME test_vocalenhancer COMMAND test_vocalenhancer)
 
+add_executable(test_playbackbleedfilter test_playbackbleedfilter.cpp)
+target_link_libraries(test_playbackbleedfilter PRIVATE wakkaqt_dsp Qt6::Test)
+add_test(NAME test_playbackbleedfilter COMMAND test_playbackbleedfilter)
+
 # RenderJob/VocalSeparationJob live in wakkaqt_jobs — needs QtConcurrent
 # (QSignalSpy::wait() pumps the event loop that delivers their queued
 # QFutureWatcher::finished signals) on top of what wakkaqt_core/wakkaqt_dsp
@@ -29,3 +33,7 @@ add_test(NAME test_renderjob COMMAND test_renderjob)
 add_executable(test_vocalseparationjob test_vocalseparationjob.cpp)
 target_link_libraries(test_vocalseparationjob PRIVATE wakkaqt_jobs Qt6::Test Qt6::Concurrent)
 add_test(NAME test_vocalseparationjob COMMAND test_vocalseparationjob)
+
+add_executable(test_previewjob test_previewjob.cpp)
+target_link_libraries(test_previewjob PRIVATE wakkaqt_jobs Qt6::Test)
+add_test(NAME test_previewjob COMMAND test_previewjob)

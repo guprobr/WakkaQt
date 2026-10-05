@@ -1,5 +1,8 @@
 #include "previewjob.h"
 #include "complexes.h"
+#include "playbackbleedfilter.h"
+#include <QTemporaryFile>
+#include <QProcess>
 
 #include <QtConcurrent/QtConcurrentRun>
 #include <QFile>
@@ -16,29 +19,24 @@ PreviewJob::~PreviewJob()
 
 bool PreviewJob::isEnhancing() const
 {
-    return m_enhanceWatcher && !m_enhanceWatcher->isFinished();
+    // Keep the run active until its queued result has been published. A new
+    // run must not reset the shared cancellation flag ahead of that callback.
+    return m_enhanceWatcher != nullptr;
 }
 
 void PreviewJob::waitForIdle()
 {
-    if (m_enhanceWatcher && !m_enhanceWatcher->isFinished()) {
+    if (m_enhanceWatcher) {
         m_enhanceCancelled.store(true);
-        m_enhanceWatcher->cancel();
         m_enhanceWatcher->waitForFinished();
     }
-    if (m_extractWatcher && !m_extractWatcher->isFinished()) {
+    if (m_extractWatcher) {
         // Requests FFmpegNative::extractAudio() to bail out of its decode
         // loop on the next iteration instead of just blocking here until it
         // runs to completion on its own.
         if (m_extractCancelled)
             m_extractCancelled->store(true);
         m_extractWatcher->waitForFinished();
-    }
-    if (m_extractProcess) {
-        if (m_extractCancelled)
-            m_extractCancelled->store(true);
-        m_extractProcess->kill();
-        m_extractProcess->waitForFinished();
     }
 }
 
@@ -47,177 +45,157 @@ void PreviewJob::cancelEnhance()
     m_enhanceCancelled.store(true);
 }
 
-// ── extract ───────────────────────────────────────────────────────────────
-void PreviewJob::extract(const ExtractParams &params)
-{
-    const QString destTempFile = params.destTempFile;
+namespace {
+bool stopped(const std::atomic<bool> *flag) { return flag && flag->load(); }
 
-    // Both paths below write to the same caller-owned destTempFile, so a
-    // prior in-flight extraction must be stopped (not just abandoned) before
-    // starting a new one — otherwise two writers could race on that path.
-    // Cancel-and-wait instead of a plain reject: extract() replacing a
-    // still-running extraction (e.g. the user reopens the preview on a new
-    // file before the old one finished) is the normal, expected case here.
-    if (m_extractWatcher && !m_extractWatcher->isFinished()) {
-        if (m_extractCancelled)
-            m_extractCancelled->store(true);
-        m_extractWatcher->waitForFinished();
+// CLI work runs on a worker thread, with cancellation checked while waiting.
+bool runFfmpeg(const QStringList &arguments, const std::atomic<bool> *cancelled) {
+    if (stopped(cancelled)) return false;
+    QProcess process;
+    process.start("ffmpeg", arguments);
+    if (!process.waitForStarted()) return false;
+    while (process.state() != QProcess::NotRunning && !process.waitForFinished(100)) {
+        if (stopped(cancelled)) {
+            process.kill();
+            process.waitForFinished();
+            return false;
+        }
     }
-    if (m_extractProcess) {
-        if (m_extractCancelled)
-            m_extractCancelled->store(true);
-        m_extractProcess->kill();
-        m_extractProcess->waitForFinished();
-    }
+    return !stopped(cancelled) && process.exitStatus() == QProcess::NormalExit && process.exitCode() == 0;
+}
 
-    // Fresh per-run flag: the outgoing run's finished-callback (queued, not
-    // yet delivered) keeps its own shared_ptr copy, so it can still tell it
-    // was cancelled after this new run replaces m_extractCancelled here.
-    auto cancelledForThisRun = std::make_shared<std::atomic<bool>>(false);
-    m_extractCancelled = cancelledForThisRun;
-
+bool decodeAudio(const QString &source, const QString &dest, qint64 trim,
+                 const std::atomic<bool> *cancelled, const QAudioFormat &targetFormat = {}) {
 #ifdef WAKKAQT_FFMPEG_NATIVE
-    if (m_extractWatcher) {
-        m_extractWatcher->deleteLater();
-        m_extractWatcher = nullptr;
-    }
-    QFutureWatcher<ExtractedAudio> *watcher = new QFutureWatcher<ExtractedAudio>(this);
-    m_extractWatcher = watcher;
-    connect(watcher, &QFutureWatcher<ExtractedAudio>::finished, this,
-            [this, watcher, cancelledForThisRun]() {
-        const ExtractedAudio result = watcher->result();
-        if (m_extractWatcher == watcher)
-            m_extractWatcher = nullptr;
-        watcher->deleteLater();
-
-        if (!result.ok) {
-            if (cancelledForThisRun->load()) {
-                emit extractionFailed(QString(), true);
-                return;
-            }
-            emit extractionFailed(
-                result.error.isEmpty() ? "Native audio extraction failed." : result.error, false);
-            return;
-        }
-        emit extracted(result.samples, result.format);
-    });
-
-    const QString sourceFile = params.sourceFile;
-    const qint64 trimOffset  = params.trimOffsetMs;
-    std::atomic<bool> *cancelFlag = cancelledForThisRun.get();
-    auto extractFuture = QtConcurrent::run([sourceFile, destTempFile, trimOffset, cancelFlag]() -> ExtractedAudio {
-        // Extract stereo (no mono hint — VocalEnhancer handles channel mixing internally),
-        // then read/parse/masterize it right here on this worker thread too —
-        // see processExtractedFile()'s comment for why that used to run on
-        // the GUI thread instead.
-        const bool ok = FFmpegNative::extractAudio(sourceFile, destTempFile, trimOffset, {}, cancelFlag);
-        if (!ok)
-            return ExtractedAudio{};
-        return processExtractedFile(destTempFile);
-    });
-    watcher->setFuture(extractFuture);
+    int rate = targetFormat.isValid() ? targetFormat.sampleRate()
+                                      : FFmpegNative::getAudioSampleRate(source);
+    // Keep ordinary recordings at their native rate. High-rate device
+    // defaults (e.g. 192 kHz/Int32) need an actual resample before cleanup:
+    // the echo canceller accepts 8–96 kHz and consumes Int16 samples.
+    if (!targetFormat.isValid() && (rate < 8000 || rate > 96000)) rate = 48000;
+    if (stopped(cancelled)) return false;
+    return FFmpegNative::extractAudio(source, dest, trim,
+        targetFormat.channelCount() == 1 ? QStringLiteral("mono") : QString(), cancelled,
+        rate);
 #else
-    if (m_extractProcess) {
-        m_extractProcess->deleteLater();
-        m_extractProcess = nullptr;
-    }
-    QProcess *process = new QProcess(this);
-    m_extractProcess = process;
-    QStringList arguments;
-    arguments << "-y"
-              << "-i" << params.sourceFile
-              << "-vn"
-              << "-filter_complex"
-              // Masterization baked directly into this single ffmpeg call —
-              // the native path applies it as a separate C++ step instead
-              // (see onExtractionFinished()).
-              << QString("%1%2,atrim=%3ms,asetpts=PTS-STARTPTS;")
-                     .arg(_audioEnhance).arg(_audioMasterization).arg(params.trimOffsetMs)
-              << "-ac" << "2"
-              << "-acodec" << "pcm_s16le"
-              << "-async" << "1"
-              << destTempFile;
-
-    connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
-            [this, process, destTempFile, cancelledForThisRun]
-            (int exitCode, QProcess::ExitStatus exitStatus) {
-        if (m_extractProcess == process)
-            m_extractProcess = nullptr;
-        process->deleteLater();
-
-        if (exitStatus == QProcess::CrashExit || exitCode != 0) {
-            if (cancelledForThisRun->load()) {
-                emit extractionFailed(QString(), true);
-                return;
-            }
-            emit extractionFailed("FFmpeg process failed.", false);
-            return;
-        }
-        onExtractionFinished(true, destTempFile);
-    });
-
-    process->start("ffmpeg", arguments);
-    if (!process->waitForStarted()) {
-        if (m_extractProcess == process)
-            m_extractProcess = nullptr;
-        process->deleteLater();
-        emit extractionFailed("Failed to start FFmpeg.", false);
-    }
+    return runFfmpeg({"-v", "error", "-y", "-i", source, "-vn", "-af",
+                     QString("atrim=start=%1,asetpts=PTS-STARTPTS").arg(trim / 1000.0),
+                     "-ar", QString::number(targetFormat.isValid() ? targetFormat.sampleRate() : 44100),
+                     "-ac", QString::number(targetFormat.isValid() ? targetFormat.channelCount() : 2),
+                     "-c:a", "pcm_s16le", "-f", "wav", dest}, cancelled);
 #endif
 }
 
-void PreviewJob::onExtractionFinished(bool /*ok*/, const QString &destTempFile)
+QByteArray masterAudio(const QByteArray &pcm, const QAudioFormat &format,
+                       const std::atomic<bool> *cancelled) {
+    if (stopped(cancelled)) return {};
+#ifdef WAKKAQT_FFMPEG_NATIVE
+    return FFmpegNative::applyFilterChainS16(pcm, format.sampleRate(), format.channelCount(), _audioMasterization);
+#else
+    QTemporaryFile input, output;
+    if (!input.open() || !output.open()) return {};
+    const QString source = input.fileName(), dest = output.fileName();
+    input.close();
+    output.close();
+    QFile file(source);
+    if (!file.open(QIODevice::WriteOnly)) return {};
+    if (!writeWavHeader(file, format, pcm.size(), pcm)) return {};
+    file.close();
+    if (!runFfmpeg({"-v", "error", "-y", "-i", source, "-af", _audioMasterization,
+                   "-ar", QString::number(format.sampleRate()), "-ac", QString::number(format.channelCount()),
+                   "-c:a", "pcm_s16le", "-f", "wav", dest}, cancelled)) return {};
+    QFile result(dest);
+    if (!result.open(QIODevice::ReadOnly)) return {};
+    return parseWavPcm(result.readAll()).samples;
+#endif
+}
+} // namespace
+
+void PreviewJob::extract(const ExtractParams &params)
 {
-    const ExtractedAudio result = processExtractedFile(destTempFile);
-    if (!result.ok) {
-        emit extractionFailed(result.error, false);
-        return;
+    if (m_extractWatcher) {
+        if (m_extractCancelled) m_extractCancelled->store(true);
+        m_extractWatcher->waitForFinished();
+        m_extractWatcher->deleteLater();
+        m_extractWatcher = nullptr;
     }
-    emit extracted(result.samples, result.format);
+    auto cancelled = std::make_shared<std::atomic<bool>>(false);
+    m_extractCancelled = cancelled;
+    auto *watcher = new QFutureWatcher<ExtractedAudio>(this);
+    m_extractWatcher = watcher;
+    connect(watcher, &QFutureWatcher<ExtractedAudio>::finished, this, [this, watcher, cancelled]() {
+        const ExtractedAudio result = watcher->result();
+        if (m_extractWatcher == watcher) m_extractWatcher = nullptr;
+        watcher->deleteLater();
+        if (cancelled->load()) {
+            emit extractionFailed({}, true);
+        } else if (!result.ok) {
+            emit extractionFailed(result.error, false);
+        } else {
+            emit extracted(result.samples, result.format, result.playbackSamples);
+        }
+    });
+    watcher->setFuture(QtConcurrent::run([params, cancelled]() -> ExtractedAudio {
+        ExtractedAudio result;
+        if (!decodeAudio(params.sourceFile, params.destTempFile, params.trimOffsetMs, cancelled.get())) {
+            QFile::remove(params.destTempFile);
+            result.error = "Audio extraction failed.";
+            return result;
+        }
+        result = processExtractedFile(params.destTempFile);
+        if (!result.ok || stopped(cancelled.get()) || params.playbackFile.isEmpty()) return result;
+        QTemporaryFile reference;
+        if (!reference.open()) {
+            result.ok = false;
+            result.error = "Could not create playback reference file.";
+            return result;
+        }
+        const QString referencePath = reference.fileName();
+        reference.close();
+        // Decode reference at the vocal rate/layout, without mastering or
+        // trimming: alignment uses the original song timeline even for a
+        // trimmed vocal or later snippet.
+        if (!decodeAudio(params.playbackFile, referencePath, 0, cancelled.get(), result.format)) {
+            result.ok = false;
+            result.error = "Could not decode playback reference.";
+            return result;
+        }
+        ExtractedAudio ref = processExtractedFile(referencePath);
+        if (!ref.ok) {
+            result.ok = false;
+            result.error = "Could not read playback reference: " + ref.error;
+            return result;
+        }
+        if (ref.format.sampleRate() != result.format.sampleRate() ||
+            ref.format.channelCount() != result.format.channelCount() ||
+            ref.format.sampleFormat() != result.format.sampleFormat()) {
+            result.ok = false;
+            result.error = QString("Playback reference conversion failed: expected %1 Hz, %2 channels "
+                                   "of 16-bit PCM; got %3 Hz, %4 channels.")
+                .arg(result.format.sampleRate()).arg(result.format.channelCount())
+                .arg(ref.format.sampleRate()).arg(ref.format.channelCount());
+            return result;
+        }
+        result.playbackSamples = ref.samples;
+        return result;
+    }));
 }
 
-// Static so it can run from inside the native extraction's QtConcurrent
-// worker lambda without touching `this` — file I/O, WAV parsing, and (native
-// builds) the masterization filter graph all happen off the GUI thread that
-// way. The QProcess fallback path calls this too, via onExtractionFinished()
-// above, but stays on the GUI thread there since it has no worker thread of
-// its own to offload onto and doesn't run the filter chain anyway (baked
-// into its ffmpeg invocation instead).
 PreviewJob::ExtractedAudio PreviewJob::processExtractedFile(const QString &destTempFile)
 {
     ExtractedAudio result;
-
-    QFile audioFile(destTempFile);
-    if (!audioFile.exists() || audioFile.size() <= 0) {
-        result.error = "Audio extraction failed or file is empty.";
-        return result;
-    }
-    if (!audioFile.open(QIODevice::ReadOnly)) {
+    QFile file(destTempFile);
+    if (!file.open(QIODevice::ReadOnly)) {
         result.error = "Failed to read extracted preview audio.";
         return result;
     }
-    const QByteArray wavBytes = audioFile.readAll();
-    audioFile.close();
+    const PcmBuffer pcm = parseWavPcm(file.readAll());
+    file.close();
     QFile::remove(destTempFile);
-
-    // parseWavPcm() walks the actual RIFF chunk structure instead of
-    // assuming a fixed 44-byte header, and never leaves header bytes
-    // attached to what everything downstream treats as raw PCM samples.
-    PcmBuffer pcm = parseWavPcm(wavBytes);
     if (!pcm.isValid()) {
         result.error = "Extracted preview audio could not be parsed.";
         return result;
     }
-
-#ifdef WAKKAQT_FFMPEG_NATIVE
-    // Apply audio masterization to the raw vocal extract BEFORE VocalEnhancer
-    // runs, so the mastering filters and the enhancer don't compound. The
-    // QProcess fallback bakes this into its ffmpeg invocation instead.
-    pcm.samples = FFmpegNative::applyFilterChainS16(
-        pcm.samples, pcm.format.sampleRate(), pcm.format.channelCount(),
-        _audioMasterization);
-#endif
-
     result.ok = true;
     result.samples = pcm.samples;
     result.format = pcm.format;
@@ -239,7 +217,8 @@ bool PreviewJob::enhance(const QByteArray &pcmData, const QAudioFormat &format,
     }
 
     if (!m_hasEnhancerFormat || format.sampleRate() != m_enhancerFormat.sampleRate() ||
-        format.channelCount() != m_enhancerFormat.channelCount()) {
+        format.channelCount() != m_enhancerFormat.channelCount() ||
+        format.sampleFormat() != m_enhancerFormat.sampleFormat()) {
         m_enhancerFormat = format;
         m_hasEnhancerFormat = true;
         m_enhancer.reset(new VocalEnhancer(format, this));
@@ -265,12 +244,39 @@ bool PreviewJob::enhance(const QByteArray &pcmData, const QAudioFormat &format,
         // A cancelled enhance() returns an empty buffer early — still
         // forwarded as-is; the caller checks emptiness/cancellation the
         // same way it checked enhanceCancelled/tunedData before.
-        emit enhanced(tunedData);
+        emit enhanced(m_enhanceCancelled.load() ? QByteArray() : tunedData);
     });
 
     VocalEnhancer *enhancer = m_enhancer.data();
-    auto future = QtConcurrent::run([enhancer, pcmData, this]() {
-        return enhancer->enhance(pcmData, &m_enhanceCancelled);
+    auto future = QtConcurrent::run([enhancer, pcmData, format, params, this]() {
+        QByteArray clean = pcmData;
+        if (params.removePlaybackBleed) {
+            const auto result = PlaybackBleedFilter::process(pcmData, params.playbackPcm, format,
+                params.referenceStartFrame, &m_enhanceCancelled, [enhancer](int progress) {
+                    enhancer->reportProcessingStatus("Removing speaker playback from microphones…", progress);
+                });
+            if (!result.error.isEmpty()) {
+                emit enhancementFailed(result.error);
+                return QByteArray();
+            }
+            clean = result.samples;
+            if (!clean.isEmpty()) {
+                emit cleanupStatus(result.applied
+                    ? QString("Playback bleed removal applied (delay %1 ms).")
+                        .arg(result.delaySamples * 1000.0 / format.sampleRate(), 0, 'f', 1)
+                    : "No reliable playback bleed detected; microphone audio kept unchanged.");
+            }
+        } else {
+            emit cleanupStatus("Playback bleed removal is off.");
+        }
+        if (clean.isEmpty() || m_enhanceCancelled.load()) return QByteArray();
+        QByteArray tuned = enhancer->enhance(clean, &m_enhanceCancelled);
+        if (tuned.isEmpty() || m_enhanceCancelled.load() || !params.masterAudio) return tuned;
+        enhancer->reportProcessingStatus("Mastering cleaned vocals…", 99);
+        tuned = masterAudio(tuned, format, &m_enhanceCancelled);
+        if (tuned.isEmpty() && !m_enhanceCancelled.load())
+            emit enhancementFailed("Vocal mastering failed.");
+        return m_enhanceCancelled.load() ? QByteArray() : tuned;
     });
     watcher->setFuture(future);
     return true;

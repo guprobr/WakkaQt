@@ -236,8 +236,42 @@ Installs to `/usr/bin/WakkaQt`, with an icon at `/usr/share/icons/hicolor/256x25
 |---|---|
 | `ffmpeg` | Render fallback when FFmpeg dev libs were absent at build time |
 | `yt-dlp` | In-app video download from YouTube and other sites |
+| SpeexDSP (optional) | Removes speaker playback captured by the microphones |
 
 Both must be on `$PATH` at runtime. The ONNX model (~80 MB) is downloaded automatically on first use of the backing-track feature and cached in `~/.WakkaQt/models/`.
+
+### Recording with speakers
+
+Install the SpeexDSP runtime (`sudo apt install libspeexdsp1` on Debian/Ubuntu,
+or `sudo dnf install speexdsp` on Fedora). On Windows, distribute a matching
+SpeexDSP DLL (`speexdsp.dll` or `libspeexdsp-1.dll`) beside WakkaQt. On macOS,
+make `libspeexdsp.dylib` available to the application loader. No SpeexDSP
+development headers are needed to build WakkaQt.
+
+In the preview's **Vocal Tuning** tab, **Remove speaker playback from
+microphones** is enabled automatically when SpeexDSP and the session's backing
+track are available. The offline pipeline is: playback bleed cancellation →
+noise reduction → vocal tuning/effects → mastering → mix with the original
+backing track. Both full-track processing and quick previews use the raw take,
+so processing does not accumulate. The original microphone recording and
+backing track remain separate and unchanged in the session library; the
+Original/Tuned toggle lets you compare the results.
+
+The native FFmpeg path preserves microphone sample rates from 8 to 96 kHz;
+recordings outside that range (including 192 kHz/32-bit device defaults) are
+converted to 48 kHz/16-bit PCM for cleanup without changing the original take.
+It resamples the playback reference to match the decoded microphone format.
+Recordings and backing tracks
+with different rates (such as 48 kHz and 44.1 kHz) can be used together.
+
+The filter aligns the reference within ±500 ms and uses a 300 ms adaptive room
+filter for mono or stereo microphones. If it cannot find correlated playback,
+it bypasses cancellation and reports that in the preview. Turn it off and
+apply **Enhance Full Vocal Track** to compare or recover a take. This cleanup
+runs after recording; it does not provide live feedback suppression. Clipped
+microphones/speakers, long reverberation, moving equipment, and substantial
+clock drift between input/output devices can leave residual playback. Keep
+speaker levels below clipping and place microphones close to the singers.
 
 ### Video Effects (optional — frei0r plugins)
 

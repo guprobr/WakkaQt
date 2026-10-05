@@ -204,6 +204,9 @@ set(WAKKA_INCLUDE_DIRS
 # separation (MDX-Net). No dependency on multimedia-infra or Widgets, except
 # vocalseparator.cpp's optional native decode path (see below). ---
 add_library(wakkaqt_dsp STATIC
+    src/dsp/playbackbleedfilter.cpp
+    src/dsp/playbackbleedfilter.h
+    src/dsp/fftwplannerlock.h
     src/dsp/vocalenhancer.cpp
     src/dsp/vocalenhancer.h
     src/dsp/vocalseparator.cpp
@@ -285,6 +288,7 @@ add_library(wakkaqt_core STATIC
 target_include_directories(wakkaqt_core PUBLIC ${WAKKA_INCLUDE_DIRS})
 target_link_libraries(wakkaqt_core PUBLIC
     Qt6::Core
+    Qt6::Widgets # complexes.h exposes QFileDialog, also in CLI-only builds
     Qt6::Multimedia
     Qt6::Network
 )

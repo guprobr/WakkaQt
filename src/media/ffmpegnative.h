@@ -14,6 +14,9 @@ namespace FFmpegNative {
 /// Returns duration of a media file in fractional seconds, or 0.0 on error.
 double getDuration(const QString &filePath);
 
+/// Returns the preferred audio stream's sample rate, or 0 on error.
+int getAudioSampleRate(const QString &filePath);
+
 /// Returns true when the file contains at least one valid video stream.
 bool hasVideoStream(const QString &filePath);
 
@@ -44,14 +47,15 @@ bool muxVideoWithAudio(const QString &videoSrc, const QString &audioSrc,
                        std::function<void(int)> progressCb = {},
                        const std::atomic<bool> *cancelled = nullptr);
 
-/// Extracts the audio track from `input`, resamples to 44100 Hz / stereo or
-/// mono / Int16, optionally trims `offsetMs` from the start, and writes a
-/// PCM WAV to `output`.
+/// Extracts the audio track from `input` as stereo or mono Int16 PCM WAV,
+/// preserving the source sample rate unless `targetSampleRate` is provided.
+/// Optionally trims `offsetMs` from the start.
 /// `filterStr` hints at the desired channel layout (e.g. "mono").
 bool extractAudio(const QString &input, const QString &output,
                   qint64 offsetMs = 0,
                   const QString &filterStr = {},
-                  const std::atomic<bool> *cancelled = nullptr);
+                  const std::atomic<bool> *cancelled = nullptr,
+                  int targetSampleRate = 0);
 
 /// Applies a libavfilter audio chain (e.g. "deesser,speechnorm,...") to
 /// interleaved Int16 PCM at the given sample rate/channel count, returning

@@ -1,4 +1,5 @@
 #include "vocalenhancer.h"
+#include "fftwplannerlock.h"
 
 #include <QDebug>
 #include <cmath>
@@ -40,6 +41,7 @@ VocalEnhancer::VocalEnhancer(const QAudioFormat& format, QObject *parent)
     : QObject(parent),
       banner("Begin Vocal Enhancement")
 {
+    std::lock_guard<std::mutex> plannerLock(wakkaFftwPlannerMutex());
     m_sampleRate = format.sampleRate();
     m_channels   = format.channelCount();
 
@@ -114,6 +116,7 @@ VocalEnhancer::VocalEnhancer(const QAudioFormat& format, QObject *parent)
 }
 
 VocalEnhancer::~VocalEnhancer() {
+    std::lock_guard<std::mutex> plannerLock(wakkaFftwPlannerMutex());
     // Destroy cached PV plans
     if (m_pvFwd)  fftw_destroy_plan(m_pvFwd);
     if (m_pvInv)  fftw_destroy_plan(m_pvInv);
@@ -282,6 +285,27 @@ QByteArray VocalEnhancer::enhance(const QByteArray& input, const std::atomic<boo
     // Convert to mono double [-1..+1]
     QVector<double> data = convertToDoubleArray(input);
 
+    const double noiseAmount = std::clamp(m_noiseReductionAmount, 0.0, 1.0);
+    const double overSub       = lerpParam(0.50, 0.85, noiseAmount);
+    const double floorDb       = lerpParam(-8.0, -16.0, noiseAmount);
+    const double noiseLearnSec = lerpParam(0.30, 0.50, noiseAmount);
+    const double adaptivity    = lerpParam(0.015, 0.004, noiseAmount);
+    const double lowEnergyDb   = lerpParam(-50.0, -46.0, noiseAmount);
+
+    if (noiseAmount > 0.0) reduceNoiseSpectralGate(
+        data,
+        1024,
+        256,
+        overSub,
+        floorDb,
+        noiseLearnSec,
+        adaptivity,
+        lowEnergyDb,
+        cancelled
+    );
+    if (cancelled && cancelled->load()) return QByteArray();
+
+
     // ── Input normalisation ───────────────────────────────────────────────
     {
         const double rms = chunkRMS(data, 0, data.size());
@@ -300,26 +324,6 @@ QByteArray VocalEnhancer::enhance(const QByteArray& input, const std::atomic<boo
                        << " gain=" << safeGain;
         }
     }
-
-    const double noiseAmount = std::clamp(m_noiseReductionAmount, 0.0, 1.0);
-    const double overSub       = lerpParam(0.50, 0.85, noiseAmount);
-    const double floorDb       = lerpParam(-8.0, -16.0, noiseAmount);
-    const double noiseLearnSec = lerpParam(0.30, 0.50, noiseAmount);
-    const double adaptivity    = lerpParam(0.015, 0.004, noiseAmount);
-    const double lowEnergyDb   = lerpParam(-50.0, -46.0, noiseAmount);
-
-    reduceNoiseSpectralGate(
-        data,
-        1024,
-        256,
-        overSub,
-        floorDb,
-        noiseLearnSec,
-        adaptivity,
-        lowEnergyDb,
-        cancelled
-    );
-    if (cancelled && cancelled->load()) return QByteArray();
 
     // Snapshot RMS after noise reduction, before pitch processing.
     // Used at the end to restore output level regardless of scale/correction amount.
@@ -1298,8 +1302,12 @@ void VocalEnhancer::reduceNoiseSpectralGate(QVector<double>& x,
         return;
     }
 
-    fftw_plan fwd = useCached ? m_ngFwd : fftw_plan_dft_r2c_1d(N, fftIn, fftOut, FFTW_ESTIMATE);
-    fftw_plan inv = useCached ? m_ngInv : fftw_plan_dft_c2r_1d(N, spec,  ifftOut, FFTW_ESTIMATE);
+    fftw_plan fwd = m_ngFwd, inv = m_ngInv;
+    if (!useCached) {
+        std::lock_guard<std::mutex> lock(wakkaFftwPlannerMutex());
+        fwd = fftw_plan_dft_r2c_1d(N, fftIn, fftOut, FFTW_ESTIMATE);
+        inv = fftw_plan_dft_c2r_1d(N, spec, ifftOut, FFTW_ESTIMATE);
+    }
 
     const int bins = N / 2 + 1;
 
@@ -1466,6 +1474,7 @@ void VocalEnhancer::reduceNoiseSpectralGate(QVector<double>& x,
 
     // Cleanup — only free if we allocated locally (not using cached plans)
     if (!useCached) {
+        std::lock_guard<std::mutex> lock(wakkaFftwPlannerMutex());
         fftw_destroy_plan(fwd);
         fftw_destroy_plan(inv);
         fftw_free(fftIn);

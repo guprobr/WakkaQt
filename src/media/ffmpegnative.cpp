@@ -90,6 +90,18 @@ double getDuration(const QString &filePath)
     return dur;
 }
 
+int getAudioSampleRate(const QString &filePath)
+{
+    AVFormatContext *fmt = nullptr;
+    if (avformat_open_input(&fmt, filePath.toUtf8().constData(), nullptr, nullptr) < 0)
+        return 0;
+    avformat_find_stream_info(fmt, nullptr);
+    const int index = av_find_best_stream(fmt, AVMEDIA_TYPE_AUDIO, -1, -1, nullptr, 0);
+    const int rate = index >= 0 ? fmt->streams[index]->codecpar->sample_rate : 0;
+    avformat_close_input(&fmt);
+    return rate;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // hasVideoStream
 // ─────────────────────────────────────────────────────────────────────────────
@@ -108,12 +120,12 @@ bool hasVideoStream(const QString &filePath)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// extractAudio — decode + resample to 44100 Hz / stereo or mono / Int16 WAV
+// extractAudio — decode to stereo or mono Int16 WAV, optionally resampling
 // ─────────────────────────────────────────────────────────────────────────────
 
 bool extractAudio(const QString &input, const QString &output,
                   qint64 offsetMs, const QString &filterStr,
-                  const std::atomic<bool> *cancelled)
+                  const std::atomic<bool> *cancelled, int targetSampleRate)
 {
     AVFormatContext *fmtCtx = nullptr;
     if (avformat_open_input(&fmtCtx, input.toUtf8().constData(), nullptr, nullptr) < 0) {
@@ -142,9 +154,10 @@ bool extractAudio(const QString &input, const QString &output,
     }
 
     const bool wantMono = filterStr.contains("mono", Qt::CaseInsensitive);
-    // Preserve the source sample rate so the VocalEnhancer pipeline runs at native
-    // quality. Callers that mix multiple streams handle resampling themselves.
-    const int   outRate  = (decCtx->sample_rate > 0) ? decCtx->sample_rate : 44100;
+    // Keep vocals at their native rate; reference callers can explicitly
+    // request that same rate when the backing track was encoded differently.
+    const int   outRate  = targetSampleRate > 0 ? targetSampleRate
+        : (decCtx->sample_rate > 0 ? decCtx->sample_rate : 44100);
     const int   outCh    = wantMono ? 1 : 2;
     const uint64_t outMask = wantMono ? AV_CH_LAYOUT_MONO : AV_CH_LAYOUT_STEREO;
 

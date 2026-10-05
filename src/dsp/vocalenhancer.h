@@ -29,6 +29,7 @@ public:
     QByteArray enhance(const QByteArray& input, const std::atomic<bool> *cancelled = nullptr);
     int getProgress() const;
     QString getBanner() const;
+    void reportProcessingStatus(const QString &message, double progress) const { setStatus(message, progress); }
 
     void setPitchCorrectionAmount(double amount);
     double getPitchCorrectionAmount() const;

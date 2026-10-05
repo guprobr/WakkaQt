@@ -2,7 +2,22 @@
 
 #include <QTest>
 #include <QTemporaryFile>
+#include <QTemporaryDir>
 #include <QAudioFormat>
+
+class ShortWriteDevice : public QIODevice {
+public:
+    explicit ShortWriteDevice(qint64 limit) : m_remaining(limit) { open(WriteOnly); }
+protected:
+    qint64 readData(char *, qint64) override { return -1; }
+    qint64 writeData(const char *, qint64 size) override {
+        const qint64 written = qMin(size, m_remaining);
+        m_remaining -= written;
+        return written;
+    }
+private:
+    qint64 m_remaining;
+};
 
 // parseWavPcm() walks real RIFF chunk structure (see complexes.cpp) instead
 // of assuming a fixed 44-byte header — these tests exist to pin that
@@ -30,6 +45,57 @@ private:
     }
 
 private slots:
+    void shortWritesAreReported()
+    {
+        QAudioFormat format;
+        format.setSampleRate(44100);
+        format.setChannelCount(2);
+        format.setSampleFormat(QAudioFormat::Int16);
+        const QByteArray pcm(16, '\x11');
+        ShortWriteDevice headerFailure(20), payloadFailure(50);
+        QVERIFY(!writeWavHeader(headerFailure, format, pcm.size(), pcm));
+        QVERIFY(!writeWavHeader(payloadFailure, format, pcm.size(), pcm));
+    }
+
+    void savesFinishedVocalAtomically()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        QAudioFormat format;
+        format.setSampleRate(44100);
+        format.setChannelCount(2);
+        format.setSampleFormat(QAudioFormat::Int16);
+        const QString path = dir.filePath("processed.wav");
+        const QByteArray oldPcm(16, '\x11'), newPcm(32, '\x22');
+        QVERIFY(savePcmWavAtomically(path, format, oldPcm).isEmpty());
+        QVERIFY(savePcmWavAtomically(path, format, newPcm).isEmpty());
+        QFile result(path);
+        QVERIFY(result.open(QIODevice::ReadOnly));
+        const auto parsed = parseWavPcm(result.readAll());
+        QCOMPARE(parsed.samples, newPcm);
+        QCOMPARE(parsed.format, format);
+        QCOMPARE(QDir(dir.path()).entryList(QDir::Files | QDir::Hidden).size(), 1);
+    }
+
+    void failedVocalSavePreservesPreviousResult()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        QAudioFormat format;
+        format.setSampleRate(44100);
+        format.setChannelCount(2);
+        format.setSampleFormat(QAudioFormat::Int16);
+        const QString path = dir.filePath("processed.wav");
+        const QByteArray original(16, '\x11');
+        QVERIFY(savePcmWavAtomically(path, format, original).isEmpty());
+        QVERIFY(!savePcmWavAtomically(path, format, QByteArray()).isEmpty());
+        QVERIFY(!savePcmWavAtomically(path, format, QByteArray(3, '\x22')).isEmpty());
+        QFile result(path);
+        QVERIFY(result.open(QIODevice::ReadOnly));
+        QCOMPARE(parseWavPcm(result.readAll()).samples, original);
+        QVERIFY(!savePcmWavAtomically(dir.filePath("missing/processed.wav"), format, original).isEmpty());
+    }
+
     void roundTrip_stereo16bit()
     {
         const QByteArray pcm(64, '\x11'); // 16 stereo int16 frames

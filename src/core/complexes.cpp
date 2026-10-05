@@ -2,6 +2,7 @@
 
 #include <QDir>
 #include <QAudioFormat>
+#include <QSaveFile>
 #include <cstring>
 
 #ifdef WAKKAQT_FFMPEG_NATIVE
@@ -256,7 +257,7 @@ bool isSingleYouTubeVideoUrl(const QUrl& url) {
 
 
 // utility function to write the WAVE headers
-void writeWavHeader(QFile &file, const QAudioFormat &format, qint64 dataSize, const QByteArray &pcmData)
+bool writeWavHeader(QIODevice &file, const QAudioFormat &format, qint64 dataSize, const QByteArray &pcmData)
 {
     // Prepare header values
     qint32 sampleRate = format.sampleRate(); 
@@ -286,10 +287,27 @@ void writeWavHeader(QFile &file, const QAudioFormat &format, qint64 dataSize, co
     header.append(reinterpret_cast<const char*>(&subchunk2Size), sizeof(subchunk2Size)); // Subchunk2 Size
 
     // Write the header and audio data to the file in one go
-    file.write(header);
-    file.write(pcmData); // Write audio data after the header
+    return file.write(header) == header.size() && file.write(pcmData) == pcmData.size();
+}
 
-    qDebug() << "WAV header and audio data written.";
+QString savePcmWavAtomically(const QString &path, const QAudioFormat &format, const QByteArray &pcmData)
+{
+    if (!format.isValid() || format.sampleFormat() != QAudioFormat::Int16 || pcmData.isEmpty() ||
+        pcmData.size() % format.bytesPerFrame() != 0 || pcmData.size() > UINT32_MAX - 36LL)
+        return "Processed vocal audio is not valid Int16 PCM.";
+
+    QSaveFile file(path);
+    file.setDirectWriteFallback(false);
+    if (!file.open(QIODevice::WriteOnly))
+        return "Could not open processed vocal output: " + file.errorString();
+    if (!writeWavHeader(file, format, pcmData.size(), pcmData)) {
+        const QString error = "Could not write processed vocal audio: " + file.errorString();
+        file.cancelWriting();
+        return error;
+    }
+    if (!file.commit())
+        return "Could not save processed vocal audio: " + file.errorString();
+    return {};
 }
 
 // See complexes.h. Walks actual RIFF chunks instead of assuming a fixed
@@ -431,4 +449,3 @@ static bool isYouTubeHost(const QString& host) {
     const QString h = host.toLower();
     return h.contains("youtube.com") || h.contains("youtu.be");
 }
-

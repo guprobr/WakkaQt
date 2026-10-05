@@ -41,7 +41,7 @@ public:
     explicit PreviewDialog(qint64 offset, QWidget *parent = nullptr);
     ~PreviewDialog();
 
-    void setAudioFile(const QString &filePath);
+    void setAudioFile(const QString &filePath, const QString &playbackReference = {});
     void setVideoFile(const QString &filePath, qint64 videoOffsetMs);
     double getVolume() const;
     qint64 getOffset() const;
@@ -67,7 +67,7 @@ private slots:
     void startEnhancementJob();
     void onVideoFrame(const QVideoFrame &frame);
     void updateVideoEffectChain();
-    void onVocalsExtracted(QByteArray pcmSamples, QAudioFormat pcmFormat);
+    void onVocalsExtracted(QByteArray pcmSamples, QAudioFormat pcmFormat, QByteArray playbackPcm);
     void onVocalsEnhanced(QByteArray tunedData);
     void startSnippetPreview();
     void onSnippetEnhanced(QByteArray tunedSlice);
@@ -87,6 +87,7 @@ private:
     void seekForward();
     void seekBackward();
     void setPreviewControlsEnabled(bool enabled);
+    bool canRenderProcessedVocal() const;
     void updateEnhancementLabels();
     void syncVideoToAudio();
     void buildEffectsUi(class QVBoxLayout *effectsLayout);
@@ -164,6 +165,8 @@ private:
     QSlider *offsetSlider = nullptr;
     QSlider *pitchCorrectionSlider = nullptr;
     QSlider   *noiseReductionSlider  = nullptr;
+    QCheckBox *playbackBleedCheckBox = nullptr;
+    QLabel *cleanupStatusLabel = nullptr;
     QComboBox *keyCombo              = nullptr;
     QComboBox *scaleCombo            = nullptr;
     QSlider   *retuneSpeedSlider     = nullptr;
@@ -186,6 +189,10 @@ private:
 
     QString audioFilePath;
     QByteArray previewInputAudioData;
+    QByteArray m_playbackReferencePcm;
+    bool m_bleedAvailable = false;
+    bool m_committedBleedRemoval = false;
+    bool m_hasProcessedVocal = false;
     // Current full-track baseline — raw extracted vocals until the first
     // full enhancement completes, then whatever was last applied to the
     // whole track. This is what plays outside of an active snippet preview,

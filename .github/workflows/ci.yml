@@ -28,6 +28,7 @@ jobs:
             qt6-base-dev qt6-multimedia-dev \
             libqt6multimedia6 libqt6multimediawidgets6 \
             libfftw3-dev \
+            libspeexdsp1 \
             libglib2.0-dev \
             pkg-config
 

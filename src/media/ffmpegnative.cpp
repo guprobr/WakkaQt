@@ -162,7 +162,9 @@ bool extractAudio(const QString &input, const QString &output,
     const uint64_t outMask = wantMono ? AV_CH_LAYOUT_MONO : AV_CH_LAYOUT_STEREO;
 
     SwrContext *swr = nullptr;
-    AVChannelLayout inCL, outCL;
+    // av_channel_layout_copy() first uninitializes its destination. A fresh
+    // layout must be zeroed or stray stack values can trigger an invalid free.
+    AVChannelLayout inCL{}, outCL{};
     av_channel_layout_copy(&inCL, &decCtx->ch_layout);
     if (inCL.nb_channels == 0)
         av_channel_layout_default(&inCL, std::max(1, (int)audioStream->codecpar->ch_layout.nb_channels));
@@ -285,7 +287,7 @@ static QVector<float> decodeAudioToFloat(const QString &path, qint64 offsetMs, d
     avcodec_open2(ctx, dec, nullptr);
 
     SwrContext *swr = nullptr;
-    AVChannelLayout srcCL, dstCL;
+    AVChannelLayout srcCL{}, dstCL{};
     av_channel_layout_copy(&srcCL, &ctx->ch_layout);
     if (srcCL.nb_channels == 0) av_channel_layout_default(&srcCL, 1);
     av_channel_layout_from_mask(&dstCL, AV_CH_LAYOUT_STEREO);
@@ -675,7 +677,7 @@ static QVector<PitchPoint> analyzePitch(const QString &audioPath)
     avcodec_open2(ctx, dec, nullptr);
 
     SwrContext *swr = nullptr;
-    AVChannelLayout srcCL, dstCL;
+    AVChannelLayout srcCL{}, dstCL{};
     av_channel_layout_copy(&srcCL, &ctx->ch_layout);
     if (srcCL.nb_channels == 0) av_channel_layout_default(&srcCL, 1);
     av_channel_layout_default(&dstCL, 1); // mono output
@@ -1117,7 +1119,7 @@ static bool openAudioEncoder(AVCodecID codecId, AVFormatContext *outFmt,
     (*outSt)->time_base = (*encCtx)->time_base;
 
     if ((*encCtx)->sample_fmt != AV_SAMPLE_FMT_S16 || (*encCtx)->sample_rate != 44100) {
-        AVChannelLayout stereo;
+        AVChannelLayout stereo{};
         av_channel_layout_from_mask(&stereo, AV_CH_LAYOUT_STEREO);
         swr_alloc_set_opts2(encSwr, &stereo, (*encCtx)->sample_fmt, (*encCtx)->sample_rate,
                              &stereo, AV_SAMPLE_FMT_S16, 44100, 0, nullptr);
@@ -1727,7 +1729,7 @@ bool renderVideo(const QString &audioPath,
     // Resampler: S16 44100 Hz stereo (source PCM) → encoder's required sample format/rate
     SwrContext *encSwr = nullptr;
     if (audioEncCtx->sample_fmt != AV_SAMPLE_FMT_S16 || audioEncCtx->sample_rate != 44100) {
-        AVChannelLayout stereo;
+        AVChannelLayout stereo{};
         av_channel_layout_from_mask(&stereo, AV_CH_LAYOUT_STEREO);
         swr_alloc_set_opts2(&encSwr,
                              &stereo, audioEncCtx->sample_fmt, audioEncCtx->sample_rate,

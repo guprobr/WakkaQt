@@ -4,6 +4,11 @@
 
 **WakkaQt** is a free, open-source karaoke recording and production studio built with Qt6. Load a karaoke video, grab a mic, sing your heart out, and walk away with a finished, mixed, pitch-corrected MP4 — complete with a webcam feed, vocal overlay, and a pitch indicator that will mercilessly show the world every flat note you tried to sneak past.
 
+For karaoke parties, you can play the backing track through speakers and reduce
+the playback picked up by the microphones after recording. WakkaQt keeps the
+microphone take and backing track separate, cleans the vocal first, and mixes
+it with the original backing track when rendering.
+
 No subscriptions. No cloud. No judgment. (Well, maybe a little judgment from the pitch monitor.)
 
 Current version: **3.0.1**
@@ -27,21 +32,32 @@ Drop in any MP4, MKV, WebM, AVI, MOV, MP3, WAV, FLAC, or OPUS file. If Qt6 Multi
 ### 2. Records You Singing It
 Select your microphone from a list of all detected devices. Hit **🎤 SING**. Optionally capture your webcam at the same time — for those who want to remember exactly what they looked like belting out Bohemian Rhapsody at 2 AM.
 
+Using speakers instead of headphones? Enable [speaker playback removal](#recording-with-speakers)
+in the vocal preview. This optional cleanup uses the song's backing track as a
+reference to reduce speaker sound captured in the microphone recording.
+
 ### 3. Makes You Sound Better Than You Are
 Before rendering, the vocal track runs through a full DSP pipeline:
 
+- **Speaker playback removal** — optional SpeexDSP echo cancellation aligns the original backing track with the microphone take and reduces playback bleed before other vocal processing
+- **Noise reduction** — spectral subtraction gate with adaptive noise floor estimation, applied before normalization and tuning; set it to 0 to bypass it
 - **Pitch correction** — phase-vocoder pitch shifting with adjustable strength (0 = raw humanity, 100 = robot perfection)
 - **Scale-aware snapping** — snap pitch to Major, Minor, Pentatonic, Blues, Dorian, Mixolydian, Lydian, Phrygian, Locrian, Harmonic Minor, Melodic Minor, Whole Tone, Diminished, or plain Chromatic — in any of the 12 keys
 - **Retune speed** — 0 ms for that T-Pain effect, up to 300 ms for a natural glide
 - **Formant preservation** — LPC-based envelope re-synthesis keeps your voice sounding human even after aggressive pitch shifting
-- **Noise reduction** — spectral subtraction gate with adaptive noise floor estimation (goodbye, fan noise)
 - **Reverb** — Freeverb-style Schroeder reverb with room size, decay, and wet/dry controls
 - **Dynamics** — compressor, limiter, and harmonic exciter for a polished, loud-enough final mix
 
-All FFTW plans are created once and reused for the entire recording — no plan allocation mid-session, no glitches.
+Vocal tuning reuses cached FFTW plans. Playback alignment runs offline with its
+own analysis plans, and DSP jobs coordinate FFTW planning when they overlap.
 
 ### 4. Lets You Preview and Tweak
-A full-featured preview dialog lets you hear the processed vocal, adjust every enhancement parameter in real time, nudge the audio/video sync offset, and preview again — as many times as you need before committing to a render.
+A full-featured preview dialog lets you hear the processed vocal, adjust enhancement settings, and nudge the audio/video sync offset before rendering. Try a **10-second preview**, then apply **Enhance Full Vocal Track** to process the complete take. The **Original/Tuned** toggle lets you compare the microphone take with the processed vocal.
+
+Full-track processing and quick previews always start from the raw take, so
+repeated adjustments do not stack cleanup or tuning. Processed WAV files are
+saved atomically, and rendering requires a completed full-track result with
+the current speaker playback removal setting.
 
 ### 5. Renders a Professional-Looking Video
 Output: a 1920×1080 MP4 with the karaoke video on top and your webcam below. The vocal is mixed in with all enhancements applied. A pitch indicator strip is burned into the webcam frame — green when you're in tune, yellow when you're drifting, red when you're… having a moment.
@@ -71,10 +87,15 @@ Every recording is saved to `~/.WakkaQt/library/` with a UUID folder, all source
 | Pitch correction (phase vocoder) | ✅ |
 | Scale/key-aware pitch snapping | ✅ |
 | Formant preservation (LPC) | ✅ |
+| Offline speaker playback removal (SpeexDSP) | ✅ Optional runtime library |
 | Noise reduction (spectral subtraction) | ✅ |
+| Automatic playback reference rate/channel conversion | ✅ |
+| High-rate microphone recording conversion (including 192 kHz/32-bit) | ✅ |
 | Reverb (Freeverb/Schroeder) | ✅ |
 | Compressor + limiter + harmonic exciter | ✅ |
-| Preview dialog with live tweak | ✅ |
+| Preview dialog with adjustable vocal settings | ✅ |
+| 10-second vocal previews and Original/Tuned comparison | ✅ |
+| Raw take preservation and atomic processed-vocal saves | ✅ |
 | Native FFmpeg rendering (in-process) | ✅ |
 | Pitch overlay on rendered video | ✅ |
 | Live webcam video preview (synced) | ✅ |
@@ -90,6 +111,39 @@ Every recording is saved to `~/.WakkaQt/library/` with a UUID folder, all source
 | Subscription required | ❌ |
 | Phone home to a server | ❌ |
 | Judgment about your singing | mostly ❌ |
+
+---
+
+## Recording with speakers
+
+1. Install the [SpeexDSP runtime](#speaker-playback-removal-speexdsp) for your platform.
+2. Load the karaoke track, select your microphone, and record with **🎤 SING** while the track plays through speakers.
+3. In the preview's **Vocal Tuning** tab, check **Remove speaker playback from microphones**. It is enabled automatically when SpeexDSP and the session's backing track are available.
+4. Adjust **Noise Reduction** and the tuning controls. Use a 10-second preview and the **Original/Tuned** toggle to compare the result.
+5. Apply **Enhance Full Vocal Track** after changing settings, then render the mix with the original backing track.
+
+When speaker playback removal is enabled, processing follows this order:
+
+**Playback bleed cancellation → noise reduction → vocal tuning/effects → mastering → mix with the original backing track.**
+
+The original microphone recording and backing track stay separate and
+unchanged in the session library. The native FFmpeg path preserves microphone
+sample rates from 8 to 96 kHz; recordings outside that range, including
+192 kHz/32-bit device defaults, are converted to 48 kHz/16-bit PCM for
+processing. The playback reference is converted to match the decoded vocal
+rate and channel layout, so a 48 kHz recording can use a 44.1 kHz backing track.
+The FFmpeg CLI fallback processes vocals as 44.1 kHz stereo 16-bit PCM.
+
+The filter supports mono or stereo microphones, aligns playback within
+±500 ms, and uses a 300 ms adaptive room filter. If it cannot find correlated
+playback, it keeps the microphone audio unchanged and reports that in the
+preview. To compare without cancellation, turn off the checkbox and apply
+**Enhance Full Vocal Track** again.
+
+Cleanup runs after recording and does not suppress live feedback. Clipping,
+long reverberation, moving equipment, and input/output clock drift can leave
+residual playback. Keep speaker levels below clipping and microphones close
+to the singers.
 
 ---
 
@@ -232,46 +286,30 @@ Installs to `/usr/bin/WakkaQt`, with an icon at `/usr/share/icons/hicolor/256x25
 
 ## Runtime Dependencies
 
-| Tool | Purpose |
+| Dependency | Purpose |
 |---|---|
 | `ffmpeg` | Render fallback when FFmpeg dev libs were absent at build time |
 | `yt-dlp` | In-app video download from YouTube and other sites |
 | SpeexDSP (optional) | Removes speaker playback captured by the microphones |
 
-Both must be on `$PATH` at runtime. The ONNX model (~80 MB) is downloaded automatically on first use of the backing-track feature and cached in `~/.WakkaQt/models/`.
+The `ffmpeg` and `yt-dlp` executables must be on `$PATH` when their respective
+features are used. SpeexDSP is loaded as a shared library using the setup
+below. The ONNX model (~80 MB) is downloaded automatically on first use of the
+backing-track feature and cached in `~/.WakkaQt/models/`.
 
-### Recording with speakers
+### Speaker playback removal (SpeexDSP)
 
 Install the SpeexDSP runtime (`sudo apt install libspeexdsp1` on Debian/Ubuntu,
-or `sudo dnf install speexdsp` on Fedora). On Windows, distribute a matching
-SpeexDSP DLL (`speexdsp.dll` or `libspeexdsp-1.dll`) beside WakkaQt. On macOS,
+or `sudo dnf install speexdsp` on Fedora). On Windows, place a SpeexDSP DLL
+(`speexdsp.dll` or `libspeexdsp-1.dll`) and its required dependencies beside
+`WakkaQt.exe`, matching the application's architecture. On macOS,
 make `libspeexdsp.dylib` available to the application loader. No SpeexDSP
 development headers are needed to build WakkaQt.
 
-In the preview's **Vocal Tuning** tab, **Remove speaker playback from
-microphones** is enabled automatically when SpeexDSP and the session's backing
-track are available. The offline pipeline is: playback bleed cancellation →
-noise reduction → vocal tuning/effects → mastering → mix with the original
-backing track. Both full-track processing and quick previews use the raw take,
-so processing does not accumulate. The original microphone recording and
-backing track remain separate and unchanged in the session library; the
-Original/Tuned toggle lets you compare the results.
-
-The native FFmpeg path preserves microphone sample rates from 8 to 96 kHz;
-recordings outside that range (including 192 kHz/32-bit device defaults) are
-converted to 48 kHz/16-bit PCM for cleanup without changing the original take.
-It resamples the playback reference to match the decoded microphone format.
-Recordings and backing tracks
-with different rates (such as 48 kHz and 44.1 kHz) can be used together.
-
-The filter aligns the reference within ±500 ms and uses a 300 ms adaptive room
-filter for mono or stereo microphones. If it cannot find correlated playback,
-it bypasses cancellation and reports that in the preview. Turn it off and
-apply **Enhance Full Vocal Track** to compare or recover a take. This cleanup
-runs after recording; it does not provide live feedback suppression. Clipped
-microphones/speakers, long reverberation, moving equipment, and substantial
-clock drift between input/output devices can leave residual playback. Keep
-speaker levels below clipping and place microphones close to the singers.
+Without a loadable SpeexDSP library, speaker playback removal is disabled and
+the preview shows a setup message; the other vocal processing remains
+available. See [Recording with speakers](#recording-with-speakers) for the
+workflow and cleanup limitations.
 
 ### Video Effects (optional — frei0r plugins)
 
